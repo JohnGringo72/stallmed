@@ -25,7 +25,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 // NOTE: end block
 
 // Add services to the container.
-var connectionString = "server=164.92.134.66;database=stallmed;user=remoteJiannis;pwd=k0tak0ta;Convert Zero Datetime=True;";
+var connectionString = File.ReadAllText("connectionString"); 
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();

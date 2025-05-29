@@ -21,3 +21,4 @@ setups
 /Code/TempDebug/
 /Code/nuget.packages/
 /.vs
+connectionString
