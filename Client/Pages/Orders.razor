@@ -1,0 +1,75 @@
+﻿@page "/orders"
+@using Blazored.LocalStorage;
+@using Microsoft.AspNetCore.Authorization;
+@using StallmedManager.Shared
+@using StallmedManager.Shared.Models
+@using System;
+@inject DataService dataService;
+
+<PageTitle>Weather forecast</PageTitle>
+
+<h1>Παραγγελίες</h1>
+
+
+<div class="mb-3">
+    <strong>Από:</strong>: <InputDate @bind-Value="@fromDate" min="minDate" max="maxDate" />
+    <strong>Έως:</strong>: <InputDate @bind-Value="@toDate" min="minDate" max="maxDate" />
+</div>
+
+<button type="button" onclick="@(async () => await LoadData())">Φόρτωσε</button>
+
+@if (status=="idle")
+{
+    <p><em>Επίλεξε ημερομηνίες και ζούμπηξε το κουμπί</em></p>
+}
+@if (status == "loading")
+{
+    <p><em>Φορτώνω...</em></p>
+}
+@if (status == "loaded")
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Ιατρός</th>
+                <th>Ασθενής</th>
+                <th>Φαρμακείο</th>
+                <th>Εμβόλιο</th>
+                <th>Ποσότητα</th>
+                <th>Ημερομηνία</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var person in people)
+            {
+                <tr>
+                    <td>@person.DocName</td>
+                    <td>@person.PAtName</td>
+                    <td>@person.PhName</td>
+                    <td>@person.Treatment</td>
+                    <td>@person.Qnt</td>
+                    <td>@person.OrderDate.ToString("dd/MM/yyyy")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private Person[] people;
+    private string status = "idle";
+
+    private DateTime fromDate = DateTime.Now.AddDays(-7);
+    private DateTime toDate = DateTime.Now.AddMonths(1);
+    private DateTime minDate = new DateTime(2000, 1, 1);
+    private DateTime maxDate = new DateTime(2100, 1, 1);
+
+    protected override async Task OnInitializedAsync() { }
+
+    private async Task LoadData()
+    {
+        status = "loading";
+        people = await new OrdersService(dataService).GetOrders(fromDate, toDate);
+        status = "loaded";
+    }
+}

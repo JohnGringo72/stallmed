@@ -1,0 +1,24 @@
+﻿@page "/"
+@using Blazored.LocalStorage;
+@using Microsoft.AspNetCore.Authorization;
+@using StallmedManager.Shared
+@using StallmedManager.Shared.Models
+@inject HttpClient Http
+@inject ILocalStorageService localStorage
+@inject NavigationManager navigationManager
+@inject UserManager userManager
+
+<PageTitle>Stallmed manager</PageTitle>
+
+<h1>Stallmed manager</h1>
+<p>Καλωσήλθατε στο σύστημα διαχείρισης Stallmed.</p>
+<p>Δημιουργήθηκε από την ομάδα TiSoft και εξελίχθηκε από τον Master Software Pro engineer senior advisor John Gringo </p>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        //userManager = new UserManager(localStorage, null);
+        //await userManager.Initialize();
+        //if (!userManager.IsLoggedIn) navigationManager.NavigateTo("/login");
+    }
+}

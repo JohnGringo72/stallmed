@@ -1,0 +1,72 @@
+﻿@page "/login"
+@using Blazored.LocalStorage;
+@using StallmedManager.Shared.Models
+@inject HttpClient http
+@inject ILocalStorageService localStorage
+@inject NavigationManager navigationManager
+@inject UserManager userManager
+<h3>Login</h3>
+
+<p>@message</p>
+
+@if (!isLoggedIn)
+{
+	<EditForm Model="loginRequest" OnValidSubmit="TryToLogin" style="max-width:500px;">
+		<DataAnnotationsValidator />
+		<ValidationSummary />
+		<div class="mb-2">
+			<InputText class="form-control" @bind-Value="loginRequest.EmailUsernameAMKA" placeholder="Δώστε email, username ή ΑΜΚΑ"></InputText>
+		</div>
+		<div class="mb-2">
+			<InputText type="password" class="form-control" @bind-Value="loginRequest.Password" placeholder="Δώστε συνθηματικό"></InputText>
+		</div>
+		<div class="mb-2 text-right">
+			<button class="btn btn-secondary" disabled="@loginButtonDisabled">Σύνδεση</button>
+		</div>
+		<div class="mb-2">
+			<p>@message</p>
+		</div>
+	</EditForm>
+}
+
+
+@if (isLoggedIn)
+{
+	<p>Ήδη συνδεδεμένος ως: @username</p>
+	<EditForm OnValidSubmit="Logout" style="max-width:500px;">
+		<div class="mb-2 text-right">
+			<button class="btn btn-secondary" disabled="@loginButtonDisabled">login</button>
+		</div>
+	</EditForm>
+}
+
+
+@code {
+	private LoginRequest loginRequest = new LoginRequest();
+	private bool isLoggedIn = false;
+	private string message = "";
+	private string username = "";
+	private bool loginButtonDisabled = false;
+
+	protected override async Task OnInitializedAsync()
+	{
+		//userManager = new UserManager(localStorage, http);
+		var h = userManager.GetHashCode();
+		await userManager.Initialize();
+	}
+
+	private async Task TryToLogin()
+	{
+		loginButtonDisabled = true;
+		var response = await userManager.Login(loginRequest);
+		loginButtonDisabled = false;
+		message = response.Message;
+		if (userManager.IsLoggedIn) navigationManager.NavigateTo("/");
+	}
+
+	private async Task Logout()
+	{
+		await userManager.Logout();
+		navigationManager.NavigateTo("/login");
+	}
+}

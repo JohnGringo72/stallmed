@@ -1,0 +1,63 @@
+﻿@using Blazored.LocalStorage;
+@inherits LayoutComponentBase
+@inject ILocalStorageService localStorage
+@inject NavigationManager navigationManager
+@inject UserManager userManager
+
+<div class="page">
+    @if (!UrlsWithoutMenu.Contains(ActiveUri))
+    {
+        <div class="sidebar">
+            <NavMenu />
+        </div>
+    }
+
+    <main>
+        <div class="top-row px-4">
+            @if (isLoggedIn)
+            {
+                <span>Συνδεδεμένος ως: @username </span>
+                <button class="btn" @onclick="Logout">Αποσύνδεση</button>
+            }
+            else
+            {
+                <span>Μη συνδεδεμένος </span>
+                <button class="btn" @onclick="Login">Σύνδεση</button>
+            }
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code{
+    private List<string> UrlsWithoutMenu = new List<string>() { "login" };
+    private string ActiveUri => navigationManager.Uri.Replace(navigationManager.BaseUri, "");
+    private bool isLoggedIn = false;
+    private string username = "";
+    //private UserManager userManager = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        userManager.StatusChanged += (object s, EventArgs e) =>
+        {
+            this.isLoggedIn = userManager.IsLoggedIn;
+            this.username = userManager.User?.Username;
+        };
+    }
+
+    private async void Logout()
+    {
+        await userManager.Logout();
+        this.username = string.Empty;
+        this.isLoggedIn = false;
+        navigationManager.NavigateTo("/login");
+    }
+
+    private void Login()
+    {
+        navigationManager.NavigateTo("/login");
+    }
+}

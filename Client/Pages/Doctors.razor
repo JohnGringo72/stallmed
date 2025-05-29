@@ -1,0 +1,55 @@
+﻿@page "/doctors"
+@using Blazored.LocalStorage;
+@using Microsoft.AspNetCore.Authorization;
+@using StallmedManager.Shared
+@using StallmedManager.Shared.Models
+@inject HttpClient http
+@inject ILocalStorageService localStorage
+@inject NavigationManager navigationManager
+@inject UserManager userManager;
+
+<PageTitle>Doctors Name</PageTitle>
+
+<h1>Ολα τα λαμόγια εδώ</h1>
+
+
+@if (people == null)
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>id</th>
+                <th>Όνομα</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var person in people)
+            {
+                <tr>
+                    <td>@person.id</td>
+                    <td>@person.PhName</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private Person[] people;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await userManager.Initialize();
+
+        if (!userManager.IsLoggedIn) navigationManager.NavigateTo("/login");
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "/people");
+        request.Headers.Add("Authorization", "Bearer " + userManager.User.Token);
+        var response = await http.SendAsync(request);
+        people = await response.Content.ReadFromJsonAsync<Person[]>();
+    }
+}

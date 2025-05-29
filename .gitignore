@@ -1,0 +1,22 @@
+#----------------------------#
+#------ Global ignores --------#
+#----------------------------#
+obj/
+bin/
+.vs/
+*.user
+*.pdb
+*.suo
+*.vbproj.user
+*.vshost.exe
+*.vshost.exe.manifest
+*.vshost.exe.config
+*.exe.config
+*.dll.config
+*.VC.db
+codealike.json
+packages/
+setups
+/TempDebug/
+/Code/TempDebug/
+/Code/nuget.packages/
