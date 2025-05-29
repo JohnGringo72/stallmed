@@ -14,6 +14,7 @@
 <div class="mb-3">
     <strong>Από:</strong>: <InputDate @bind-Value="@fromDate" min="minDate" max="maxDate" />
     <strong>Έως:</strong>: <InputDate @bind-Value="@toDate" min="minDate" max="maxDate" />
+    <strong>Φίλτρο:</strong>: <InputText @bind-Value="@filter" />
 </div>
 
 <button type="button" onclick="@(async () => await LoadData())">Φόρτωσε</button>
@@ -63,13 +64,14 @@
     private DateTime toDate = DateTime.Now.AddMonths(1);
     private DateTime minDate = new DateTime(2000, 1, 1);
     private DateTime maxDate = new DateTime(2100, 1, 1);
+    private string filter;
 
     protected override async Task OnInitializedAsync() { }
 
     private async Task LoadData()
     {
         status = "loading";
-        people = await new OrdersService(dataService).GetOrders(fromDate, toDate);
+        people = await new OrdersService(dataService).GetOrders(fromDate, toDate, filter);
         status = "loaded";
     }
 }

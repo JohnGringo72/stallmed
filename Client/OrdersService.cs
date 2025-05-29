@@ -11,9 +11,9 @@ namespace StallmedManager.Client
 			this.dataService = dataService;
 		}
 
-		public async Task<Person[]> GetOrders(DateTime fromDate, DateTime toDate)
+		public async Task<Person[]> GetOrders(DateTime fromDate, DateTime toDate, string filter)
 		{
-			return await dataService.Get<Person[]>($"/people?fromDate={fromDate.ToString("yyyy-MM-dd")}&toDate={toDate.ToString("yyyy-MM-dd")}");
+			return await dataService.Get<Person[]>($"/people?fromDate={fromDate.ToString("yyyy-MM-dd")}&toDate={toDate.ToString("yyyy-MM-dd")}&filter={filter}");
         }
 	}
 }

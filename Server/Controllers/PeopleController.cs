@@ -21,9 +21,9 @@ namespace StallmedManager.Server.Controllers
 
         [HttpGet]
         [Authorize]
-        public IEnumerable<Person> Get([FromQuery] DateTime fromDate, [FromQuery] DateTime toDate)
+        public IEnumerable<Person> Get([FromQuery] DateTime fromDate, [FromQuery] DateTime toDate, [FromQuery] string filter)
         {
-            return context.OnlineData.Where(c => c.OrderDate >= fromDate && c.OrderDate <= toDate);
+            return context.OnlineData.Where(c => c.OrderDate >= fromDate && c.OrderDate <= toDate && c.PAtName.Contains(filter));
         }
     }
 }
