@@ -24,6 +24,28 @@
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
+
+    <script>
+        window.downloadFileFromBytes = function (fileName, bytes) {
+            const blob = new Blob([new Uint8Array(bytes)], {
+                type: 'application/octet-stream'
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        window.selectAll = function (id) {
+            const el = document.getElementById(id);
+            if (el) { el.select(); }
+        };
+    </script>
+
     <script src="_framework/blazor.webassembly.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/gr.js"></script>
@@ -118,5 +140,6 @@
             });
         };
     </script>
+
 </body>
 </html>

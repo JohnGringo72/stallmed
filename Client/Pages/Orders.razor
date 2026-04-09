@@ -6,6 +6,7 @@
 @using System;
 @inject DataService dataService;
 @inject IJSRuntime JS
+@inject HttpClient Http
 
 <PageTitle>Παραγγελίες</PageTitle>
 
@@ -183,6 +184,14 @@
                     <option value="@t">@t</option>
                 }
             </select>
+            <button class="btn btn-success" @onclick="ExportToExcel" title="Εξαγωγή σε Excel">
+                📥 Excel
+            </button>
+            <button class="btn btn-danger" @onclick="ExportToPdf" title="Εξαγωγή σε PDF"
+                    disabled="@(string.IsNullOrEmpty(selectedDoctor))">
+                📄 PDF
+            </button>
+
         </div>
     </div>
 
@@ -350,5 +359,36 @@
 
         status = "loaded";
         StateHasChanged();
+    }
+    private async Task ExportToExcel()
+    {
+        var orders = FilteredPeople.ToList();
+        var response = await Http.PostAsJsonAsync("api/export/orders-excel", orders);
+        if (response.IsSuccessStatusCode)
+        {
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            var fileName = $"Παραγγελίες_{DateTime.Today:dd-MM-yyyy}.xlsx";
+            await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, bytes);
+        }
+    }
+    private async Task ExportToPdf()
+    {
+        if (string.IsNullOrEmpty(selectedDoctor))
+            return;
+
+        var request = new
+        {
+            Orders = FilteredPeople.ToList(),
+            FromDate = fromDate,
+            ToDate = toDate
+        };
+
+        var response = await Http.PostAsJsonAsync("api/export/orders-pdf", request);
+        if (response.IsSuccessStatusCode)
+        {
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            var fileName = $"{selectedDoctor}_{fromDate:dd-MM-yyyy}_{toDate:dd-MM-yyyy}.pdf";
+            await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, bytes);
+        }
     }
 }

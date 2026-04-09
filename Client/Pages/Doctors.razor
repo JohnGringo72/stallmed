@@ -126,13 +126,19 @@
             <input id="toDatePickerDoc" class="form-control" placeholder="Έως..." />
         </div>
         <div class="col-8 col-md-10">
-            <select class="form-control" value="@selectedDoctor" @onchange="OnDoctorChanged">
-                <option value="">Επιλογή γιατρού...</option>
+            <input class="form-control"
+                   id="doctorInputDoc"
+                   list="doctorListDoc"
+                   value="@selectedDoctor"
+                   @oninput="OnDoctorInput"
+                   @onclick="OnDoctorClick"
+                   placeholder="Αναζήτηση γιατρού..." />
+            <datalist id="doctorListDoc">
                 @foreach (var d in doctorOptions)
                 {
                     <option value="@d">@d</option>
                 }
-            </select>
+            </datalist>
         </div>
         <div class="col-4 col-md-2">
             <button class="btn btn-primary w-100" @onclick="LoadStats">Search</button>
@@ -149,7 +155,6 @@
 {
     <div class="row g-3 mb-4">
 
-        <!-- Card 1: Παραγγελίες / Τεμάχια -->
         <div class="col-6 col-md-3">
             <div class="kpi-card">
                 <div class="kpi-tooltip">Αριθμός παραγγελιών και συνολικά τεμάχια στην επιλεγμένη περίοδο</div>
@@ -162,7 +167,6 @@
             </div>
         </div>
 
-        <!-- Card 2: Ασθενείς / Νέοι -->
         <div class="col-6 col-md-3">
             <div class="kpi-card">
                 <div class="kpi-tooltip">Σύνολο ασθενών που παρήγγειλαν στην περίοδο / εκ των οποίων νέοι ασθενείς</div>
@@ -175,7 +179,6 @@
             </div>
         </div>
 
-        <!-- Card 3: Προηγ. ΤΕΜ / Τάση -->
         <div class="col-6 col-md-3">
             <div class="kpi-card">
                 <div class="kpi-tooltip">Τεμάχια προηγούμενης ισόχρονης περιόδου / Τάση τεμαχίων vs προηγούμενη περίοδο</div>
@@ -190,7 +193,6 @@
             </div>
         </div>
 
-        <!-- Card 4: Μερίδιο / Τάση -->
         <div class="col-6 col-md-3">
             <div class="kpi-card">
                 <div class="kpi-tooltip">Μερίδιο παραγγελιών επί συνόλου (@stats.TotalAllOrders Τεμ.) / Τάση μεριδίου vs προηγούμενη περίοδο</div>
@@ -288,10 +290,10 @@
         }
     }
 
-    private async Task OnDoctorChanged(ChangeEventArgs e)
+    private async Task OnDoctorInput(ChangeEventArgs e)
     {
         selectedDoctor = e.Value?.ToString() ?? "";
-        if (!string.IsNullOrEmpty(selectedDoctor))
+        if (doctorOptions.Contains(selectedDoctor))
             await LoadStats();
     }
 
@@ -306,5 +308,9 @@
 
         status = "loaded";
         StateHasChanged();
+    }
+    private async Task OnDoctorClick()
+    {
+        await JS.InvokeVoidAsync("selectAll", "doctorInputDoc");
     }
 }
