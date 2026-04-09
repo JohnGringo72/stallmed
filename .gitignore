@@ -22,3 +22,4 @@ setups
 /Code/nuget.packages/
 /.vs
 connectionString
+appsettings.Development.json

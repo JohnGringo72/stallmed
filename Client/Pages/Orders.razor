@@ -5,73 +5,350 @@
 @using StallmedManager.Shared.Models
 @using System;
 @inject DataService dataService;
+@inject IJSRuntime JS
 
-<PageTitle>Weather forecast</PageTitle>
+<PageTitle>Παραγγελίες</PageTitle>
 
-<h1>Παραγγελίες</h1>
+<style>
+    .filters-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
 
+    .order-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
 
-<div class="mb-3">
-    <strong>Από:</strong>: <InputDate @bind-Value="@fromDate" min="minDate" max="maxDate" />
-    <strong>Έως:</strong>: <InputDate @bind-Value="@toDate" min="minDate" max="maxDate" />
-    <strong>Φίλτρο:</strong>: <InputText @bind-Value="@filter" />
+        .order-card:active {
+            background: #f0f0f0;
+        }
+
+        .order-card .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .order-card .doctor-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .order-card .patient-name {
+            color: #555;
+            font-size: 0.88rem;
+            margin-bottom: 4px;
+        }
+
+        .order-card .treatment-name {
+            color: #777;
+            font-size: 0.83rem;
+            margin-bottom: 4px;
+        }
+
+        .order-card .card-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            font-size: 0.82rem;
+            color: #888;
+        }
+
+    .popup-box {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 24px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 480px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .company-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        color: white;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+</style>
+
+<h1 class="mb-3">Παραγγελίες</h1>
+
+<div class="filters-panel">
+    <div class="row g-2">
+
+        <div class="col-6">
+            <input id="fromDatePicker" class="form-control" placeholder="Από..." />
+        </div>
+        <div class="col-6">
+            <input id="toDatePicker" class="form-control" placeholder="Έως..." />
+        </div>
+
+        <div class="col-6">
+            <input class="form-control" list="doctorList"
+                   value="@selectedDoctor"
+            @oninput="e => selectedDoctor = e.Value.ToString()"
+                   placeholder="Γιατρός..." />
+            <datalist id="doctorList">
+                @foreach (var doctor in doctorOptions)
+                {
+                    <option value="@doctor">@doctor</option>
+                }
+            </datalist>
+        </div>
+        <div class="col-6">
+            <input class="form-control" list="pharmacyList"
+                   value="@selectedPharmacy"
+            @oninput="e => selectedPharmacy = e.Value.ToString()"
+                   placeholder="Φαρμακείο..." />
+            <datalist id="pharmacyList">
+                @foreach (var pharmacy in pharmacyOptions)
+                {
+                    <option value="@pharmacy">@pharmacy</option>
+                }
+            </datalist>
+        </div>
+
+        <div class="col-6">
+            <input class="form-control" list="patientList"
+                   value="@selectedPatient"
+            @oninput="e => selectedPatient = e.Value.ToString()"
+                   placeholder="Ασθενής..." />
+            <datalist id="patientList">
+                @foreach (var patient in patientOptions)
+                {
+                    <option value="@patient">@patient</option>
+                }
+            </datalist>
+        </div>
+        <div class="col-6">
+            <select class="form-control" value="@selectedStatus" @onchange="e => selectedStatus = e.Value.ToString()">
+                <option value="">Όλα τα Status...</option>
+                @foreach (var s in statusOptions)
+                {
+                    <option value="@s">@(new WebOrder { Status = s }.StatusLabel)</option>
+                }
+            </select>
+        </div>
+
+        <div class="col-6">
+            <button class="btn btn-primary w-100" @onclick="LoadData">Search</button>
+        </div>
+        <div class="col-6">
+            <select class="form-control" value="@selectedCompany" @onchange="e => selectedCompany = e.Value.ToString()">
+                <option value="">Όλες οι Εταιρείες...</option>
+                @foreach (var c in companyOptions)
+                {
+                    <option value="@c">@(new WebOrder { CompanyID = c }.CompanyLabel)</option>
+                }
+            </select>
+        </div>
+
+    </div>
 </div>
 
-<button type="button" onclick="@(async () => await LoadData())">Φόρτωσε</button>
-
-@if (status=="idle")
-{
-    <p><em>Επίλεξε ημερομηνίες και ζούμπηξε το κουμπί</em></p>
-}
 @if (status == "loading")
 {
     <p><em>Φορτώνω...</em></p>
 }
+
 @if (status == "loaded")
 {
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Ιατρός</th>
-                <th>Ασθενής</th>
-                <th>Φαρμακείο</th>
-                <th>Εμβόλιο</th>
-                <th>Ποσότητα</th>
-                <th>Ημερομηνία</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var person in people)
-            {
+    <div class="d-flex align-items-center gap-3 mb-2">
+        <div class="alert alert-info py-2 mb-0 flex-grow-1">
+            Σύνολο παραγγελιών: <strong>@FilteredPeople.Length</strong> |
+            Σύνολο QNT: <strong>@FilteredPeople.Sum(x => x.QNT ?? 0)</strong>
+        </div>
+        <div style="min-width:220px;">
+            <select class="form-control" value="@selectedTreatment" @onchange="e => selectedTreatment = e.Value.ToString()">
+                <option value="">Όλες οι Θεραπείες...</option>
+                @foreach (var t in treatmentOptions)
+                {
+                    <option value="@t">@t</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="d-none d-md-block">
+        <table class="table table-hover">
+            <thead>
                 <tr>
-                    <td>@person.DocName</td>
-                    <td>@person.PAtName</td>
-                    <td>@person.PhName</td>
-                    <td>@person.Treatment</td>
-                    <td>@person.Qnt</td>
-                    <td>@person.OrderDate.ToString("dd/MM/yyyy")</td>
+                    <th>ID</th>
+                    <th>Εταιρεία</th>
+                    <th>Ιατρός</th>
+                    <th>Ασθενής</th>
+                    <th>Θεραπεία</th>
+                    <th>Ποσ.</th>
+                    <th>Ημερομηνία</th>
+                    <th>Status</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var order in FilteredPeople)
+                {
+                    <tr style="cursor:pointer;" @onclick="() => OpenPopup(order)">
+                        <td>@order.TreatmentID</td>
+                        <td>
+                            <span class="company-badge" style="background-color:@order.CompanyColor">
+                                @order.CompanyLabel
+                            </span>
+                        </td>
+                        <td>@order.Doctor</td>
+                        <td>@order.Patient</td>
+                        <td>@order.TreatmentDescription</td>
+                        <td>@order.QNT</td>
+                        <td>@(order.Ordered.HasValue ? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</td>
+                        <td><span class="badge bg-@order.StatusColor">@order.StatusLabel</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-md-none">
+        @foreach (var order in FilteredPeople)
+        {
+            <div class="order-card" @onclick="() => OpenPopup(order)">
+                <div class="card-top">
+                    <span class="doctor-name">@order.Doctor</span>
+                    <div class="d-flex gap-1">
+                        <span class="company-badge" style="background-color:@order.CompanyColor">@order.CompanyLabel</span>
+                        <span class="badge bg-@order.StatusColor">@order.StatusLabel</span>
+                    </div>
+                </div>
+                <div class="patient-name">👤 @order.Patient</div>
+                <div class="treatment-name">💊 @order.TreatmentDescription</div>
+                <div class="card-bottom">
+                    <span>📅 @(order.Ordered.HasValue ? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</span>
+                    <span>Ποσ: @order.QNT</span>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (selectedOrder != null)
+{
+    <div style="position:fixed; top:0; left:0; width:100%; height:100%;
+                background:rgba(0,0,0,0.5); z-index:1000;"
+    @onclick="ClosePopup">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0">@selectedOrder.Patient</h5>
+                <span class="company-badge" style="background-color:@selectedOrder.CompanyColor">@selectedOrder.CompanyLabel</span>
+            </div>
+            <hr />
+            <p><strong>Treatment ID:</strong> @selectedOrder.TreatmentID</p>
+            <p><strong>Ιατρός:</strong> @selectedOrder.Doctor</p>
+            <p><strong>Φαρμακείο:</strong> @selectedOrder.Pharmacy</p>
+            <p><strong>Θεραπεία:</strong> @selectedOrder.TreatmentDescription</p>
+            <p><strong>Ποσότητα:</strong> @selectedOrder.QNT</p>
+            <p><strong>Αλλεργιογόνο:</strong> @selectedOrder.Allergen</p>
+            <p><strong>Ημ. Λήξης:</strong> @selectedOrder.ExpDate</p>
+            <p><strong>Status:</strong> <span class="badge bg-@selectedOrder.StatusColor">@selectedOrder.StatusLabel</span></p>
+            <p><strong>Ημ. Παραγγελίας:</strong> @(selectedOrder.Ordered.HasValue ? selectedOrder.Ordered.Value.ToString("dd/MM/yyyy") : "-")</p>
+            <p><strong>Ημ. Αποστολής:</strong> @(selectedOrder.SendDateClient.HasValue ? selectedOrder.SendDateClient.Value.ToString("dd/MM/yyyy") : "-")</p>
+            <button class="btn btn-secondary mt-2 w-100" @onclick="ClosePopup">Κλείσιμο</button>
+        </div>
+    </div>
 }
 
 @code {
-    private Person[] people;
+    private WebOrder[] people = Array.Empty<WebOrder>();
     private string status = "idle";
+    private WebOrder selectedOrder = null;
+    private DateTime fromDate = DateTime.Today.AddMonths(-1);
+    private DateTime toDate = DateTime.Today;
+    private string filter = "";
+    private string selectedDoctor = "";
+    private string selectedPatient = "";
+    private string selectedPharmacy = "";
+    private string selectedStatus = "";
+    private string selectedCompany = "";
+    private string selectedTreatment = "";
 
-    private DateTime fromDate = DateTime.Now.AddDays(-7);
-    private DateTime toDate = DateTime.Now.AddMonths(1);
-    private DateTime minDate = new DateTime(2000, 1, 1);
-    private DateTime maxDate = new DateTime(2100, 1, 1);
-    private string filter;
+    private List<string> doctorOptions = new();
+    private List<string> patientOptions = new();
+    private List<string> pharmacyOptions = new();
+    private List<string> statusOptions = new();
+    private List<string> companyOptions = new();
+    private List<string> treatmentOptions = new();
 
-    protected override async Task OnInitializedAsync() { }
+    private WebOrder[] FilteredPeople => people
+        .Where(x => string.IsNullOrEmpty(selectedCompany) || x.CompanyID == selectedCompany)
+        .Where(x => string.IsNullOrEmpty(selectedDoctor) || x.Doctor == selectedDoctor)
+        .Where(x => string.IsNullOrEmpty(selectedPatient) || x.Patient == selectedPatient)
+        .Where(x => string.IsNullOrEmpty(selectedPharmacy) || x.Pharmacy == selectedPharmacy)
+        .Where(x => string.IsNullOrEmpty(selectedStatus) || x.Status == selectedStatus)
+        .Where(x => string.IsNullOrEmpty(selectedTreatment) || x.TreatmentDescription == selectedTreatment)
+        .ToArray();
+
+    private void OpenPopup(WebOrder order) => selectedOrder = order;
+    private void ClosePopup() => selectedOrder = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var options = await new OrdersService(dataService).GetFilterOptions();
+        doctorOptions = options.Doctors;
+        patientOptions = options.Patients;
+        pharmacyOptions = options.Pharmacies;
+        statusOptions = options.Statuses;
+        companyOptions = options.Companies;
+        treatmentOptions = options.Treatments;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("initDatePicker", "fromDatePicker", dotNetRef, fromDate.ToString("dd/MM/yyyy"));
+            await JS.InvokeVoidAsync("initDatePicker", "toDatePicker", dotNetRef, toDate.ToString("dd/MM/yyyy"));
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task SetDate(string elementId, string dateStr)
+    {
+        if (DateTime.TryParseExact(dateStr, "d/M/yyyy",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var date))
+        {
+            if (elementId == "fromDatePicker") fromDate = date;
+            if (elementId == "toDatePicker") toDate = date;
+            StateHasChanged();
+        }
+    }
 
     private async Task LoadData()
     {
         status = "loading";
-        people = await new OrdersService(dataService).GetOrders(fromDate, toDate, filter);
+        StateHasChanged();
+
+        var result = await new OrdersService(dataService).GetOrders(
+            fromDate, toDate, filter ?? "", "", "", "", "");
+
+        people = result ?? Array.Empty<WebOrder>();
+
         status = "loaded";
+        StateHasChanged();
     }
 }

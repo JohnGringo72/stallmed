@@ -1,55 +1,310 @@
 ﻿@page "/doctors"
-@using Blazored.LocalStorage;
-@using Microsoft.AspNetCore.Authorization;
-@using StallmedManager.Shared
 @using StallmedManager.Shared.Models
-@inject HttpClient http
-@inject ILocalStorageService localStorage
-@inject NavigationManager navigationManager
-@inject UserManager userManager;
+@using System
+@inject DataService dataService
+@inject IJSRuntime JS
 
-<PageTitle>Doctors Name</PageTitle>
+<PageTitle>Γιατροί</PageTitle>
 
-<h1>Ολα τα λαμόγια εδώ</h1>
+<style>
+    .filters-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
 
+    .kpi-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        padding: 16px;
+        text-align: center;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+        height: 100%;
+        cursor: default;
+        position: relative;
+        transition: box-shadow 0.2s;
+    }
 
-@if (people == null)
+        .kpi-card:hover {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.13);
+        }
+
+            .kpi-card:hover .kpi-tooltip {
+                display: block;
+            }
+
+    .kpi-tooltip {
+        display: none;
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #333;
+        color: #fff;
+        font-size: 0.75rem;
+        padding: 6px 10px;
+        border-radius: 6px;
+        white-space: nowrap;
+        z-index: 100;
+        pointer-events: none;
+    }
+
+        .kpi-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #333;
+        }
+
+    .kpi-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #0d6efd;
+    }
+
+    .kpi-sep {
+        color: #adb5bd;
+        font-size: 1.3rem;
+        font-weight: 400;
+        margin: 0 4px;
+    }
+
+    .kpi-label {
+        font-size: 0.90rem;
+        color: #555;
+        font-weight: 600;
+        margin-top: 6px;
+    }
+
+    .chart-box {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+
+    .product-bar-wrap {
+        margin-bottom: 12px;
+    }
+
+    .product-bar-label {
+        font-size: 0.85rem;
+        margin-bottom: 3px;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .product-bar-bg {
+        background: #e9ecef;
+        border-radius: 6px;
+        height: 14px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .product-bar-fill {
+        height: 100%;
+        border-radius: 6px;
+        transition: width 0.4s ease;
+    }
+</style>
+
+<h1 class="mb-3">Γιατροί</h1>
+
+<div class="filters-panel">
+    <div class="row g-2">
+        <div class="col-6">
+            <input id="fromDatePickerDoc" class="form-control" placeholder="Από..." />
+        </div>
+        <div class="col-6">
+            <input id="toDatePickerDoc" class="form-control" placeholder="Έως..." />
+        </div>
+        <div class="col-8 col-md-10">
+            <select class="form-control" value="@selectedDoctor" @onchange="OnDoctorChanged">
+                <option value="">Επιλογή γιατρού...</option>
+                @foreach (var d in doctorOptions)
+                {
+                    <option value="@d">@d</option>
+                }
+            </select>
+        </div>
+        <div class="col-4 col-md-2">
+            <button class="btn btn-primary w-100" @onclick="LoadStats">Search</button>
+        </div>
+    </div>
+</div>
+
+@if (status == "loading")
 {
     <p><em>Φορτώνω...</em></p>
 }
-else
+
+@if (status == "loaded" && stats != null)
 {
-    <table class="table">
-        <thead>
-            <tr>
-                <th>id</th>
-                <th>Όνομα</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var person in people)
-            {
-                <tr>
-                    <td>@person.id</td>
-                    <td>@person.PhName</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <div class="row g-3 mb-4">
+
+        <!-- Card 1: Παραγγελίες / Τεμάχια -->
+        <div class="col-6 col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-tooltip">Αριθμός παραγγελιών και συνολικά τεμάχια στην επιλεγμένη περίοδο</div>
+                <div class="kpi-value">
+                    @stats.TotalOrders
+                    <span class="kpi-sep">/</span>
+                    @stats.TotalQNT
+                </div>
+                <div class="kpi-label">Παραγγελίες / Τεμάχια</div>
+            </div>
+        </div>
+
+        <!-- Card 2: Ασθενείς / Νέοι -->
+        <div class="col-6 col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-tooltip">Σύνολο ασθενών που παρήγγειλαν στην περίοδο / εκ των οποίων νέοι ασθενείς</div>
+                <div class="kpi-value">
+                    @stats.UniquePatients
+                    <span class="kpi-sep">/</span>
+                    <span style="color:#198754;">@stats.NewPatients</span>
+                </div>
+                <div class="kpi-label">Ασθενείς / Νέοι</div>
+            </div>
+        </div>
+
+        <!-- Card 3: Προηγ. ΤΕΜ / Τάση -->
+        <div class="col-6 col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-tooltip">Τεμάχια προηγούμενης ισόχρονης περιόδου / Τάση τεμαχίων vs προηγούμενη περίοδο</div>
+                <div class="kpi-value">
+                    @stats.PrevTotalQNT
+                    <span class="kpi-sep">/</span>
+                    <span style="color:@(stats.QNTTrendPercent >= 0 ? "#198754" : "#dc3545")">
+                        @(stats.QNTTrendPercent >= 0 ? "▲" : "▼") @Math.Abs(stats.QNTTrendPercent)%
+                    </span>
+                </div>
+                <div class="kpi-label">Προηγ. ΤΕΜ / Τάση</div>
+            </div>
+        </div>
+
+        <!-- Card 4: Μερίδιο / Τάση -->
+        <div class="col-6 col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-tooltip">Μερίδιο παραγγελιών επί συνόλου (@stats.TotalAllOrders Τεμ.) / Τάση μεριδίου vs προηγούμενη περίοδο</div>
+                <div class="kpi-value">
+                    @stats.SharePercent%
+                    <span class="kpi-sep">/</span>
+                    <span style="color:@(stats.TrendPercent >= 0 ? "#198754" : "#dc3545")">
+                        @(stats.TrendPercent >= 0 ? "▲" : "▼") @Math.Abs(stats.TrendPercent)%
+                    </span>
+                </div>
+                <div class="kpi-label">Μερίδιο (@stats.TotalAllOrders Τεμ.) / Τάση</div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-md-6">
+            <div class="chart-box">
+                <h6 class="mb-3">Παραγγελίες ανά Μήνα</h6>
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+        <div class="col-12 col-md-6">
+            <div class="chart-box">
+                <h6 class="mb-3">Κατανομή ανά Προϊόν</h6>
+                @{
+                    var maxCount = stats.PerProduct.Any() ? stats.PerProduct.Max(x => x.Count) : 1;
+                    var colors = new[] { "#4a90d9", "#e67e22", "#2ecc71", "#9b59b6", "#e74c3c", "#1abc9c", "#f39c12", "#3498db", "#d35400", "#27ae60" };
+                }
+                @foreach (var (product, idx) in stats.PerProduct.Select((p, i) => (p, i)))
+                {
+                    var pct = Math.Round((double)product.Count / maxCount * 100, 0);
+                    var color = colors[idx % colors.Length];
+                    <div class="product-bar-wrap">
+                        <div class="product-bar-label">
+                            <span style="color:#222;font-weight:500;">@product.Product</span>
+                            <span style="color:#555;">@product.Count</span>
+                        </div>
+                        <div class="product-bar-bg">
+                            <div class="product-bar-fill" style="width:@pct%;background-color:@color;"></div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
 }
 
 @code {
-    private Person[] people;
+    private string status = "idle";
+    private string selectedDoctor = "";
+    private DateTime fromDate = DateTime.Today.AddMonths(-12);
+    private DateTime toDate = DateTime.Today;
+    private List<string> doctorOptions = new();
+    private DoctorStats? stats = null;
 
     protected override async Task OnInitializedAsync()
     {
-        await userManager.Initialize();
+        var options = await new OrdersService(dataService).GetFilterOptions();
+        doctorOptions = options.Doctors;
+    }
 
-        if (!userManager.IsLoggedIn) navigationManager.NavigateTo("/login");
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("initDatePicker", "fromDatePickerDoc", dotNetRef, fromDate.ToString("dd/MM/yyyy"));
+            await JS.InvokeVoidAsync("initDatePicker", "toDatePickerDoc", dotNetRef, toDate.ToString("dd/MM/yyyy"));
+            StateHasChanged();
+        }
 
-        var request = new HttpRequestMessage(HttpMethod.Get, "/people");
-        request.Headers.Add("Authorization", "Bearer " + userManager.User.Token);
-        var response = await http.SendAsync(request);
-        people = await response.Content.ReadFromJsonAsync<Person[]>();
+        if (status == "loaded" && stats != null)
+        {
+            await Task.Delay(50);
+            var barLabels = stats.PerMonth.Select(x => x.Month).ToArray();
+            var barData = stats.PerMonth.Select(x => x.Count).ToArray();
+            var prevLabels = stats.PerMonthPrev.Select(x => x.Month).ToArray();
+            var prevData = stats.PerMonthPrev.Select(x => x.Count).ToArray();
+            await JS.InvokeVoidAsync("renderBarChart", "barChart", barLabels, barData, prevLabels, prevData);
+        }
+    }
+
+    [JSInvokable]
+    public async Task SetDate(string elementId, string dateStr)
+    {
+        if (DateTime.TryParseExact(dateStr, "d/M/yyyy",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var date))
+        {
+            if (elementId == "fromDatePickerDoc") fromDate = date;
+            if (elementId == "toDatePickerDoc") toDate = date;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnDoctorChanged(ChangeEventArgs e)
+    {
+        selectedDoctor = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(selectedDoctor))
+            await LoadStats();
+    }
+
+    private async Task LoadStats()
+    {
+        if (string.IsNullOrEmpty(selectedDoctor)) return;
+
+        status = "loading";
+        StateHasChanged();
+
+        stats = await new OrdersService(dataService).GetDoctorStats(selectedDoctor, fromDate, toDate);
+
+        status = "loaded";
+        StateHasChanged();
     }
 }
