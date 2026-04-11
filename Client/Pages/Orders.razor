@@ -56,6 +56,12 @@
             margin-bottom: 4px;
         }
 
+        .order-card .allergen-row {
+            color: #5a7a5a;
+            font-size: 0.83rem;
+            margin-bottom: 4px;
+        }
+
         .order-card .card-bottom {
             display: flex;
             justify-content: space-between;
@@ -87,6 +93,35 @@
         font-size: 0.78rem;
         font-weight: 600;
     }
+
+    .allergen-cell {
+        color: #5a7a5a;
+        font-size: 0.85rem;
+    }
+
+    .scroll-to-top {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: #0d6efd;
+        color: white;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        z-index: 999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.85;
+    }
+
+        .scroll-to-top:hover {
+            opacity: 1;
+        }
 </style>
 
 <h1 class="mb-3">Παραγγελίες</h1>
@@ -104,7 +139,7 @@
         <div class="col-6">
             <input class="form-control" list="doctorList"
                    value="@selectedDoctor"
-            @oninput="e => selectedDoctor = e.Value.ToString()"
+                   @oninput="e => selectedDoctor = e.Value.ToString()"
                    placeholder="Γιατρός..." />
             <datalist id="doctorList">
                 @foreach (var doctor in doctorOptions)
@@ -116,7 +151,7 @@
         <div class="col-6">
             <input class="form-control" list="pharmacyList"
                    value="@selectedPharmacy"
-            @oninput="e => selectedPharmacy = e.Value.ToString()"
+                   @oninput="e => selectedPharmacy = e.Value.ToString()"
                    placeholder="Φαρμακείο..." />
             <datalist id="pharmacyList">
                 @foreach (var pharmacy in pharmacyOptions)
@@ -129,7 +164,7 @@
         <div class="col-6">
             <input class="form-control" list="patientList"
                    value="@selectedPatient"
-            @oninput="e => selectedPatient = e.Value.ToString()"
+                   @oninput="e => selectedPatient = e.Value.ToString()"
                    placeholder="Ασθενής..." />
             <datalist id="patientList">
                 @foreach (var patient in patientOptions)
@@ -191,10 +226,10 @@
                     disabled="@(string.IsNullOrEmpty(selectedDoctor))">
                 📄 PDF
             </button>
-
         </div>
     </div>
 
+    <!-- Desktop table -->
     <div class="d-none d-md-block">
         <table class="table table-hover">
             <thead>
@@ -204,6 +239,7 @@
                     <th>Ιατρός</th>
                     <th>Ασθενής</th>
                     <th>Θεραπεία</th>
+                    <th>Αλλεργιογόνο</th>
                     <th>Ποσ.</th>
                     <th>Ημερομηνία</th>
                     <th>Status</th>
@@ -222,8 +258,14 @@
                         <td>@order.Doctor</td>
                         <td>@order.Patient</td>
                         <td>@order.TreatmentDescription</td>
+                        <td class="allergen-cell">
+                            @if (!string.IsNullOrWhiteSpace(order.Allergen))
+                            {
+                                <span>🧪 @order.Allergen</span>
+                            }
+                        </td>
                         <td>@order.QNT</td>
-                        <td>@(order.Ordered.HasValue ? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</td>
+                        <td>@(order.Ordered.HasValue? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</td>
                         <td><span class="badge bg-@order.StatusColor">@order.StatusLabel</span></td>
                     </tr>
                 }
@@ -231,6 +273,7 @@
         </table>
     </div>
 
+    <!-- Mobile cards -->
     <div class="d-md-none">
         @foreach (var order in FilteredPeople)
         {
@@ -244,8 +287,12 @@
                 </div>
                 <div class="patient-name">👤 @order.Patient</div>
                 <div class="treatment-name">💊 @order.TreatmentDescription</div>
+                @if (!string.IsNullOrWhiteSpace(order.Allergen))
+                {
+                    <div class="allergen-row">🧪 @order.Allergen</div>
+                }
                 <div class="card-bottom">
-                    <span>📅 @(order.Ordered.HasValue ? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</span>
+                    <span>📅 @(order.Ordered.HasValue? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</span>
                     <span>Ποσ: @order.QNT</span>
                 </div>
             </div>
@@ -256,8 +303,8 @@
 @if (selectedOrder != null)
 {
     <div style="position:fixed; top:0; left:0; width:100%; height:100%;
-                background:rgba(0,0,0,0.5); z-index:1000;"
-    @onclick="ClosePopup">
+                    background:rgba(0,0,0,0.5); z-index:1000;"
+         @onclick="ClosePopup">
         <div class="popup-box" @onclick:stopPropagation="true">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="mb-0">@selectedOrder.Patient</h5>
@@ -272,12 +319,14 @@
             <p><strong>Αλλεργιογόνο:</strong> @selectedOrder.Allergen</p>
             <p><strong>Ημ. Λήξης:</strong> @selectedOrder.ExpDate</p>
             <p><strong>Status:</strong> <span class="badge bg-@selectedOrder.StatusColor">@selectedOrder.StatusLabel</span></p>
-            <p><strong>Ημ. Παραγγελίας:</strong> @(selectedOrder.Ordered.HasValue ? selectedOrder.Ordered.Value.ToString("dd/MM/yyyy") : "-")</p>
-            <p><strong>Ημ. Αποστολής:</strong> @(selectedOrder.SendDateClient.HasValue ? selectedOrder.SendDateClient.Value.ToString("dd/MM/yyyy") : "-")</p>
+            <p><strong>Ημ. Παραγγελίας:</strong> @(selectedOrder.Ordered.HasValue? selectedOrder.Ordered.Value.ToString("dd/MM/yyyy") : "-")</p>
+            <p><strong>Ημ. Αποστολής:</strong> @(selectedOrder.SendDateClient.HasValue? selectedOrder.SendDateClient.Value.ToString("dd/MM/yyyy") : "-")</p>
             <button class="btn btn-secondary mt-2 w-100" @onclick="ClosePopup">Κλείσιμο</button>
         </div>
     </div>
 }
+
+<button class="scroll-to-top" onclick="document.documentElement.scrollTop=0;document.body.scrollTop=0;" title="Top">↑</button>
 
 @code {
     private WebOrder[] people = Array.Empty<WebOrder>();
@@ -311,6 +360,11 @@
 
     private void OpenPopup(WebOrder order) => selectedOrder = order;
     private void ClosePopup() => selectedOrder = null;
+
+    private async Task ScrollToTop()
+    {
+        await JS.InvokeVoidAsync("eval", "document.documentElement.scrollTo({top: 0, behavior: 'smooth'});");
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -360,6 +414,7 @@
         status = "loaded";
         StateHasChanged();
     }
+
     private async Task ExportToExcel()
     {
         var orders = FilteredPeople.ToList();
@@ -371,6 +426,7 @@
             await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, bytes);
         }
     }
+
     private async Task ExportToPdf()
     {
         if (string.IsNullOrEmpty(selectedDoctor))
