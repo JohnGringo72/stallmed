@@ -35,8 +35,11 @@ namespace StallmedManager.Server.Controllers
                 ws.Cell(row, 1).Value = order.Pharmacy ?? "";
                 ws.Cell(row, 2).Value = order.Patient ?? "";
                 ws.Cell(row, 3).Value = order.Doctor ?? "";
-                ws.Cell(row, 4).Value = order.Ordered.HasValue
-                    ? order.Ordered.Value.ToString("d/M/yyyy") : "";
+                if (order.Ordered.HasValue)
+                {
+                    ws.Cell(row, 4).Value = order.Ordered.Value;
+                    ws.Cell(row, 4).Style.NumberFormat.NumberFormatId = 14;
+                }
                 ws.Cell(row, 5).Value = order.QNT ?? 0;
                 ws.Cell(row, 6).Value = order.TreatmentDescription ?? "";
 

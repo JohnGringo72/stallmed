@@ -422,7 +422,8 @@
         if (response.IsSuccessStatusCode)
         {
             var bytes = await response.Content.ReadAsByteArrayAsync();
-            var fileName = $"Παραγγελίες_{DateTime.Today:dd-MM-yyyy}.xlsx";
+            var doctorPart = string.IsNullOrWhiteSpace(selectedDoctor) ? "" : $"_{selectedDoctor}";
+            var fileName = $"Παραγγελίες{doctorPart}_{DateTime.Today:dd-MM-yyyy}.xlsx";
             await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, bytes);
         }
     }
