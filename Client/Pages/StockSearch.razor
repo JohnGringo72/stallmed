@@ -1,6 +1,6 @@
 ﻿@page "/stock-search"
 @using StallmedManager.Client.Services
-@using StallmedManager.Models  ✅
+@using StallmedManager.Models
 @inject StockSearchClientService StockService
 
 <PageTitle>Αναζήτηση Treatments</PageTitle>
@@ -94,8 +94,7 @@
                     <tr>
                         <th>Περιγραφή Treatment</th>
                         <th>Αλλεργιογόνο</th>
-                        <th>Εταιρεία</th>
-                        <th class="text-center">Συνολική Ποσότητα</th>
+                        <th>Εταιρεία / Ποσότητα</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -113,13 +112,12 @@
                                     <span class="text-muted fst-italic" style="font-size:0.8rem">—</span>
                                 }
                             </td>
-                            <td>
+                            <td class="text-center">
                                 <span class="badge @(row.CompanyID == "1" ? "badge-sm" : "badge-bm")">
                                     @(row.CompanyID == "1" ? "SM" : "BM")
                                 </span>
-                            </td>
-                            <td class="text-center">
-                                <span class="qnt-pill">@row.TotalQNT</span>
+                                <br />
+                                <span class="qnt-pill mt-1">@row.TotalQNT</span>
                             </td>
                         </tr>
                     }
@@ -207,7 +205,7 @@
     .ctoggle {
         display: flex;
         border-radius: 8px;
-        overflow: hidden;
+        overflow-x: auto;
         border: 1px solid #d1d5db;
         height: 38px;
     }
@@ -286,9 +284,23 @@
     }
 
     .stock-table {
+        table-layout: fixed;
+        width: 100%;
         margin: 0;
         font-size: 0.875rem;
     }
+
+        .stock-table thead th:nth-child(1) {
+            width: 35%;
+        }
+
+        .stock-table thead th:nth-child(2) {
+            width: 45%;
+        }
+
+        .stock-table thead th:nth-child(3) {
+            width: 20%;
+        }
 
         .stock-table thead th {
             background: #f8fafc;
@@ -305,6 +317,8 @@
             padding: 0.7rem 1rem;
             vertical-align: middle;
             border-color: #f1f5f9;
+            white-space: normal;
+            word-break: break-word;
         }
 
         .stock-table tbody tr:hover td {
@@ -324,6 +338,9 @@
         font-weight: 500;
         padding: 0.3em 0.65em;
         border-radius: 20px;
+        white-space: normal;
+        word-break: break-word;
+        display: inline-block;
     }
 
     .badge-sm {
