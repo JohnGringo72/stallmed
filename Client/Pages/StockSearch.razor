@@ -1,0 +1,422 @@
+﻿@page "/stock-search"
+@using StallmedManager.Client.Services
+@using StallmedManager.Models  ✅
+@inject StockSearchClientService StockService
+
+<PageTitle>Αναζήτηση Treatments</PageTitle>
+
+<div class="stock-page">
+
+    <div class="page-header">
+        <h2><i class="bi bi-capsule"></i> Αναζήτηση Treatments</h2>
+        <p>Αναζήτηση βάσει περιγραφής ή αλλεργιογόνου</p>
+    </div>
+
+    <div class="filter-card">
+        <div class="filter-row">
+
+            <!-- Treatment dropdown -->
+            <div class="filter-group fg-grow">
+                <label class="flabel">Treatment</label>
+                <select class="form-select fselect" @onchange="OnTreatmentChanged">
+                    <option value="">Όλα τα treatments...</option>
+                    @foreach (var t in FilterOptions.Treatments)
+                    {
+                        <option value="@t">@t</option>
+                    }
+                </select>
+            </div>
+
+            <!-- Allergen dropdown -->
+            <div class="filter-group fg-grow">
+                <label class="flabel">Αλλεργιογόνο</label>
+                <select class="form-select fselect" @onchange="OnAllergenChanged">
+                    <option value="">Όλα τα αλλεργιογόνα...</option>
+                    @foreach (var a in FilterOptions.Allergens)
+                    {
+                        <option value="@a">@a</option>
+                    }
+                </select>
+            </div>
+
+            <!-- Company toggle -->
+            <div class="filter-group">
+                <label class="flabel">Εταιρεία</label>
+                <div class="ctoggle">
+                    <button class="@CmpClass("")" @onclick='() => SetCompany("")'>Όλες</button>
+                    <button class="@CmpClass("1")" @onclick='() => SetCompany("1")'>SM</button>
+                    <button class="@CmpClass("2")" @onclick='() => SetCompany("2")'>BM</button>
+                </div>
+            </div>
+
+            <!-- Reset -->
+            <div class="filter-group fg-end">
+                <label class="flabel">&nbsp;</label>
+                <button class="btn btn-outline-secondary sbtn" @onclick="ResetFilters">
+                    <i class="bi bi-x-circle me-1"></i> Reset
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="state-box">
+            <div class="spinner-border text-primary"></div>
+            <span>Φόρτωση δεδομένων...</span>
+        </div>
+    }
+    else if (Results == null)
+    {
+        <div class="state-box muted">
+            <i class="bi bi-search fs-2"></i>
+            <p>Επιλέξτε φίλτρα για να δείτε αποτελέσματα.</p>
+        </div>
+    }
+    else if (!Results.Any())
+    {
+        <div class="state-box muted">
+            <i class="bi bi-inbox fs-2"></i>
+            <p>Δεν βρέθηκαν αποτελέσματα.</p>
+        </div>
+    }
+    else
+    {
+        <div class="results-meta">
+            <span><strong>@Results.Count</strong> αποτελέσματα</span>
+            <span class="ms-3 text-muted">Συνολική ποσότητα: <strong>@Results.Sum(r => r.TotalQNT)</strong></span>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="table table-hover stock-table">
+                <thead>
+                    <tr>
+                        <th>Περιγραφή Treatment</th>
+                        <th>Αλλεργιογόνο</th>
+                        <th>Εταιρεία</th>
+                        <th class="text-center">Συνολική Ποσότητα</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Results)
+                    {
+                        <tr>
+                            <td class="td-desc">@row.TreatmentDescription</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(row.Allergen))
+                                {
+                                    <span class="badge badge-allergen">@row.Allergen</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted fst-italic" style="font-size:0.8rem">—</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge @(row.CompanyID == "1" ? "badge-sm" : "badge-bm")">
+                                    @(row.CompanyID == "1" ? "SM" : "BM")
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <span class="qnt-pill">@row.TotalQNT</span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<style>
+    .stock-page {
+        padding: 1.5rem;
+        max-width: 1200px;
+    }
+
+    .page-header {
+        margin-bottom: 1.5rem;
+    }
+
+        .page-header h2 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1a2e4a;
+            margin-bottom: 0.2rem;
+        }
+
+        .page-header p {
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin: 0;
+        }
+
+    .filter-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 1.2rem 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    .filter-row {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-width: 140px;
+    }
+
+    .fg-grow {
+        flex: 1;
+        min-width: 220px;
+    }
+
+    .fg-end {
+        justify-content: flex-end;
+    }
+
+    .flabel {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #4a5568;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .fselect {
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        height: 38px;
+        font-size: 0.875rem;
+    }
+
+        .fselect:focus {
+            border-color: #1e6bb8;
+            box-shadow: 0 0 0 3px rgba(30,107,184,0.1);
+        }
+
+    .ctoggle {
+        display: flex;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #d1d5db;
+        height: 38px;
+    }
+
+        .ctoggle button {
+            flex: 1;
+            border: none;
+            background: #f9fafb;
+            color: #374151;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            padding: 0 0.9rem;
+        }
+
+            .ctoggle button:not(:last-child) {
+                border-right: 1px solid #d1d5db;
+            }
+
+            .ctoggle button.cactive-all {
+                background: #1a2e4a;
+                color: #fff;
+            }
+
+            .ctoggle button.cactive-sm {
+                background: #1e6bb8;
+                color: #fff;
+            }
+
+            .ctoggle button.cactive-bm {
+                background: #2e7d4f;
+                color: #fff;
+            }
+
+    .sbtn {
+        height: 38px;
+        padding: 0 1.2rem;
+        border-radius: 8px;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .state-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        padding: 3.5rem;
+        color: #6c757d;
+    }
+
+        .state-box.muted {
+            color: #adb5bd;
+        }
+
+        .state-box p {
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+    .results-meta {
+        font-size: 0.85rem;
+        color: #4a5568;
+        margin-bottom: 0.75rem;
+        padding: 0 0.25rem;
+    }
+
+    .table-wrapper {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    .stock-table {
+        margin: 0;
+        font-size: 0.875rem;
+    }
+
+        .stock-table thead th {
+            background: #f8fafc;
+            color: #374151;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            border-bottom: 2px solid #e2e8f0;
+            padding: 0.75rem 1rem;
+        }
+
+        .stock-table tbody td {
+            padding: 0.7rem 1rem;
+            vertical-align: middle;
+            border-color: #f1f5f9;
+        }
+
+        .stock-table tbody tr:hover td {
+            background: #f8fafc;
+        }
+
+    .td-desc {
+        font-weight: 500;
+        color: #1a2e4a;
+    }
+
+    .badge-allergen {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffc107;
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.3em 0.65em;
+        border-radius: 20px;
+    }
+
+    .badge-sm {
+        background: #dbeafe;
+        color: #1e40af;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.3em 0.6em;
+        border-radius: 20px;
+    }
+
+    .badge-bm {
+        background: #dcfce7;
+        color: #166534;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.3em 0.6em;
+        border-radius: 20px;
+    }
+
+    .qnt-pill {
+        display: inline-block;
+        background: #f1f5f9;
+        color: #1a2e4a;
+        font-weight: 700;
+        font-size: 0.9rem;
+        padding: 0.2em 0.8em;
+        border-radius: 20px;
+        min-width: 40px;
+        text-align: center;
+    }
+</style>
+
+@code {
+    private string SelectedTreatment { get; set; } = "";
+    private string SelectedAllergen { get; set; } = "";
+    private string SelectedCompany { get; set; } = "";
+    private bool IsLoading { get; set; } = false;
+    private StockFilterOptions FilterOptions { get; set; } = new();
+    private List<StockSearchResult>? Results { get; set; } = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        FilterOptions = await StockService.GetFilterOptionsAsync();
+    }
+
+    private string CmpClass(string val) => SelectedCompany == val
+        ? (val == "" ? "cactive-all"
+         : val == "1" ? "cactive-sm"
+                      : "cactive-bm")
+        : "";
+
+    private async Task SetCompany(string val)
+    {
+        SelectedCompany = val;
+        SelectedTreatment = "";
+        SelectedAllergen = "";
+        FilterOptions = await StockService.GetFilterOptionsAsync(SelectedCompany, "");
+        await LoadData();
+    }
+
+    private async Task OnTreatmentChanged(ChangeEventArgs e)
+    {
+        SelectedTreatment = e.Value?.ToString() ?? "";
+        SelectedAllergen = "";
+        FilterOptions = new StockFilterOptions
+        {
+            Treatments = FilterOptions.Treatments,
+            Allergens = (await StockService.GetFilterOptionsAsync(SelectedCompany, SelectedTreatment)).Allergens
+        };
+        await LoadData();
+    }
+
+    private async Task OnAllergenChanged(ChangeEventArgs e)
+    {
+        SelectedAllergen = e.Value?.ToString() ?? "";
+        await LoadData();
+    }
+
+    private async Task ResetFilters()
+    {
+        SelectedTreatment = "";
+        SelectedAllergen = "";
+        SelectedCompany = "";
+        FilterOptions = await StockService.GetFilterOptionsAsync();
+        Results = null;
+    }
+
+    private async Task LoadData()
+    {
+        IsLoading = true;
+        StateHasChanged();
+        Results = await StockService.SearchAsync("", SelectedCompany, SelectedTreatment, SelectedAllergen);
+        IsLoading = false;
+    }
+}

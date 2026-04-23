@@ -5,19 +5,32 @@
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3">
     <a class="navbar-brand" href="/">StallmedManager</a>
-    <div class="navbar-nav me-auto">
-        <a class="nav-link" href="/">Home</a>
-        <a class="nav-link" href="/orders">Orders</a>
-        <a class="nav-link" href="/doctors">Doctors</a>
-    </div>
-    @if (userManager.IsLoggedIn)
-    {
-        <div class="d-flex align-items-center gap-3 ms-auto">
-            <span class="text-white">@userManager.User.Username</span>
-            <span class="badge bg-success">@userManager.User.Role</span>
-            <button class="btn btn-outline-light btn-sm" @onclick="Logout">Logout</button>
+
+    <!-- Hamburger button για κινητό -->
+    <button class="navbar-toggler" type="button" @onclick="ToggleMenu">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <!-- Collapsible menu -->
+    <div class="@MenuClass">
+        <div class="navbar-nav me-auto">
+            <a class="nav-link" href="/" @onclick="CloseMenu">Home</a>
+            <a class="nav-link" href="/orders" @onclick="CloseMenu">Orders</a>
+            <a class="nav-link" href="/doctors" @onclick="CloseMenu">Doctors</a>
+            <a class="nav-link" href="/mytasks" @onclick="CloseMenu">MyTask</a>
+            <a class="nav-link" href="/mytasks/history" @onclick="CloseMenu">History</a>
+            <a class="nav-link" href="/stock-search" @onclick="CloseMenu">Stock</a>
         </div>
-    }
+
+        @if (userManager.IsLoggedIn)
+        {
+            <div class="d-flex align-items-center gap-3 ms-auto mt-2 mt-lg-0">
+                <span class="text-white">@userManager.User.Username</span>
+                <span class="badge bg-success">@userManager.User.Role</span>
+                <button class="btn btn-outline-light btn-sm" @onclick="Logout">Logout</button>
+            </div>
+        }
+    </div>
 </nav>
 
 <div class="container-fluid mt-3">
@@ -25,6 +38,15 @@
 </div>
 
 @code {
+    private bool menuOpen = false;
+
+    private string MenuClass => menuOpen
+        ? "collapse navbar-collapse show"
+        : "collapse navbar-collapse";
+
+    private void ToggleMenu() => menuOpen = !menuOpen;
+    private void CloseMenu() => menuOpen = false;
+
     protected override void OnInitialized()
     {
         userManager.StatusChanged += OnStatusChanged;

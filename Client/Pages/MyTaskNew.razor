@@ -1,0 +1,31 @@
+﻿@page "/mytasks/new"
+
+<PageTitle>MyTask - Νέα Εργασία</PageTitle>
+
+<h3>Νέα Εργασία</h3>
+
+<div class="card p-3 mt-3" style="max-width:700px;">
+    <div class="mb-3">
+        <label class="form-label">Τίτλος</label>
+        <input class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Περιγραφή</label>
+        <textarea class="form-control" rows="4"></textarea>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Ανάθεση σε</label>
+        <select class="form-select">
+            <option>Επιλογή χρήστη</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Προθεσμία</label>
+        <input type="date" class="form-control" />
+    </div>
+
+    <button class="btn btn-primary">Δημιουργία</button>
+</div>

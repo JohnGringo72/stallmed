@@ -1,0 +1,218 @@
+﻿@page "/mytasks"
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>MyTask</PageTitle>
+
+<h3 class="mb-3">MyTask</h3>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <strong>Ενεργές Εργασίες</strong>
+    </div>
+    <button class="btn btn-primary" @onclick="OpenNewTaskPopup">+ Νέα Εργασία</button>
+</div>
+
+@if (showPopup)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Νέα Εργασία</h5>
+                    <button type="button" class="btn-close" @onclick="CloseNewTaskPopup"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Τίτλος</label>
+                        <input class="form-control" @bind="newTaskTitle" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Περιγραφή</label>
+                        <textarea class="form-control" rows="4" @bind="newTaskDescription"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Ανάθεση σε</label>
+                        <select class="form-select" @bind="newTaskAssignedTo">
+                            <option value="">Επιλογή χρήστη</option>
+                            <option value="Μαρία">Μαρία</option>
+                            <option value="Γιώργος">Γιώργος</option>
+                            <option value="Νίκος">Νίκος</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Προθεσμία</label>
+                        <InputDate @bind-Value="newTaskDueDate" class="form-control" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Αρχείο</label>
+                        <InputFile OnChange="HandleFileSelected" class="form-control" />
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(selectedFileName))
+                    {
+                        <div class="alert alert-secondary py-2">
+                            Επιλεγμένο αρχείο: <strong>@selectedFileName</strong>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseNewTaskPopup">Ακύρωση</button>
+                    <button class="btn btn-primary" @onclick="SaveTask">Δημιουργία</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (tasks.Count == 0)
+{
+    <div class="alert alert-light border">
+        Δεν υπάρχουν ακόμα εργασίες.
+    </div>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Κωδικός</th>
+                <th>Τίτλος</th>
+                <th>Υπεύθυνος</th>
+                <th>Κατάσταση</th>
+                <th>Προθεσμία</th>
+                <th>Αρχείο</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var task in tasks)
+            {
+                <tr style="cursor:pointer" @onclick="() => OpenTask(task)">
+                    <td>@task.TaskNo</td>
+                    <td>@task.Title</td>
+                    <td>@task.AssignedTo</td>
+                    <td>@task.Status</td>
+                    <td>@(task.DueDate?.ToString("dd/MM/yyyy") ?? "-")</td>
+                    <td>@(string.IsNullOrWhiteSpace(task.FileName) ? "-" : task.FileName)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (selectedTask != null)
+{
+    <div class="card mt-4 p-3">
+        <h5>@selectedTask.TaskNo - @selectedTask.Title</h5>
+
+        <p><strong>Υπεύθυνος:</strong> @selectedTask.AssignedTo</p>
+        <p><strong>Κατάσταση:</strong> @selectedTask.Status</p>
+        <p><strong>Προθεσμία:</strong> @(selectedTask.DueDate?.ToString("dd/MM/yyyy") ?? "-")</p>
+
+        <hr />
+
+        <p>@selectedTask.Description</p>
+
+        @if (!string.IsNullOrWhiteSpace(selectedTask.FileName))
+        {
+            <p><strong>Αρχείο:</strong> @selectedTask.FileName</p>
+        }
+
+        <button class="btn btn-sm btn-secondary mt-2" @onclick="CloseTask">
+            Κλείσιμο
+        </button>
+    </div>
+}
+
+@code {
+    private bool showPopup = false;
+
+    private string newTaskTitle = "";
+    private string newTaskDescription = "";
+    private string newTaskAssignedTo = "";
+    private DateTime? newTaskDueDate;
+    private string selectedFileName = "";
+
+    private int taskCounter = 1;
+
+    private List<MyTaskItem> tasks = new();
+    private MyTaskItem? selectedTask;
+
+    private void OpenNewTaskPopup()
+    {
+        showPopup = true;
+    }
+
+    private void CloseNewTaskPopup()
+    {
+        showPopup = false;
+        ClearForm();
+    }
+
+    private void SaveTask()
+    {
+        if (string.IsNullOrWhiteSpace(newTaskTitle) || string.IsNullOrWhiteSpace(newTaskAssignedTo))
+            return;
+
+        tasks.Insert(0, new MyTaskItem
+        {
+            TaskNo = $"TSK-{taskCounter:0000}",
+            Title = newTaskTitle,
+            Description = newTaskDescription,
+            AssignedTo = newTaskAssignedTo,
+            Status = "Νέα",
+            DueDate = newTaskDueDate,
+            FileName = selectedFileName
+        });
+
+        taskCounter++;
+        showPopup = false;
+        ClearForm();
+    }
+
+    private void ClearForm()
+    {
+        newTaskTitle = "";
+        newTaskDescription = "";
+        newTaskAssignedTo = "";
+        newTaskDueDate = null;
+        selectedFileName = "";
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        if (e.FileCount > 0)
+        {
+            selectedFileName = e.File.Name;
+        }
+    }
+
+    private void OpenTask(MyTaskItem task)
+    {
+        selectedTask = task;
+    }
+
+    private void CloseTask()
+    {
+        selectedTask = null;
+    }
+
+
+
+
+    private class MyTaskItem
+    {
+        public string TaskNo { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string AssignedTo { get; set; } = "";
+        public string Status { get; set; } = "";
+        public DateTime? DueDate { get; set; }
+        public string FileName { get; set; } = "";
+    }
+}
