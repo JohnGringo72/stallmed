@@ -1,7 +1,9 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\Client",
+    "\\Server"
   ],
-  "SelectedNode": "\\StallmedManager.sln",
+  "SelectedNode": "\\Client\\StallmedManager.Client.csproj",
   "PreviewInSolutionExplorer": false
 }

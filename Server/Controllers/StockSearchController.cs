@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using StallmedManager.Services;
 using StallmedManager.Models;
 
@@ -24,9 +24,9 @@ public class StockSearchController : ControllerBase
     {
         var results = await _service.SearchAsync(
             searchText ?? "",
-            companyID ?? "",
-            treatment ?? "",
-            allergen ?? "");
+            companyID  ?? "",
+            treatment  ?? "",
+            allergen   ?? "");
         return Ok(results);
     }
 

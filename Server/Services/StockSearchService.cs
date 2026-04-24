@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using StallmedManager.Server.Models;
 using StallmedManager.Models;
 
@@ -13,7 +13,7 @@ public class StockSearchService
         _context = context;
     }
 
-    public async Task<StockFilterOptions> GetFilterOptionsAsync(string companyID, string treatment)
+    public async Task<StockFilterOptions> GetFilterOptionsAsync(string companyID = "", string treatment = "")
     {
         var base_q = _context.WebOrders.Where(x => x.Patient == "A A");
 
@@ -50,7 +50,8 @@ public class StockSearchService
         string allergen)
     {
         var query = _context.WebOrders
-            .Where(x => x.Patient == "A A");
+            .Where(x => x.Patient == "A A")
+            .Where(x => x.Status == "2" || x.Status == "3");
 
         if (!string.IsNullOrWhiteSpace(searchText))
         {
@@ -69,23 +70,38 @@ public class StockSearchService
         if (!string.IsNullOrWhiteSpace(companyID))
             query = query.Where(x => x.CompanyID == companyID);
 
-        var results = await query
-            .GroupBy(x => new
-            {
+        // Φέρνουμε τα δεδομένα και κάνουμε το nested grouping στη μνήμη
+        var raw = await query
+            .Select(x => new {
                 x.TreatmentDescription,
                 x.Allergen,
-                x.CompanyID
+                x.CompanyID,
+                x.Status,
+                x.QNT
             })
+            .ToListAsync();
+
+        var results = raw
+            .GroupBy(x => new { x.TreatmentDescription, x.Allergen, x.CompanyID })
             .Select(g => new StockSearchResult
             {
                 TreatmentDescription = g.Key.TreatmentDescription ?? "",
-                Allergen = g.Key.Allergen,
-                CompanyID = g.Key.CompanyID ?? "",
-                TotalQNT = g.Sum(x => x.QNT ?? 0)
+                Allergen             = g.Key.Allergen,
+                CompanyID            = g.Key.CompanyID ?? "",
+                TotalQNT             = g.Sum(x => x.QNT ?? 0),
+                Statuses             = g
+                    .GroupBy(x => x.Status)
+                    .Select(sg => new StockStatusCount
+                    {
+                        Status = sg.Key,
+                        QNT    = sg.Sum(x => x.QNT ?? 0)
+                    })
+                    .OrderBy(s => s.Status)
+                    .ToList()
             })
             .OrderBy(x => x.TreatmentDescription)
             .ThenBy(x => x.CompanyID)
-            .ToListAsync();
+            .ToList();
 
         return results;
     }

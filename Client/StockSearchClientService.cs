@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 using StallmedManager.Models;
 
 namespace StallmedManager.Client.Services;
