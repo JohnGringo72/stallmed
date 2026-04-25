@@ -18,56 +18,99 @@ namespace StallmedManager.Server.Controllers
             using var workbook = new XLWorkbook();
             var ws = workbook.Worksheets.Add("Παραγγελίες");
 
+            // ── HEADERS ──
             var headers = new[] { "ΦΑΡΜΑΚΕΙΟ", "ΑΣΘΕΝΗΣ", "ΙΑΤΡΟΣ", "ΗΜΕΡΟΜΗΝΙΑ", "ΠΟΣΟΤΗΤΑ", "Treatment" };
             for (int i = 0; i < headers.Length; i++)
             {
                 var cell = ws.Cell(1, i + 1);
                 cell.Value = headers[i];
                 cell.Style.Font.Bold = true;
+                cell.Style.Font.FontName = "Arial";
                 cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#2E75B6");
                 cell.Style.Font.FontColor = XLColor.White;
                 cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             }
 
-            int row = 2;
-            foreach (var order in orders)
-            {
-                ws.Cell(row, 1).Value = order.Pharmacy ?? "";
-                ws.Cell(row, 2).Value = order.Patient ?? "";
-                ws.Cell(row, 3).Value = order.Doctor ?? "";
-                if (order.Ordered.HasValue)
+            // ── GROUP BY Ασθενής + Θεραπεία, SUM Ποσότητα ──
+            var grouped = orders
+                .GroupBy(x => new
                 {
-                    ws.Cell(row, 4).Value = order.Ordered.Value;
-                    ws.Cell(row, 4).Style.NumberFormat.NumberFormatId = 14;
-                }
-                ws.Cell(row, 5).Value = order.QNT ?? 0;
-                ws.Cell(row, 6).Value = order.TreatmentDescription ?? "";
+                    Patient = x.Patient?.Trim() ?? "",
+                    Treatment = x.TreatmentDescription?.Trim() ?? ""
+                })
+                .Select(g => new
+                {
+                    g.Key.Patient,
+                    g.Key.Treatment,
+                    Pharmacy = g.First().Pharmacy ?? "",
+                    Doctor = g.First().Doctor ?? "",
+                    LastDate = g.Max(x => x.Ordered),
+                    TotalQNT = g.Sum(x => x.QNT ?? 0)
+                })
+                .OrderBy(x => x.Patient)
+                .ThenBy(x => x.Treatment)
+                .ToList();
 
-                if (row % 2 == 0)
-                    ws.Row(row).Style.Fill.BackgroundColor = XLColor.FromHtml("#EBF3FB");
+            int row = 2;
+
+            foreach (var item in grouped)
+            {
+                var bgColor = row % 2 == 0
+                    ? XLColor.White
+                    : XLColor.FromHtml("#EBF3FB");
+
+                ws.Cell(row, 1).Value = item.Pharmacy;
+                ws.Cell(row, 2).Value = item.Patient;
+                ws.Cell(row, 3).Value = item.Doctor;
+
+                if (item.LastDate.HasValue)
+                {
+                    ws.Cell(row, 4).Value = item.LastDate.Value;
+                    ws.Cell(row, 4).Style.NumberFormat.Format = "dd/mm/yyyy";
+                }
+
+                ws.Cell(row, 5).Value = item.TotalQNT;
+                ws.Cell(row, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                ws.Cell(row, 6).Value = item.Treatment;
+
+                ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = bgColor;
+                ws.Range(row, 1, row, headers.Length).Style.Font.FontName = "Arial";
 
                 row++;
             }
 
-            ws.Cell(row, 1).Value = "ΣΥΝΟΛΟ";
-            ws.Cell(row, 1).Style.Font.Bold = true;
+            // ── GRAND TOTAL ──
+            var totalRange = ws.Range(row, 1, row, headers.Length);
+            totalRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#2E75B6");
+            totalRange.Style.Font.FontColor = XLColor.White;
+            totalRange.Style.Font.Bold = true;
+            totalRange.Style.Font.FontName = "Arial";
+
+            ws.Range(row, 1, row, 4).Merge();
+            ws.Cell(row, 1).Value = "ΓΕΝΙΚΟ ΣΥΝΟΛΟ";
+            ws.Cell(row, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             ws.Cell(row, 5).Value = orders.Sum(x => x.QNT ?? 0);
-            ws.Cell(row, 5).Style.Font.Bold = true;
-            ws.Row(row).Style.Fill.BackgroundColor = XLColor.FromHtml("#D9E1F2");
+            ws.Cell(row, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
+            // ── BORDERS ──
+            ws.Range(1, 1, row, headers.Length).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Range(1, 1, row, headers.Length).Style.Border.InsideBorder = XLBorderStyleValues.Hair;
+
+            // ── COLUMN WIDTHS ──
             ws.Columns().AdjustToContents();
+            ws.Column(1).Width = Math.Max(ws.Column(1).Width, 35);
+            ws.Column(2).Width = Math.Max(ws.Column(2).Width, 25);
+            ws.Column(3).Width = Math.Max(ws.Column(3).Width, 25);
+            ws.Column(6).Width = Math.Max(ws.Column(6).Width, 30);
 
-            var dataRange = ws.Range(1, 1, row, headers.Length);
-            dataRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            dataRange.Style.Border.InsideBorder = XLBorderStyleValues.Hair;
+            ws.SheetView.FreezeRows(1);
 
             using var stream = new MemoryStream();
             workbook.SaveAs(stream);
 
-            var fileName = $"Παραγγελίες_{DateTime.Today:dd-MM-yyyy}.xlsx";
             return File(stream.ToArray(),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                fileName);
+                $"Παραγγελίες_{DateTime.Today:dd-MM-yyyy}.xlsx");
         }
 
         [HttpPost("orders-pdf")]

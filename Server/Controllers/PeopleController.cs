@@ -297,6 +297,38 @@ namespace StallmedManager.Server.Controllers
 
             var newPatients = currentPatients.Except(existingPatients).Count();
 
+            // ── Νέοι ασθενείς με POLYMERISED θεραπεία ──
+            var polymerizedOrders = orders
+                .Where(x => x.Patient != null &&
+                            x.TreatmentDescription != null &&
+                            x.TreatmentDescription.Contains("POLYMERIS"))
+                .ToList();
+
+            var polymerizedPatients = polymerizedOrders
+                .Select(x => x.Patient!)
+                .Distinct()
+                .ToList();
+
+            var newPolymerizedPatients = polymerizedPatients
+                .Except(existingPatients)
+                .ToList();
+
+            var newPolymerizedQNT = polymerizedOrders
+                .Where(x => newPolymerizedPatients.Contains(x.Patient!))
+                .Sum(x => x.QNT ?? 0);
+
+            // ── Breakdown ανά POLYMERISED θεραπεία (τεμάχια νέων ασθενών) ──
+            var polymerizedProducts = polymerizedOrders
+                .Where(x => newPolymerizedPatients.Contains(x.Patient!))
+                .GroupBy(x => x.TreatmentDescription!)
+                .Select(g => new ProductCount
+                {
+                    Product = g.Key,
+                    Count = g.Sum(x => x.QNT ?? 0)
+                })
+                .OrderByDescending(x => x.Count)
+                .ToList();
+
             var stats = new CompanyStats
             {
                 Company = company ?? "ALL",
@@ -309,6 +341,9 @@ namespace StallmedManager.Server.Controllers
                 TrendPercent = trendPct,
                 PrevTotalQNT = prevQNT,
                 QNTTrendPercent = qntTrend,
+                NewPolymerizedPatients = newPolymerizedPatients.Count,
+                NewPolymerizedQNT = newPolymerizedQNT,
+                PolymerizedProducts = polymerizedProducts,
                 PerMonth = orders
                     .Where(x => x.Ordered.HasValue)
                     .GroupBy(x => new { x.Ordered!.Value.Year, x.Ordered.Value.Month })

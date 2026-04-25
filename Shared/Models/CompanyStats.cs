@@ -1,4 +1,4 @@
-﻿namespace StallmedManager.Shared.Models
+namespace StallmedManager.Shared.Models
 {
     public class CompanyStats
     {
@@ -12,6 +12,9 @@
         public double TrendPercent { get; set; }
         public int PrevTotalQNT { get; set; }
         public double QNTTrendPercent { get; set; }
+        public int NewPolymerizedPatients { get; set; }
+        public int NewPolymerizedQNT { get; set; }
+        public List<ProductCount> PolymerizedProducts { get; set; } = new();
         public List<MonthlyCount> PerMonth { get; set; } = new();
         public List<MonthlyCount> PerMonthPrev { get; set; } = new();
         public List<ProductCount> PerProduct { get; set; } = new();
