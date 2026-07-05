@@ -1,4 +1,4 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">OrderManager</a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
@@ -6,7 +6,6 @@
         </button>
     </div>
 </div>
-
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
     <nav class="flex-column">
         <div class="nav-item px-3">
@@ -14,31 +13,26 @@
                 <span class="oi oi-home" aria-hidden="true"></span> Home
             </NavLink>
         </div>
-
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="orders">
                 <span class="oi oi-list-rich" aria-hidden="true"></span> Orders
             </NavLink>
         </div>
-
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="Doctors">
                 <span class="oi oi-list-rich" aria-hidden="true"></span> Doctors
             </NavLink>
         </div>
-
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="mytasks">
                 <span class="oi oi-list-rich" aria-hidden="true"></span> Εργασίες
             </NavLink>
         </div>
-
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="mytasks/new">
                 <span class="oi oi-plus" aria-hidden="true"></span> Νέα Εργασία
             </NavLink>
         </div>
-
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="mytasks/history">
                 <span class="oi oi-folder" aria-hidden="true"></span> Ιστορικό
@@ -49,14 +43,29 @@
                 <i class="bi bi-capsule me-2"></i> Αναζήτηση Treatments
             </NavLink>
         </div>
+
+        <hr class="my-2 mx-3" />
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="prick-dashboard">
+                <span class="oi oi-pulse" aria-hidden="true"></span> Prick - Dashboard
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="prick-production">
+                <span class="oi oi-box" aria-hidden="true"></span> Prick - Production
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="prick-allocation">
+                <span class="oi oi-share" aria-hidden="true"></span> Prick - Allocation
+            </NavLink>
+        </div>
     </nav>
 </div>
-
 @code {
     private bool collapseNavMenu = true;
-
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;

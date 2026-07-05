@@ -1,0 +1,734 @@
+@page "/prick-allocation"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+
+<PageTitle>Prick Test - Allocation</PageTitle>
+
+<style>
+    .stock-check-bar {
+        background: #eef6ff;
+        border: 1px solid #b6d9ff;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 16px;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+    }
+
+    .stock-check-results {
+        background: white;
+        border-radius: 6px;
+        margin-top: 8px;
+        max-height: 260px;
+        overflow-y: auto;
+    }
+
+    .filters-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+
+    .tab-btn {
+        padding: 8px 20px;
+        border: none;
+        background: none;
+        border-bottom: 3px solid transparent;
+        font-weight: 600;
+        color: #777;
+    }
+
+        .tab-btn.active {
+            border-bottom-color: #0d6efd;
+            color: #0d6efd;
+        }
+
+    .order-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+
+    .order-card-header {
+        padding: 14px 16px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+        .order-card-header:hover {
+            background: #f8f9fa;
+        }
+
+    .order-card-body {
+        border-top: 1px solid #eee;
+        padding: 10px 16px;
+        background: #fcfcfc;
+    }
+
+    .company-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        color: white;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .summary-pill {
+        background: #f1f3f5;
+        border-radius: 14px;
+        padding: 3px 12px;
+        font-size: 0.85rem;
+        color: #444;
+    }
+
+    .expand-arrow {
+        transition: transform 0.15s;
+    }
+
+        .expand-arrow.open {
+            transform: rotate(90deg);
+        }
+
+    .stock-ok { color: #198754; font-weight: 600; }
+    .stock-low { color: #dc3545; font-weight: 600; }
+
+    .popup-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .popup-box {
+        background: white;
+        padding: 24px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 520px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .move-target-row {
+        padding: 8px;
+        border: 1px solid #eee;
+        border-radius: 6px;
+        margin-bottom: 6px;
+        cursor: pointer;
+    }
+
+        .move-target-row:hover {
+            background: #f0f7ff;
+        }
+
+        .move-target-row.selected {
+            background: #dbeaff;
+            border-color: #0d6efd;
+        }
+</style>
+
+<h1 class="mb-3">Prick Test - Allocation</h1>
+
+<!-- ================= QUICK STOCK CHECK (πάντα ορατό) ================= -->
+<div class="stock-check-bar">
+    <label class="form-label mb-1"><strong>🔍 Γρήγορος Έλεγχος Stock</strong></label>
+    <input class="form-control" placeholder="Γράψε κωδικό ή περιγραφή αλλεργιογόνου..."
+           value="@stockCheckQuery" @oninput="OnStockCheckInput" />
+    @if (stockCheckResults.Count > 0)
+    {
+        <div class="stock-check-results">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Κωδικός</th><th>Περιγραφή</th><th>Τύπος</th><th>Εταιρεία</th><th>Διαθέσιμο</th></tr></thead>
+                <tbody>
+                    @foreach (var s in stockCheckResults)
+                    {
+                        <tr>
+                            <td>@s.CodePrick</td>
+                            <td>@s.Description</td>
+                            <td>@s.ProductTypeCode <small class="text-muted">@s.ProductDescription</small></td>
+                            <td>@s.Company</td>
+                            <td><strong>@s.TotalRemaining</strong></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (stockCheckQuery.Length >= 2)
+    {
+        <div class="text-muted small mt-1">Κανένα διαθέσιμο stock για αυτή την αναζήτηση.</div>
+    }
+</div>
+
+<div>
+    <button class="tab-btn @(activeTab == "pending" ? "active" : "")" @onclick='() => SwitchTab("pending")'>Εκκρεμείς Παραγγελίες</button>
+    <button class="tab-btn @(activeTab == "active" ? "active" : "")" @onclick='() => SwitchTab("active")'>Ενεργές Δεσμεύσεις</button>
+</div>
+<hr class="mt-0" />
+
+<div class="filters-panel">
+    <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Εταιρεία</label>
+            <select class="form-control" value="@selectedCompany" @onchange="e => OnCompanyChanged(e.Value.ToString())">
+                <option value="">Όλες</option>
+                <option value="SM">StallMedicals</option>
+                <option value="BM">BeltaMed</option>
+            </select>
+        </div>
+        @if (activeTab == "pending")
+        {
+            <div class="col-6 col-md-3">
+                <label class="form-label mb-1">Γιατρός</label>
+                <select class="form-control" value="@selectedDoctorId" @onchange="e => { selectedDoctorId = e.Value.ToString(); LoadData(); }">
+                    <option value="">Όλοι</option>
+                    @foreach (var d in doctorOptions)
+                    {
+                        <option value="@d.DoctorID">@d.FullName</option>
+                    }
+                </select>
+            </div>
+        }
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Αναζήτηση παραγγελίας</label>
+            <input class="form-control" placeholder="π.χ. B2607..." @bind="searchOrderCode" @bind:event="oninput" />
+        </div>
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Ταξινόμηση κατά</label>
+            <select class="form-control" @bind="sortBy">
+                <option value="date">Ημερομηνία</option>
+                <option value="name">Όνομα Γιατρού</option>
+                <option value="quantity">Συνολική Ποσότητα</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-3">
+            <button class="btn btn-primary w-100" @onclick="LoadData">Ανανέωση</button>
+        </div>
+    </div>
+</div>
+
+@if (status == "loading")
+{
+    <p><em>Φορτώνω...</em></p>
+}
+
+@if (status == "loaded" && activeTab == "pending")
+{
+    @if (FilteredPendingGroups.Count == 0)
+    {
+        <div class="alert alert-success">Καμία εκκρεμής παραγγελία 🎉</div>
+    }
+    @foreach (var grp in FilteredPendingGroups)
+    {
+        var isOpen = expandedOrder == grp.OrderCode;
+        <div class="order-card">
+            <div class="order-card-header" @onclick="() => ToggleExpand(grp.OrderCode)">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="expand-arrow @(isOpen ? "open" : "")">▶</span>
+                    <strong>@grp.OrderCode</strong>
+                    <span class="company-badge" style="background-color:@(grp.Company == "SM" ? "#0d6efd" : "#6f42c1")">@grp.Company</span>
+                    <span>👨‍⚕️ @grp.DoctorName</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="summary-pill">📅 @grp.OrderDate.ToString("dd/MM/yyyy")</span>
+                    <span class="summary-pill @(grp.TotalFulfillable >= grp.TotalPending ? "stock-ok" : "stock-low")">
+                        📊 Ζητ. @grp.TotalPending / Διαθ. @grp.TotalFulfillable
+                    </span>
+                    <span class="summary-pill">🧪 @grp.Lines.Count κωδικοί</span>
+                </div>
+            </div>
+            @if (isOpen)
+            {
+                <div class="order-card-body">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Κωδικός</th><th>Τύπος</th><th>Ζητ.</th><th>Δεσμ.</th><th>Εκκρεμές</th><th>Διαθέσιμο</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var l in grp.Lines)
+                            {
+                                <tr>
+                                    <td>@l.CodePrick <small class="text-muted">@l.AllergenDescription</small></td>
+                                    <td>@l.ProductTypeCode</td>
+                                    <td>@l.QuantityRequested</td>
+                                    <td>@l.QuantityAllocated</td>
+                                    <td><strong>@l.QuantityPending</strong></td>
+                                    <td class="@(l.AvailableStock >= l.QuantityPending ? "stock-ok" : "stock-low")">@l.AvailableStock</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-success" @onclick="() => OpenAllocatePopup(l)" disabled="@(l.AvailableStock <= 0)">
+                                            Allocate
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+}
+
+@if (status == "loaded" && activeTab == "active")
+{
+    @if (FilteredActiveGroups.Count == 0)
+    {
+        <div class="alert alert-info">Καμία ενεργή δέσμευση.</div>
+    }
+    @foreach (var grp in FilteredActiveGroups)
+    {
+        var isOpen = expandedOrder == grp.OrderCode;
+        <div class="order-card">
+            <div class="order-card-header" @onclick="() => ToggleExpand(grp.OrderCode)">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="expand-arrow @(isOpen ? "open" : "")">▶</span>
+                    <strong>@grp.OrderCode</strong>
+                    <span>👨‍⚕️ @grp.DoctorName</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="summary-pill">📦 @grp.Allocations.Sum(a => a.QuantityAllocated) δεσμευμένα</span>
+                    <span class="summary-pill">🧪 @grp.Allocations.Count δεσμεύσεις</span>
+                </div>
+            </div>
+            @if (isOpen)
+            {
+                <div class="order-card-body">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr><th>Κωδικός</th><th>Τύπος</th><th>Ποσότητα</th><th>Ημ. Δέσμευσης</th><th>Από παραλαβή</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var a in grp.Allocations)
+                            {
+                                <tr>
+                                    <td>@a.CodePrick <small class="text-muted">@a.AllergenDescription</small></td>
+                                    <td>@a.ProductTypeCode</td>
+                                    <td><strong>@a.QuantityAllocated</strong></td>
+                                    <td>@a.AllocationDate.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>@a.ReceiptDate.ToString("dd/MM/yyyy")</td>
+                                    <td class="d-flex gap-1">
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => OpenReversePopup(a)">Ανάκληση</button>
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenMovePopup(a)">🔀 Μετακίνηση</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+}
+
+<!-- ================= ALLOCATE POPUP ================= -->
+@if (showAllocatePopup && selectedLine != null)
+{
+    <div class="popup-overlay" @onclick="CloseAllocatePopup">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <h5>Allocate Stock</h5>
+            <hr />
+            <p><strong>@selectedLine.OrderCode</strong> - @selectedLine.DoctorName</p>
+            <p>@selectedLine.CodePrick (@selectedLine.AllergenDescription) - Τύπος @selectedLine.ProductTypeCode</p>
+            <p>Εκκρεμές: <strong>@selectedLine.QuantityPending</strong> | Διαθέσιμο: <strong>@selectedLine.AvailableStock</strong></p>
+            <div class="mb-2">
+                <label class="form-label mb-1">Ποσότητα προς δέσμευση</label>
+                <input type="number" class="form-control" min="1" max="@Math.Min(selectedLine.QuantityPending, selectedLine.AvailableStock)" @bind="allocateQuantity" />
+            </div>
+            @if (!string.IsNullOrEmpty(allocateMessage))
+            {
+                <div class="alert alert-warning py-2">@allocateMessage</div>
+            }
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary flex-fill" @onclick="CloseAllocatePopup">Ακύρωση</button>
+                <button class="btn btn-success flex-fill" @onclick="SubmitAllocate">Δέσμευση</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ================= REVERSE POPUP ================= -->
+@if (showReversePopup && selectedAllocation != null)
+{
+    <div class="popup-overlay" @onclick="CloseReversePopup">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <h5>Ανάκληση Δέσμευσης</h5>
+            <hr />
+            <p><strong>@selectedAllocation.OrderCode</strong> - @selectedAllocation.DoctorName</p>
+            <p>@selectedAllocation.CodePrick - Τύπος @selectedAllocation.ProductTypeCode - Ποσότητα: <strong>@selectedAllocation.QuantityAllocated</strong></p>
+            <div class="mb-2">
+                <label class="form-label mb-1">Αιτιολογία (προαιρετικό)</label>
+                <input class="form-control" @bind="reverseReason" placeholder="π.χ. ο γιατρός δεν το θέλει πια" />
+            </div>
+            @if (!string.IsNullOrEmpty(reverseMessage))
+            {
+                <div class="alert alert-warning py-2">@reverseMessage</div>
+            }
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary flex-fill" @onclick="CloseReversePopup">Κλείσιμο</button>
+                <button class="btn btn-danger flex-fill" @onclick="SubmitReverse">Ανάκληση</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ================= MOVE (STEAL) POPUP ================= -->
+@if (showMovePopup && selectedAllocation != null)
+{
+    <div class="popup-overlay" @onclick="CloseMovePopup">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <h5>🔀 Μετακίνηση Δέσμευσης σε Άλλη Παραγγελία</h5>
+            <hr />
+            <p class="mb-1"><strong>Από:</strong> @selectedAllocation.OrderCode - @selectedAllocation.DoctorName</p>
+            <p>@selectedAllocation.CodePrick (@selectedAllocation.AllergenDescription) - Τύπος @selectedAllocation.ProductTypeCode - Ποσότητα: <strong>@selectedAllocation.QuantityAllocated</strong></p>
+
+            <label class="form-label mb-1">Αναζήτηση παραγγελίας-προορισμού (γιατρός, κωδικός παραγγελίας...)</label>
+            <input class="form-control mb-2" @bind="moveSearchQuery" @bind:event="oninput" placeholder="π.χ. Παπαδόπουλος ή B2607..." />
+
+            <div style="max-height:220px; overflow-y:auto;">
+                @foreach (var target in MoveTargetOptions)
+                {
+                    <div class="move-target-row @(selectedMoveTarget == target ? "selected" : "")" @onclick="() => selectedMoveTarget = target">
+                        <strong>@target.OrderCode</strong> - @target.DoctorName<br />
+                        <small>@target.CodePrick (@target.AllergenDescription) - Τύπος @target.ProductTypeCode - Εκκρεμές: @target.QuantityPending</small>
+                    </div>
+                }
+                @if (MoveTargetOptions.Count == 0 && moveSearchQuery.Length >= 2)
+                {
+                    <div class="text-muted small">Καμία αντιστοιχία.</div>
+                }
+            </div>
+
+            @if (selectedMoveTarget != null)
+            {
+                <div class="mt-2">
+                    <label class="form-label mb-1">Ποσότητα προς μετακίνηση (μέγιστο @Math.Min(selectedAllocation.QuantityAllocated, selectedMoveTarget.QuantityPending))</label>
+                    <input type="number" class="form-control" min="1" max="@Math.Min(selectedAllocation.QuantityAllocated, selectedMoveTarget.QuantityPending)" @bind="moveQuantity" />
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(moveMessage))
+            {
+                <div class="alert alert-warning py-2 mt-2">@moveMessage</div>
+            }
+
+            <div class="d-flex gap-2 mt-3">
+                <button class="btn btn-secondary flex-fill" @onclick="CloseMovePopup">Ακύρωση</button>
+                <button class="btn btn-primary flex-fill" @onclick="SubmitMove" disabled="@(selectedMoveTarget == null)">Μετακίνηση</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string activeTab = "pending";
+    private string selectedCompany = "";
+    private string selectedDoctorId = "";
+    private string searchOrderCode = "";
+    private string sortBy = "date";
+    private string status = "idle";
+
+    private List<PendingOrderLineDto> pendingLines = new();
+    private List<ActiveAllocationDto> activeAllocations = new();
+    private List<DoctorOptionDto> doctorOptions = new();
+    private string? expandedOrder = null;
+
+    private string stockCheckQuery = "";
+    private List<StockCheckDto> stockCheckResults = new();
+    private CancellationTokenSource? stockCheckDebounce;
+
+    private bool showAllocatePopup = false;
+    private PendingOrderLineDto? selectedLine;
+    private int allocateQuantity = 1;
+    private string allocateMessage = "";
+
+    private bool showReversePopup = false;
+    private ActiveAllocationDto? selectedAllocation;
+    private string reverseReason = "";
+    private string reverseMessage = "";
+
+    private bool showMovePopup = false;
+    private string moveSearchQuery = "";
+    private PendingOrderLineDto? selectedMoveTarget;
+    private int moveQuantity = 1;
+    private string moveMessage = "";
+    private List<PendingOrderLineDto> allPendingForMove = new();
+
+    private class PendingGroup
+    {
+        public string OrderCode { get; set; }
+        public string DoctorName { get; set; }
+        public string Company { get; set; }
+        public DateTime OrderDate { get; set; }
+        public List<PendingOrderLineDto> Lines { get; set; } = new();
+        public int TotalPending => Lines.Sum(l => l.QuantityPending);
+        public int TotalFulfillable => Lines.Sum(l => Math.Min(l.QuantityPending, l.AvailableStock));
+    }
+
+    private class ActiveGroup
+    {
+        public string OrderCode { get; set; }
+        public string DoctorName { get; set; }
+        public List<ActiveAllocationDto> Allocations { get; set; } = new();
+    }
+
+    private List<PendingGroup> FilteredPendingGroups
+    {
+        get
+        {
+            var groups = pendingLines
+                .Where(l => string.IsNullOrEmpty(searchOrderCode) || l.OrderCode.Contains(searchOrderCode, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(l => l.OrderCode)
+                .Select(g => new PendingGroup
+                {
+                    OrderCode = g.Key,
+                    DoctorName = g.First().DoctorName,
+                    Company = g.First().Company,
+                    OrderDate = g.First().OrderDate,
+                    Lines = g.ToList()
+                });
+
+            groups = sortBy switch
+            {
+                "name" => groups.OrderBy(g => g.DoctorName),
+                "quantity" => groups.OrderByDescending(g => g.TotalPending),
+                _ => groups.OrderBy(g => g.OrderDate)
+            };
+
+            return groups.ToList();
+        }
+    }
+
+    private List<ActiveGroup> FilteredActiveGroups
+    {
+        get
+        {
+            var groups = activeAllocations
+                .Where(a => string.IsNullOrEmpty(searchOrderCode) || (a.OrderCode ?? "").Contains(searchOrderCode, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(a => a.OrderCode)
+                .Select(g => new ActiveGroup
+                {
+                    OrderCode = g.Key,
+                    DoctorName = g.First().DoctorName,
+                    Allocations = g.ToList()
+                });
+
+            groups = sortBy switch
+            {
+                "name" => groups.OrderBy(g => g.DoctorName),
+                "quantity" => groups.OrderByDescending(g => g.Allocations.Sum(a => a.QuantityAllocated)),
+                _ => groups.OrderByDescending(g => g.Allocations.Max(a => a.AllocationDate))
+            };
+
+            return groups.ToList();
+        }
+    }
+
+    private List<PendingOrderLineDto> MoveTargetOptions =>
+        moveSearchQuery.Length < 2 ? new() :
+        allPendingForMove.Where(l =>
+            (l.OrderCode?.Contains(moveSearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (l.DoctorName?.Contains(moveSearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (l.CodePrick?.Contains(moveSearchQuery, StringComparison.OrdinalIgnoreCase) ?? false))
+        .Take(20)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task SwitchTab(string tab)
+    {
+        activeTab = tab;
+        expandedOrder = null;
+        await LoadData();
+    }
+
+    private async Task OnCompanyChanged(string company)
+    {
+        selectedCompany = company;
+        doctorOptions = await new PrickAllocationService(dataService).GetDoctors(string.IsNullOrEmpty(company) ? null : company);
+        await LoadData();
+    }
+
+    private void ToggleExpand(string orderCode)
+    {
+        expandedOrder = (expandedOrder == orderCode) ? null : orderCode;
+    }
+
+    private async Task OnStockCheckInput(ChangeEventArgs e)
+    {
+        stockCheckQuery = e.Value?.ToString() ?? "";
+        stockCheckDebounce?.Cancel();
+        stockCheckDebounce = new CancellationTokenSource();
+        var token = stockCheckDebounce.Token;
+
+        if (stockCheckQuery.Length < 2)
+        {
+            stockCheckResults = new();
+            StateHasChanged();
+            return;
+        }
+        try
+        {
+            await Task.Delay(350, token);
+            stockCheckResults = await new PrickProductionService(dataService).StockCheck(stockCheckQuery);
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task LoadData()
+    {
+        status = "loading";
+        StateHasChanged();
+
+        var svc = new PrickAllocationService(dataService);
+        if (doctorOptions.Count == 0)
+            doctorOptions = await svc.GetDoctors(string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany);
+
+        if (activeTab == "pending")
+        {
+            int? docId = string.IsNullOrEmpty(selectedDoctorId) ? null : int.Parse(selectedDoctorId);
+            pendingLines = await svc.GetPending(string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany, docId);
+        }
+        else
+        {
+            activeAllocations = await svc.GetActive(string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany);
+        }
+
+        status = "loaded";
+        StateHasChanged();
+    }
+
+    private void OpenAllocatePopup(PendingOrderLineDto line)
+    {
+        selectedLine = line;
+        allocateQuantity = Math.Min(line.QuantityPending, line.AvailableStock);
+        allocateMessage = "";
+        showAllocatePopup = true;
+    }
+    private void CloseAllocatePopup() => showAllocatePopup = false;
+
+    private async Task SubmitAllocate()
+    {
+        if (selectedLine == null) return;
+        if (allocateQuantity <= 0 || allocateQuantity > selectedLine.QuantityPending)
+        {
+            allocateMessage = "Μη έγκυρη ποσότητα.";
+            return;
+        }
+        var req = new AllocateRequest { OrderLineID = selectedLine.OrderLineID, Quantity = allocateQuantity, UserID = userManager.User?.IdUser };
+        var result = await new PrickAllocationService(dataService).Allocate(req);
+        if (result != null)
+        {
+            showAllocatePopup = false;
+            await LoadData();
+        }
+        else
+        {
+            allocateMessage = "Κάτι πήγε στραβά - πιθανόν δεν επαρκεί το stock πλέον.";
+        }
+    }
+
+    private void OpenReversePopup(ActiveAllocationDto alloc)
+    {
+        selectedAllocation = alloc;
+        reverseReason = "";
+        reverseMessage = "";
+        showReversePopup = true;
+    }
+    private void CloseReversePopup() => showReversePopup = false;
+
+    private async Task SubmitReverse()
+    {
+        if (selectedAllocation == null) return;
+        var req = new ReverseAllocationRequest { AllocationID = selectedAllocation.AllocationID, UserID = userManager.User?.IdUser, Reason = reverseReason };
+        var ok = await new PrickAllocationService(dataService).Reverse(req);
+        if (ok)
+        {
+            showReversePopup = false;
+            await LoadData();
+        }
+        else
+        {
+            reverseMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
+        }
+    }
+
+    private async Task OpenMovePopup(ActiveAllocationDto alloc)
+    {
+        selectedAllocation = alloc;
+        moveSearchQuery = "";
+        selectedMoveTarget = null;
+        moveQuantity = alloc.QuantityAllocated;
+        moveMessage = "";
+        // Φορτώνουμε ΟΛΕΣ τις εκκρεμείς γραμμές (όλων των εταιρειών) για αναζήτηση προορισμού
+        allPendingForMove = await new PrickAllocationService(dataService).GetPending(null, null);
+        showMovePopup = true;
+    }
+    private void CloseMovePopup() => showMovePopup = false;
+
+    private async Task SubmitMove()
+    {
+        if (selectedAllocation == null || selectedMoveTarget == null) return;
+        if (moveQuantity <= 0 || moveQuantity > selectedAllocation.QuantityAllocated || moveQuantity > selectedMoveTarget.QuantityPending)
+        {
+            moveMessage = "Μη έγκυρη ποσότητα.";
+            return;
+        }
+
+        var svc = new PrickAllocationService(dataService);
+
+        // Βήμα 1: Ανάκληση από την αρχική παραγγελία
+        var reverseReq = new ReverseAllocationRequest
+        {
+            AllocationID = selectedAllocation.AllocationID,
+            UserID = userManager.User?.IdUser,
+            Reason = $"Μετακίνηση σε {selectedMoveTarget.OrderCode}"
+        };
+        var reverseOk = await svc.Reverse(reverseReq);
+        if (!reverseOk)
+        {
+            moveMessage = "Απέτυχε η ανάκληση - δοκίμασε ξανά.";
+            return;
+        }
+
+        // Βήμα 2: Δέσμευση στη νέα παραγγελία
+        var allocateReq = new AllocateRequest
+        {
+            OrderLineID = selectedMoveTarget.OrderLineID,
+            Quantity = moveQuantity,
+            UserID = userManager.User?.IdUser
+        };
+        var allocateResult = await svc.Allocate(allocateReq);
+        if (allocateResult == null)
+        {
+            moveMessage = "Η ανάκληση έγινε, αλλά η νέα δέσμευση απέτυχε. Έλεγξε τις Εκκρεμείς Παραγγελίες για να το δεσμεύσεις χειροκίνητα.";
+            await LoadData();
+            return;
+        }
+
+        showMovePopup = false;
+        await LoadData();
+    }
+}

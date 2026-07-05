@@ -1,0 +1,378 @@
+using ClosedXML.Excel;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using StallmedManager.Server.Models;
+using StallmedManager.Shared.Models;
+
+namespace StallmedManager.Server.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    [Authorize]
+    public class PrickDoctorOrderController : ControllerBase
+    {
+        private readonly StallmedContext _context;
+
+        public PrickDoctorOrderController(StallmedContext context)
+        {
+            _context = context;
+        }
+
+        // ---- Λίστα Doctor Orders (με τις γραμμές τους) ----
+        [HttpGet("orders")]
+        public async Task<ActionResult<List<DoctorOrderViewDto>>> GetOrders(
+            [FromQuery] string? company, [FromQuery] int? doctorId, [FromQuery] string? status)
+        {
+            var query = _context.DoctorOrders.Include(o => o.Doctor).AsQueryable();
+            if (!string.IsNullOrEmpty(company))
+                query = query.Where(o => o.Company == company);
+            if (doctorId.HasValue)
+                query = query.Where(o => o.DoctorID == doctorId.Value);
+            if (!string.IsNullOrEmpty(status))
+                query = query.Where(o => o.OrderStatus == status);
+            else
+                query = query.Where(o => o.OrderStatus == "Open");
+
+            var orders = await query.OrderByDescending(o => o.OrderDate).ToListAsync();
+            var orderIds = orders.Select(o => o.OrderID).ToList();
+
+            var lines = await _context.DoctorOrderLines
+                .Where(l => orderIds.Contains(l.OrderID))
+                .ToListAsync();
+
+            var allergenLookup = await _context.AllergenCodes.ToDictionaryAsync(a => a.CodePrick);
+            var productLookup = await _context.ProductTypes.ToDictionaryAsync(p => p.ProductTypeCode);
+
+            var result = orders.Select(o => new DoctorOrderViewDto
+            {
+                OrderID = o.OrderID,
+                OrderCode = o.OrderCode,
+                DoctorName = o.Doctor != null ? o.Doctor.FullName : o.DoctorName,
+                Company = o.Company,
+                OrderDate = o.OrderDate,
+                OrderStatus = o.OrderStatus,
+                Lines = lines.Where(l => l.OrderID == o.OrderID).Select(l =>
+                {
+                    allergenLookup.TryGetValue(l.CodePrick, out var allergen);
+                    productLookup.TryGetValue(l.ProductTypeCode, out var product);
+                    return new DoctorOrderLineViewDto
+                    {
+                        OrderLineID = l.OrderLineID,
+                        CodePrick = l.CodePrick,
+                        AllergenDescription = allergen?.DescriptionGreek ?? allergen?.Description,
+                        ProductTypeCode = l.ProductTypeCode,
+                        ProductDescription = product?.Description,
+                        QuantityRequested = l.QuantityRequested,
+                        QuantityAllocated = l.QuantityAllocated,
+                        QuantityCancelled = l.QuantityCancelled,
+                        LineStatus = l.LineStatus
+                    };
+                }).ToList()
+            }).ToList();
+
+            return Ok(result);
+        }
+
+        // ---- Αναζήτηση γιατρών (για το dropdown/search στη φόρμα) ----
+        [HttpGet("doctors")]
+        public async Task<ActionResult<List<DoctorOptionDto>>> SearchDoctors([FromQuery] string? search)
+        {
+            var query = _context.Doctors.Where(d => d.IsActive);
+            if (!string.IsNullOrEmpty(search))
+                query = query.Where(d => d.FullName.Contains(search));
+
+            var list = await query.OrderBy(d => d.FullName).Take(50)
+                .Select(d => new DoctorOptionDto { DoctorID = d.DoctorID, FullName = d.FullName })
+                .ToListAsync();
+            return Ok(list);
+        }
+
+        // ---- Γρήγορη προσθήκη νέου γιατρού (χωρίς να φύγεις από τη φόρμα) ----
+        [HttpPost("doctors/quickadd")]
+        public async Task<ActionResult<DoctorOptionDto>> QuickAddDoctor([FromBody] QuickAddDoctorRequest req)
+        {
+            var doctor = new Doctor
+            {
+                FullName = req.FullName,
+                Phone = req.Phone,
+                City = req.City,
+                Email = req.Email,
+                IsActive = true,
+                CreatedBy = req.CreatedBy,
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            };
+            _context.Doctors.Add(doctor);
+            await _context.SaveChangesAsync();
+
+            return Ok(new DoctorOptionDto { DoctorID = doctor.DoctorID, FullName = doctor.FullName });
+        }
+
+        // ---- Δημιουργία νέας παραγγελίας γιατρού (header + lines) ----
+        [HttpPost("orders")]
+        public async Task<ActionResult<DoctorOrderViewDto>> CreateOrder([FromBody] CreateDoctorOrderRequest req)
+        {
+            if (req.Lines == null || req.Lines.Count == 0)
+                return BadRequest("Η παραγγελία πρέπει να έχει τουλάχιστον μία γραμμή.");
+            if (req.DoctorID == null)
+                return BadRequest("Επίλεξε γιατρό.");
+
+            var orderCode = await GenerateOrderCode(req.Company, req.OrderDate);
+
+            var order = new DoctorOrder
+            {
+                OrderCode = orderCode,
+                DoctorID = req.DoctorID,
+                Company = req.Company,
+                OrderDate = req.OrderDate,
+                OrderStatus = "Open",
+                Notes = req.Notes,
+                CreatedBy = req.CreatedBy,
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            };
+            _context.DoctorOrders.Add(order);
+            await _context.SaveChangesAsync();
+
+            foreach (var l in req.Lines)
+            {
+                _context.DoctorOrderLines.Add(new DoctorOrderLine
+                {
+                    OrderID = order.OrderID,
+                    CodePrick = l.CodePrick,
+                    ProductTypeCode = l.ProductTypeCode,
+                    QuantityRequested = l.QuantityRequested,
+                    QuantityAllocated = 0,
+                    QuantityCancelled = 0,
+                    LineStatus = "Pending",
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now
+                });
+            }
+            await _context.SaveChangesAsync();
+
+            return Ok(new DoctorOrderViewDto
+            {
+                OrderID = order.OrderID,
+                OrderCode = order.OrderCode,
+                Company = order.Company,
+                OrderDate = order.OrderDate,
+                OrderStatus = order.OrderStatus
+            });
+        }
+
+        // ---- Λήψη προτύπου Excel για import ----
+        [HttpGet("import/template")]
+        public ActionResult DownloadTemplate()
+        {
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("Παραγγελίες");
+            ws.Cell(1, 1).Value = "Εταιρεία (SM/BM)";
+            ws.Cell(1, 2).Value = "Γιατρός (Ονοματεπώνυμο)";
+            ws.Cell(1, 3).Value = "Τύπος (κωδικός)";
+            ws.Cell(1, 4).Value = "Ημερομηνία (ΗΗ/ΜΜ/ΕΕΕΕ)";
+            ws.Cell(1, 5).Value = "Κωδικός Αλλεργιογόνου";
+            ws.Cell(1, 6).Value = "Ποσότητα";
+            ws.Range(1, 1, 1, 6).Style.Font.SetBold();
+
+            // Παράδειγμα γραμμής
+            ws.Cell(2, 1).Value = "BM";
+            ws.Cell(2, 2).Value = "Παπαδόπουλος Γιώργος";
+            ws.Cell(2, 3).Value = "91";
+            ws.Cell(2, 4).Value = DateTime.Today;
+            ws.Cell(2, 5).Value = "A-001";
+            ws.Cell(2, 6).Value = 2;
+            ws.Cell(3, 1).Value = "BM";
+            ws.Cell(3, 2).Value = "Παπαδόπουλος Γιώργος";
+            ws.Cell(3, 3).Value = "91";
+            ws.Cell(3, 4).Value = DateTime.Today;
+            ws.Cell(3, 5).Value = "F-042";
+            ws.Cell(3, 6).Value = 1;
+
+            ws.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            return File(stream.ToArray(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "Πρότυπο_Εισαγωγής_Παραγγελιών.xlsx");
+        }
+
+        // ---- Προεπισκόπηση import (χωρίς καταχώρηση) ----
+        [HttpPost("import/preview")]
+        public async Task<ActionResult<ImportPreviewResult>> ImportPreview(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("Δεν στάλθηκε αρχείο.");
+
+            using var stream = new MemoryStream();
+            await file.CopyToAsync(stream);
+            stream.Position = 0;
+
+            using var workbook = new XLWorkbook(stream);
+            var ws = workbook.Worksheets.First();
+            var rows = ws.RangeUsed().RowsUsed().Skip(1); // παράλειψη επικεφαλίδων
+
+            var allergens = await _context.AllergenCodes.ToListAsync();
+            var productTypes = await _context.ProductTypes.ToListAsync();
+            var doctors = await _context.Doctors.Where(d => d.IsActive).ToListAsync();
+
+            var groupsDict = new Dictionary<string, ImportOrderGroupPreview>();
+            int totalRows = 0, errorRows = 0;
+
+            foreach (var row in rows)
+            {
+                if (row.IsEmpty()) continue;
+                totalRows++;
+
+                var company = row.Cell(1).GetString().Trim().ToUpper();
+                var doctorName = row.Cell(2).GetString().Trim();
+                var productType = row.Cell(3).GetString().Trim();
+                DateTime orderDate;
+                try { orderDate = row.Cell(4).GetDateTime(); }
+                catch { orderDate = DateTime.Today; }
+                var code = row.Cell(5).GetString().Trim().ToUpper();
+                int.TryParse(row.Cell(6).GetString().Trim(), out int quantity);
+
+                var key = $"{company}|{doctorName}|{productType}|{orderDate:yyyyMMdd}";
+                if (!groupsDict.TryGetValue(key, out var group))
+                {
+                    var matchedDoctor = doctors.FirstOrDefault(d => d.FullName.Equals(doctorName, StringComparison.OrdinalIgnoreCase));
+                    var matchedType = productTypes.FirstOrDefault(p => p.ProductTypeCode == productType);
+
+                    group = new ImportOrderGroupPreview
+                    {
+                        Company = company,
+                        DoctorNameRaw = doctorName,
+                        MatchedDoctorId = matchedDoctor?.DoctorID,
+                        IsNewDoctor = matchedDoctor == null,
+                        ProductTypeCode = productType,
+                        ProductTypeValid = matchedType != null,
+                        OrderDate = orderDate
+                    };
+                    if (!group.ProductTypeValid)
+                        group.Warnings.Add("Άγνωστος τύπος προϊόντος");
+                    if (group.IsNewDoctor)
+                        group.Warnings.Add("Νέος γιατρός θα δημιουργηθεί");
+
+                    groupsDict[key] = group;
+                }
+
+                var matchedAllergen = allergens.FirstOrDefault(a => a.CodePrick.Equals(code, StringComparison.OrdinalIgnoreCase))
+                    ?? allergens.FirstOrDefault(a => (a.DescriptionGreek ?? "").Equals(code, StringComparison.OrdinalIgnoreCase));
+
+                var lineValid = matchedAllergen != null && quantity > 0;
+                if (!lineValid) errorRows++;
+
+                group.Lines.Add(new ImportOrderLinePreview
+                {
+                    CodePrick = matchedAllergen?.CodePrick ?? code,
+                    AllergenDescription = matchedAllergen?.DescriptionGreek ?? matchedAllergen?.Description ?? "⚠ Άγνωστος κωδικός",
+                    Quantity = quantity,
+                    CodeValid = matchedAllergen != null && quantity > 0
+                });
+            }
+
+            foreach (var g in groupsDict.Values)
+                g.HasErrors = !g.ProductTypeValid || g.Lines.Any(l => !l.CodeValid);
+
+            return Ok(new ImportPreviewResult
+            {
+                Groups = groupsDict.Values.ToList(),
+                TotalRows = totalRows,
+                ErrorRows = errorRows
+            });
+        }
+
+        // ---- Επιβεβαίωση import (πραγματική καταχώρηση) ----
+        [HttpPost("import/commit")]
+        public async Task<ActionResult<int>> ImportCommit([FromBody] CommitImportRequest req)
+        {
+            int created = 0;
+
+            foreach (var g in req.Groups.Where(g => !g.HasErrors))
+            {
+                int doctorId;
+                if (g.MatchedDoctorId.HasValue)
+                {
+                    doctorId = g.MatchedDoctorId.Value;
+                }
+                else
+                {
+                    var newDoctor = new Doctor
+                    {
+                        FullName = g.DoctorNameRaw,
+                        IsActive = true,
+                        CreatedBy = req.CreatedBy,
+                        CreatedAt = DateTime.Now,
+                        UpdatedAt = DateTime.Now
+                    };
+                    _context.Doctors.Add(newDoctor);
+                    await _context.SaveChangesAsync();
+                    doctorId = newDoctor.DoctorID;
+                }
+
+                var orderCode = await GenerateOrderCode(g.Company, g.OrderDate);
+                var order = new DoctorOrder
+                {
+                    OrderCode = orderCode,
+                    DoctorID = doctorId,
+                    Company = g.Company,
+                    OrderDate = g.OrderDate,
+                    OrderStatus = "Open",
+                    CreatedBy = req.CreatedBy,
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now
+                };
+                _context.DoctorOrders.Add(order);
+                await _context.SaveChangesAsync();
+
+                foreach (var l in g.Lines)
+                {
+                    _context.DoctorOrderLines.Add(new DoctorOrderLine
+                    {
+                        OrderID = order.OrderID,
+                        CodePrick = l.CodePrick,
+                        ProductTypeCode = g.ProductTypeCode,
+                        QuantityRequested = l.Quantity,
+                        QuantityAllocated = 0,
+                        QuantityCancelled = 0,
+                        LineStatus = "Pending",
+                        CreatedAt = DateTime.Now,
+                        UpdatedAt = DateTime.Now
+                    });
+                }
+                await _context.SaveChangesAsync();
+                created++;
+            }
+
+            return Ok(created);
+        }
+
+        // ---- Δημιουργία κωδικού παραγγελίας: SM/BM + YYMMDD + αύξων αριθμός ημέρας ----
+        // π.χ. SM260710-01, SM260710-02, BM260710-01 ...
+        private async Task<string> GenerateOrderCode(string company, DateTime orderDate)
+        {
+            var datePart = orderDate.ToString("yyMMdd");
+            var prefix = $"{company}{datePart}-";
+
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                var existingCount = await _context.DoctorOrders
+                    .CountAsync(o => o.OrderCode.StartsWith(prefix));
+
+                var sequence = existingCount + 1 + attempt; // attempt-offset αν χτυπήσει duplicate σε ταυτόχρονο request
+                var digits = sequence > 99 ? 3 : 2;
+                var candidate = $"{prefix}{sequence.ToString().PadLeft(digits, '0')}";
+
+                var exists = await _context.DoctorOrders.AnyAsync(o => o.OrderCode == candidate);
+                if (!exists)
+                    return candidate;
+            }
+
+            // Απίθανο fallback ώστε να μην κολλήσει ποτέ η δημιουργία παραγγελίας
+            return $"{prefix}{Guid.NewGuid().ToString("N").Substring(0, 6)}";
+        }
+    }
+}

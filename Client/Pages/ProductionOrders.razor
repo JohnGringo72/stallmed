@@ -1,0 +1,568 @@
+@page "/prick-production"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+
+<PageTitle>Prick Test - Production Orders</PageTitle>
+
+<style>
+    .stock-check-bar {
+        background: #eef6ff;
+        border: 1px solid #b6d9ff;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 16px;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+    }
+
+    .stock-check-results {
+        background: white;
+        border-radius: 6px;
+        margin-top: 8px;
+        max-height: 260px;
+        overflow-y: auto;
+    }
+
+        .stock-check-results table {
+            margin-bottom: 0;
+        }
+
+    .filters-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+
+    .order-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+
+    .order-card-header {
+        padding: 14px 16px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+        .order-card-header:hover {
+            background: #f8f9fa;
+        }
+
+    .order-card-body {
+        border-top: 1px solid #eee;
+        padding: 10px 16px;
+        background: #fcfcfc;
+    }
+
+    .company-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        color: white;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .summary-pill {
+        background: #f1f3f5;
+        border-radius: 14px;
+        padding: 3px 12px;
+        font-size: 0.85rem;
+        color: #444;
+    }
+
+    .expand-arrow {
+        transition: transform 0.15s;
+    }
+
+        .expand-arrow.open {
+            transform: rotate(90deg);
+        }
+
+    .popup-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .popup-box {
+        background: white;
+        padding: 24px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .line-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 100px 40px;
+        gap: 8px;
+        margin-bottom: 8px;
+        align-items: center;
+    }
+</style>
+
+<h1 class="mb-3">Prick Test - Production Orders</h1>
+
+<!-- ================= QUICK STOCK CHECK (πάντα ορατό) ================= -->
+<div class="stock-check-bar">
+    <label class="form-label mb-1"><strong>🔍 Γρήγορος Έλεγχος Stock</strong></label>
+    <input class="form-control" placeholder="Γράψε κωδικό ή περιγραφή αλλεργιογόνου..."
+           value="@stockCheckQuery" @oninput="OnStockCheckInput" />
+    @if (stockCheckResults.Count > 0)
+    {
+        <div class="stock-check-results">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr><th>Κωδικός</th><th>Περιγραφή</th><th>Τύπος</th><th>Εταιρεία</th><th>Διαθέσιμο</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in stockCheckResults)
+                    {
+                        <tr>
+                            <td>@s.CodePrick</td>
+                            <td>@s.Description</td>
+                            <td>@s.ProductTypeCode <small class="text-muted">@s.ProductDescription</small></td>
+                            <td>@s.Company</td>
+                            <td><strong>@s.TotalRemaining</strong></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (stockCheckQuery.Length >= 2)
+    {
+        <div class="text-muted small mt-1">Κανένα διαθέσιμο stock για αυτή την αναζήτηση.</div>
+    }
+</div>
+
+<!-- ================= ΦΙΛΤΡΑ ================= -->
+<div class="filters-panel">
+    <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Εταιρεία</label>
+            <select class="form-control" value="@selectedCompany" @onchange="e => { selectedCompany = e.Value.ToString(); LoadData(); }">
+                <option value="">Όλες</option>
+                <option value="SM">StallMedicals</option>
+                <option value="BM">BeltaMed</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Κατάσταση</label>
+            <select class="form-control" value="@selectedStatus" @onchange="e => { selectedStatus = e.Value.ToString(); LoadData(); }">
+                <option value="">Ανοιχτές</option>
+                <option value="Closed">Κλειστές</option>
+                <option value="ForceClosed">Κλειστές (χειροκίνητα)</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Αναζήτηση κωδικού</label>
+            <input class="form-control" placeholder="π.χ. B2607..." @bind="searchOrderCode" @bind:event="oninput" />
+        </div>
+        <div class="col-6 col-md-2">
+            <button class="btn btn-success w-100" @onclick="OpenNewOrderPopup">➕ Νέα Παραγγελία</button>
+        </div>
+        <div class="col-6 col-md-2">
+            <button class="btn btn-primary w-100" @onclick="OpenReceivePopup">📥 Παραλαβή</button>
+        </div>
+        <div class="col-6 col-md-2">
+            <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
+        </div>
+    </div>
+</div>
+
+@if (status == "loading")
+{
+    <p><em>Φορτώνω...</em></p>
+}
+
+@if (status == "loaded")
+{
+    @if (FilteredOrders.Count == 0)
+    {
+        <div class="alert alert-info">Δεν υπάρχουν παραγγελίες παραγωγής με αυτά τα φίλτρα.</div>
+    }
+    @foreach (var order in FilteredOrders)
+    {
+        var isOpen = expandedOrderIds.Contains(order.ProductionOrderID);
+        <div class="order-card">
+            <div class="order-card-header" @onclick="() => ToggleExpand(order.ProductionOrderID)">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="expand-arrow @(isOpen ? "open" : "")">▶</span>
+                    <strong>@(order.ProductionOrderCode ?? $"#{order.ProductionOrderID}")</strong>
+                    <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
+                    <span class="badge bg-secondary">@order.Status</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
+                    <span class="summary-pill">📦 @order.Lines.Sum(l => l.QuantityOrdered) τεμ.</span>
+                    <span class="summary-pill">🧪 @order.Lines.Count κωδικοί</span>
+                    <span class="summary-pill">✅ @order.Lines.Sum(l => l.QuantityReceived) παραλήφθηκαν</span>
+                </div>
+            </div>
+            @if (isOpen)
+            {
+                <div class="order-card-body">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Κωδικός</th>
+                                <th>Περιγραφή</th>
+                                <th>Τύπος</th>
+                                <th>Παραγγέλθηκαν</th>
+                                <th>Παραλήφθηκαν</th>
+                                <th>Εκκρεμές</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var line in order.Lines)
+                            {
+                                <tr>
+                                    <td>@line.CodePrick</td>
+                                    <td>@line.AllergenDescription</td>
+                                    <td>@line.ProductTypeCode</td>
+                                    <td>@line.QuantityOrdered</td>
+                                    <td>@line.QuantityReceived</td>
+                                    <td><strong>@(line.QuantityOrdered - line.QuantityReceived)</strong></td>
+                                    <td><span class="badge bg-secondary">@line.LineStatus</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+}
+
+@if (showNewOrderPopup)
+{
+    <div class="popup-overlay" @onclick="CloseNewOrderPopup">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <h5>Νέα Παραγγελία Παραγωγής</h5>
+            <hr />
+            <div class="row g-2 mb-2">
+                <div class="col-6">
+                    <label class="form-label mb-1">Εταιρεία</label>
+                    <select class="form-control" value="@newOrderCompany" @onchange="e => OnNewOrderCompanyChanged(e.Value.ToString())">
+                        <option value="">-- Επίλεξε --</option>
+                        <option value="SM">StallMedicals</option>
+                        <option value="BM">BeltaMed</option>
+                    </select>
+                </div>
+                <div class="col-6">
+                    <label class="form-label mb-1">Ημερομηνία Παραγγελίας</label>
+                    <input type="date" class="form-control" @bind="newOrderDate" />
+                </div>
+            </div>
+
+            <label class="form-label mb-1">Γραμμές</label>
+            @for (int i = 0; i < newOrderLines.Count; i++)
+            {
+                var idx = i;
+                <div class="line-row">
+                    <select class="form-control form-control-sm" value="@newOrderLines[idx].CodePrick" @onchange="e => newOrderLines[idx].CodePrick = e.Value.ToString()">
+                        <option value="">-- Κωδικός --</option>
+                        @foreach (var a in allergenOptions)
+                        {
+                            <option value="@a.Code">@a.Code - @a.Description</option>
+                        }
+                    </select>
+                    <select class="form-control form-control-sm" value="@newOrderLines[idx].ProductTypeCode" @onchange="e => newOrderLines[idx].ProductTypeCode = e.Value.ToString()">
+                        <option value="">-- Τύπος --</option>
+                        @foreach (var p in productTypeOptions)
+                        {
+                            <option value="@p.Code">@p.Code - @p.Description</option>
+                        }
+                    </select>
+                    <input type="number" min="1" class="form-control form-control-sm" @bind="newOrderLines[idx].QuantityOrdered" />
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => newOrderLines.RemoveAt(idx)">✕</button>
+                </div>
+            }
+            <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="() => newOrderLines.Add(new CreateProductionOrderLineRequest())">
+                ➕ Προσθήκη γραμμής
+            </button>
+
+            @if (!string.IsNullOrEmpty(newOrderMessage))
+            {
+                <div class="alert alert-warning py-2">@newOrderMessage</div>
+            }
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary flex-fill" @onclick="CloseNewOrderPopup">Ακύρωση</button>
+                <button class="btn btn-success flex-fill" @onclick="SubmitNewOrder">Δημιουργία</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showReceivePopup)
+{
+    <div class="popup-overlay" @onclick="CloseReceivePopup">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <h5>Καταχώρηση Παραλαβής</h5>
+            <hr />
+            <div class="mb-2">
+                <label class="form-label mb-1">Εταιρεία</label>
+                <select class="form-control" value="@receiveCompany" @onchange="e => OnReceiveCompanyChanged(e.Value.ToString())">
+                    <option value="">-- Επίλεξε --</option>
+                    <option value="SM">StallMedicals</option>
+                    <option value="BM">BeltaMed</option>
+                </select>
+            </div>
+            <div class="mb-2">
+                <label class="form-label mb-1">Κωδικός Αλλεργιογόνου</label>
+                <select class="form-control" @bind="receiveCodePrick">
+                    <option value="">-- Επίλεξε --</option>
+                    @foreach (var a in allergenOptions)
+                    {
+                        <option value="@a.Code">@a.Code - @a.Description</option>
+                    }
+                </select>
+            </div>
+            <div class="mb-2">
+                <label class="form-label mb-1">Τύπος Προϊόντος</label>
+                <select class="form-control" @bind="receiveProductType">
+                    <option value="">-- Επίλεξε --</option>
+                    @foreach (var p in productTypeOptions)
+                    {
+                        <option value="@p.Code">@p.Code - @p.Description</option>
+                    }
+                </select>
+            </div>
+            <div class="row g-2 mb-2">
+                <div class="col-6">
+                    <label class="form-label mb-1">Ημερομηνία Παραλαβής</label>
+                    <input type="date" class="form-control" @bind="receiveDate" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label mb-1">Ποσότητα</label>
+                    <input type="number" min="1" class="form-control" @bind="receiveQuantity" />
+                </div>
+            </div>
+            <div class="mb-2">
+                <label class="form-label mb-1">Σημειώσεις</label>
+                <input class="form-control" @bind="receiveNotes" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(receiveMessage))
+            {
+                <div class="alert alert-info py-2">@receiveMessage</div>
+            }
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary flex-fill" @onclick="CloseReceivePopup">Κλείσιμο</button>
+                <button class="btn btn-primary flex-fill" @onclick="SubmitReceive">Καταχώρηση</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string selectedCompany = "";
+    private string selectedStatus = "";
+    private string searchOrderCode = "";
+    private string status = "idle";
+    private List<ProductionOrderDto> orders = new();
+    private HashSet<long> expandedOrderIds = new();
+    private List<SimpleCodeOptionDto> allergenOptions = new();
+    private List<SimpleCodeOptionDto> productTypeOptions = new();
+
+    // --- Quick stock check ---
+    private string stockCheckQuery = "";
+    private List<StockCheckDto> stockCheckResults = new();
+    private CancellationTokenSource? stockCheckDebounce;
+
+    // --- New order popup state ---
+    private bool showNewOrderPopup = false;
+    private string newOrderCompany = "";
+    private DateTime newOrderDate = DateTime.Today;
+    private List<CreateProductionOrderLineRequest> newOrderLines = new();
+    private string newOrderMessage = "";
+
+    // --- Receive popup state ---
+    private bool showReceivePopup = false;
+    private string receiveCompany = "";
+    private string receiveCodePrick = "";
+    private string receiveProductType = "";
+    private DateTime receiveDate = DateTime.Today;
+    private int receiveQuantity = 1;
+    private string receiveNotes = "";
+    private string receiveMessage = "";
+
+    private List<ProductionOrderDto> FilteredOrders =>
+        orders.Where(o => string.IsNullOrEmpty(searchOrderCode) ||
+                           (o.ProductionOrderCode ?? "").Contains(searchOrderCode, StringComparison.OrdinalIgnoreCase))
+              .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        status = "loading";
+        StateHasChanged();
+        orders = await new PrickProductionService(dataService).GetOrders(
+            string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany,
+            string.IsNullOrEmpty(selectedStatus) ? null : selectedStatus);
+        status = "loaded";
+        StateHasChanged();
+    }
+
+    private void ToggleExpand(long orderId)
+    {
+        if (!expandedOrderIds.Add(orderId))
+            expandedOrderIds.Remove(orderId);
+    }
+
+    private async Task OnStockCheckInput(ChangeEventArgs e)
+    {
+        stockCheckQuery = e.Value?.ToString() ?? "";
+        stockCheckDebounce?.Cancel();
+        stockCheckDebounce = new CancellationTokenSource();
+        var token = stockCheckDebounce.Token;
+
+        if (stockCheckQuery.Length < 2)
+        {
+            stockCheckResults = new();
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(350, token);
+            stockCheckResults = await new PrickProductionService(dataService).StockCheck(stockCheckQuery);
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private void OpenNewOrderPopup()
+    {
+        newOrderCompany = "";
+        newOrderDate = DateTime.Today;
+        newOrderLines = new List<CreateProductionOrderLineRequest> { new CreateProductionOrderLineRequest() };
+        newOrderMessage = "";
+        showNewOrderPopup = true;
+    }
+    private void CloseNewOrderPopup() => showNewOrderPopup = false;
+
+    private async Task OnNewOrderCompanyChanged(string company)
+    {
+        newOrderCompany = company;
+        allergenOptions = await new PrickProductionService(dataService).GetAllergens(company);
+        productTypeOptions = await new PrickProductionService(dataService).GetProductTypes(company);
+        StateHasChanged();
+    }
+
+    private async Task SubmitNewOrder()
+    {
+        if (string.IsNullOrEmpty(newOrderCompany))
+        {
+            newOrderMessage = "Επίλεξε εταιρεία.";
+            return;
+        }
+        var validLines = newOrderLines.Where(l => !string.IsNullOrEmpty(l.CodePrick) && !string.IsNullOrEmpty(l.ProductTypeCode) && l.QuantityOrdered > 0).ToList();
+        if (validLines.Count == 0)
+        {
+            newOrderMessage = "Πρόσθεσε τουλάχιστον μία έγκυρη γραμμή.";
+            return;
+        }
+
+        var req = new CreateProductionOrderRequest
+        {
+            Company = newOrderCompany,
+            OrderDate = newOrderDate,
+            Notes = null,
+            CreatedBy = userManager.User?.IdUser,
+            Lines = validLines
+        };
+
+        var result = await new PrickProductionService(dataService).CreateOrder(req);
+        if (result != null)
+        {
+            showNewOrderPopup = false;
+            await LoadData();
+        }
+        else
+        {
+            newOrderMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
+        }
+    }
+
+    private void OpenReceivePopup()
+    {
+        receiveCompany = "";
+        receiveCodePrick = "";
+        receiveProductType = "";
+        receiveDate = DateTime.Today;
+        receiveQuantity = 1;
+        receiveNotes = "";
+        receiveMessage = "";
+        showReceivePopup = true;
+    }
+    private void CloseReceivePopup() => showReceivePopup = false;
+
+    private async Task OnReceiveCompanyChanged(string company)
+    {
+        receiveCompany = company;
+        allergenOptions = await new PrickProductionService(dataService).GetAllergens(company);
+        productTypeOptions = await new PrickProductionService(dataService).GetProductTypes(company);
+        StateHasChanged();
+    }
+
+    private async Task SubmitReceive()
+    {
+        if (string.IsNullOrEmpty(receiveCodePrick) || string.IsNullOrEmpty(receiveProductType) || receiveQuantity <= 0)
+        {
+            receiveMessage = "Συμπλήρωσε κωδικό, τύπο και ποσότητα.";
+            return;
+        }
+
+        var req = new ReceiveStockRequest
+        {
+            CodePrick = receiveCodePrick,
+            ProductTypeCode = receiveProductType,
+            ReceivedDate = receiveDate,
+            Quantity = receiveQuantity,
+            Notes = receiveNotes,
+            CreatedBy = userManager.User?.IdUser
+        };
+
+        var result = await new PrickProductionService(dataService).ReceiveStock(req);
+        if (result != null)
+        {
+            receiveMessage = $"✅ Καταχωρήθηκε. Κάλυψε {result.QuantityAppliedToOrders} εκκρεμείς μονάδες παραγωγής, {result.QuantityExcess} πήγαν ως επιπλέον διαθέσιμο stock.";
+            await LoadData();
+        }
+        else
+        {
+            receiveMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
+        }
+    }
+}

@@ -1,27 +1,46 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 @inject UserManager userManager
 @inject NavigationManager Navigation
 @implements IDisposable
-
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3">
     <a class="navbar-brand" href="/">StallmedManager</a>
-
     <!-- Hamburger button για κινητό -->
     <button class="navbar-toggler" type="button" @onclick="ToggleMenu">
         <span class="navbar-toggler-icon"></span>
     </button>
-
     <!-- Collapsible menu -->
     <div class="@MenuClass">
         <div class="navbar-nav me-auto">
             <a class="nav-link" href="/" @onclick="CloseMenu">Home</a>
             <a class="nav-link" href="/orders" @onclick="CloseMenu">Orders</a>
             <a class="nav-link" href="/doctors" @onclick="CloseMenu">Doctors</a>
-            <a class="nav-link" href="/mytasks" @onclick="CloseMenu">MyTask</a>
-            <a class="nav-link" href="/mytasks/history" @onclick="CloseMenu">History</a>
-            <a class="nav-link" href="/stock-search" @onclick="CloseMenu">Stock</a>
-        </div>
 
+            <div class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    Εργασίες
+                </a>
+                <ul class="dropdown-menu dropdown-menu-dark">
+                    <li><a class="dropdown-item" href="/mytasks" @onclick="CloseMenu">Οι Εργασίες μου</a></li>
+                    <li><a class="dropdown-item" href="/mytasks/new" @onclick="CloseMenu">Νέα Εργασία</a></li>
+                    <li><hr class="dropdown-divider" /></li>
+                    <li><a class="dropdown-item" href="/mytasks/history" @onclick="CloseMenu">Ιστορικό</a></li>
+                </ul>
+            </div>
+
+            <a class="nav-link" href="/stock-search" @onclick="CloseMenu">Stock</a>
+
+            <div class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    Prick Test
+                </a>
+                <ul class="dropdown-menu dropdown-menu-dark">
+                    <li><a class="dropdown-item" href="/prick-dashboard" @onclick="CloseMenu">Dashboard</a></li>
+                    <li><a class="dropdown-item" href="/prick-doctor-orders" @onclick="CloseMenu">Doctor Orders</a></li>
+                    <li><a class="dropdown-item" href="/prick-production" @onclick="CloseMenu">Production Orders</a></li>
+                    <li><a class="dropdown-item" href="/prick-allocation" @onclick="CloseMenu">Allocation</a></li>
+                </ul>
+            </div>
+        </div>
         @if (userManager.IsLoggedIn)
         {
             <div class="d-flex align-items-center gap-3 ms-auto mt-2 mt-lg-0">
@@ -32,37 +51,29 @@
         }
     </div>
 </nav>
-
 <div class="container-fluid mt-3">
     @Body
 </div>
-
 @code {
     private bool menuOpen = false;
-
     private string MenuClass => menuOpen
         ? "collapse navbar-collapse show"
         : "collapse navbar-collapse";
-
     private void ToggleMenu() => menuOpen = !menuOpen;
     private void CloseMenu() => menuOpen = false;
-
     protected override void OnInitialized()
     {
         userManager.StatusChanged += OnStatusChanged;
     }
-
     private void OnStatusChanged(object sender, EventArgs e)
     {
         InvokeAsync(StateHasChanged);
     }
-
     private async Task Logout()
     {
         await userManager.Logout();
         Navigation.NavigateTo("/login");
     }
-
     public void Dispose()
     {
         userManager.StatusChanged -= OnStatusChanged;
