@@ -52,6 +52,13 @@ namespace StallmedManager.Server.Controllers
                 Company = o.Company,
                 OrderDate = o.OrderDate,
                 OrderStatus = o.OrderStatus,
+                ShippedAt = o.ShippedAt,
+                CourierTrackingCode = o.CourierTrackingCode,
+                RecipientName = o.RecipientName,
+                ShippingAddress = o.ShippingAddress,
+                ShippingCity = o.ShippingCity,
+                ShippingPostalCode = o.ShippingPostalCode,
+                ShippingPhone = o.ShippingPhone,
                 Lines = lines.Where(l => l.OrderID == o.OrderID).Select(l =>
                 {
                     allergenLookup.TryGetValue(l.CodePrick, out var allergen);
@@ -128,6 +135,11 @@ namespace StallmedManager.Server.Controllers
                 OrderDate = req.OrderDate,
                 OrderStatus = "Open",
                 Notes = req.Notes,
+                RecipientName = req.RecipientName,
+                ShippingAddress = req.ShippingAddress,
+                ShippingCity = req.ShippingCity,
+                ShippingPostalCode = req.ShippingPostalCode,
+                ShippingPhone = req.ShippingPhone,
                 CreatedBy = req.CreatedBy,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now
@@ -348,6 +360,42 @@ namespace StallmedManager.Server.Controllers
             }
 
             return Ok(created);
+        }
+
+        // ---- Κλείσιμο παραγγελίας για αποστολή ----
+        // (το πεδίο CourierTrackingCode προβλέπεται για μελλοντική σύνδεση με ACS API)
+        // ForceComplete: για διορθωτικές καταχωρήσεις (π.χ. ατελές migration) - κλειδώνει
+        // όλες τις γραμμές ως Fulfilled ΧΩΡΙΣ να πειράξει το πραγματικό stock/ledger.
+        [HttpPost("ship")]
+        public async Task<ActionResult<bool>> ShipOrder([FromBody] ShipOrderRequest req)
+        {
+            var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+            if (order == null)
+                return NotFound();
+
+            if (req.ForceComplete)
+            {
+                var lines = await _context.DoctorOrderLines.Where(l => l.OrderID == req.OrderID).ToListAsync();
+                foreach (var line in lines)
+                {
+                    line.QuantityAllocated = line.QuantityRequested - line.QuantityCancelled;
+                    line.LineStatus = "Fulfilled";
+                    line.UpdatedAt = DateTime.Now;
+                }
+                order.OrderStatus = "Fulfilled";
+            }
+
+            order.ShippedAt = DateTime.Now;
+            order.RecipientName = req.RecipientName ?? order.RecipientName;
+            order.ShippingAddress = req.ShippingAddress ?? order.ShippingAddress;
+            order.ShippingCity = req.ShippingCity ?? order.ShippingCity;
+            order.ShippingPostalCode = req.ShippingPostalCode ?? order.ShippingPostalCode;
+            order.ShippingPhone = req.ShippingPhone ?? order.ShippingPhone;
+            order.CourierTrackingCode = req.CourierTrackingCode;
+            order.UpdatedAt = DateTime.Now;
+
+            await _context.SaveChangesAsync();
+            return Ok(true);
         }
 
         // ---- Δημιουργία κωδικού παραγγελίας: SM/BM + YYMMDD + αύξων αριθμός ημέρας ----

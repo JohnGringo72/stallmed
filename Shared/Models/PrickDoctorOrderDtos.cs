@@ -21,6 +21,13 @@ namespace StallmedManager.Shared.Models
         public string Company { get; set; }
         public DateTime OrderDate { get; set; }
         public string OrderStatus { get; set; }
+        public DateTime? ShippedAt { get; set; }
+        public string? CourierTrackingCode { get; set; }
+        public string? RecipientName { get; set; }
+        public string? ShippingAddress { get; set; }
+        public string? ShippingCity { get; set; }
+        public string? ShippingPostalCode { get; set; }
+        public string? ShippingPhone { get; set; }
         public List<DoctorOrderLineViewDto> Lines { get; set; } = new();
     }
 
@@ -38,7 +45,24 @@ namespace StallmedManager.Shared.Models
         public DateTime OrderDate { get; set; }
         public string? Notes { get; set; }
         public int? CreatedBy { get; set; }
+        public string? RecipientName { get; set; }
+        public string? ShippingAddress { get; set; }
+        public string? ShippingCity { get; set; }
+        public string? ShippingPostalCode { get; set; }
+        public string? ShippingPhone { get; set; }
         public List<CreateDoctorOrderLineRequest> Lines { get; set; } = new();
+    }
+
+    public class ShipOrderRequest
+    {
+        public long OrderID { get; set; }
+        public string? RecipientName { get; set; }
+        public string? ShippingAddress { get; set; }
+        public string? ShippingCity { get; set; }
+        public string? ShippingPostalCode { get; set; }
+        public string? ShippingPhone { get; set; }
+        public string? CourierTrackingCode { get; set; }
+        public bool ForceComplete { get; set; }
     }
 
     public class QuickAddDoctorRequest

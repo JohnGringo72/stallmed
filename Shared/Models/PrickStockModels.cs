@@ -73,6 +73,8 @@ namespace StallmedManager.Shared.Models
         public DateTime OrderDate { get; set; }
         public int? SalesRepUserID { get; set; }
         public string OrderStatus { get; set; }
+        public DateTime? ShippedAt { get; set; }
+        public string? CourierTrackingCode { get; set; }
         public string? Notes { get; set; }
         public int? CreatedBy { get; set; }
         public DateTime CreatedAt { get; set; }
