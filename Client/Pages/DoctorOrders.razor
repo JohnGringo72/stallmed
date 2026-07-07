@@ -187,6 +187,48 @@
             justify-content: center;
             margin: 6px 0;
         }
+
+        /* Σε κινητό: κάθετη στοίβα αντί για σταθερό grid, ώστε να
+           φαίνεται πλήρες το όνομα/ημερομηνία χωρίς οριζόντιο scroll */
+        .col-header-row.doctor-row-grid,
+        .col-header-row.order-row-grid {
+            display: none;
+        }
+
+        .order-card-header.doctor-row-grid,
+        .sub-order-header.order-row-grid {
+            display: flex !important;
+            flex-wrap: wrap;
+            min-width: 0 !important;
+            row-gap: 4px;
+            column-gap: 8px;
+            white-space: normal;
+        }
+
+            .order-card-header.doctor-row-grid .doctor-name-cell,
+            .sub-order-header.order-row-grid > div:nth-of-type(1) {
+                flex: 1 1 100%;
+                order: -1;
+                font-size: 1rem;
+                overflow: visible;
+                text-overflow: unset;
+                white-space: normal;
+            }
+
+            .order-card-header.doctor-row-grid > div,
+            .sub-order-header.order-row-grid > div {
+                flex: 0 0 auto;
+                overflow: visible;
+                text-overflow: unset;
+                font-size: 0.82rem;
+                background: #f1f3f5;
+                border-radius: 10px;
+                padding: 2px 8px;
+            }
+
+        .grid-scroll-wrapper {
+            overflow-x: visible;
+        }
     }
 
     .order-row-grid {
@@ -194,7 +236,30 @@
         grid-template-columns: 24px 130px 1fr 130px 90px 130px 60px;
         column-gap: 10px;
         align-items: center;
+        min-width: 700px;
     }
+
+    .doctor-row-grid {
+        display: grid;
+        grid-template-columns: 24px 1fr 110px 110px 140px;
+        column-gap: 10px;
+        align-items: center;
+        min-width: 500px;
+    }
+
+    .grid-scroll-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .col-header-row, .order-card-header, .sub-order-header {
+        white-space: nowrap;
+    }
+
+        .col-header-row > div, .order-card-header .doctor-name-cell, .sub-order-header > div {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
 
     .col-header-row {
         background: #343a40;
@@ -320,40 +385,39 @@
     }
 
     <!-- Επικεφαλίδα στήλης Γιατρών (sortable, σαν Excel) -->
-    <div class="col-header-row">
-        <div class="col-header col-flex" @onclick='() => SetDoctorSort("name")'>
-            Γιατρός @SortArrow("name", doctorSortBy, doctorSortAsc)
-        </div>
-        <div class="col-header" @onclick='() => SetDoctorSort("count")'>
-            Παραγγελίες @SortArrow("count", doctorSortBy, doctorSortAsc)
-        </div>
-        <div class="col-header" @onclick='() => SetDoctorSort("pending")'>
-            Εκκρεμές @SortArrow("pending", doctorSortBy, doctorSortAsc)
-        </div>
-        <div class="col-header" @onclick='() => SetDoctorSort("date")'>
-            Τελευταία Παραγγελία @SortArrow("date", doctorSortBy, doctorSortAsc)
-        </div>
-    </div>
-
-    @foreach (var dg in SortedDoctorGroups)
-    {
-        var isDoctorOpen = expandedDoctor == dg.DoctorName;
-        <div class="order-card">
-            <div class="order-card-header" @onclick="() => ToggleDoctorExpand(dg.DoctorName)">
-                <div class="d-flex align-items-center gap-2">
-                    <span class="expand-arrow @(isDoctorOpen ? "open" : "")">▶</span>
-                    <strong>👨‍⚕️ @dg.DoctorName</strong>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <span class="summary-pill">📋 @dg.TotalOrders παραγγελίες</span>
-                    <span class="summary-pill @(dg.TotalPending > 0 ? "stock-low" : "")">⏳ @dg.TotalPending εκκρεμή</span>
-                    <span class="summary-pill">📅 @dg.LastOrderDate.ToString("dd/MM/yyyy")</span>
-                </div>
+    <div class="grid-scroll-wrapper">
+        <div class="col-header-row doctor-row-grid">
+            <div></div>
+            <div class="col-header" @onclick='() => SetDoctorSort("name")'>
+                Γιατρός @SortArrow("name", doctorSortBy, doctorSortAsc)
             </div>
+            <div class="col-header" @onclick='() => SetDoctorSort("count")'>
+                Παραγγελίες @SortArrow("count", doctorSortBy, doctorSortAsc)
+            </div>
+            <div class="col-header" @onclick='() => SetDoctorSort("pending")'>
+                Εκκρεμές @SortArrow("pending", doctorSortBy, doctorSortAsc)
+            </div>
+            <div class="col-header" @onclick='() => SetDoctorSort("date")'>
+                Τελευταία @SortArrow("date", doctorSortBy, doctorSortAsc)
+            </div>
+        </div>
 
-            @if (isDoctorOpen)
-            {
-                <div class="order-card-body">
+        @foreach (var dg in SortedDoctorGroups)
+        {
+            var isDoctorOpen = expandedDoctor == dg.DoctorName;
+            <div class="order-card">
+                <div class="order-card-header doctor-row-grid" @onclick="() => ToggleDoctorExpand(dg.DoctorName)">
+                    <span class="expand-arrow @(isDoctorOpen ? "open" : "")">▶</span>
+                    <div class="doctor-name-cell"><strong>👨‍⚕️ @dg.DoctorName</strong></div>
+                    <div>@dg.TotalOrders</div>
+                    <div class="@(dg.TotalPending > 0 ? "stock-low" : "")">@dg.TotalPending</div>
+                    <div>📅 @dg.LastOrderDate.ToString("dd/MM/yyyy")</div>
+                </div>
+
+                @if (isDoctorOpen)
+                {
+                    <div class="order-card-body">
+                        <div class="grid-scroll-wrapper">
                     <!-- Επικεφαλίδα στήλης Παραγγελιών (sortable) -->
                     <div class="col-header-row inner order-row-grid">
                         <div></div>
@@ -426,10 +490,12 @@
                             }
                         </div>
                     }
+                    </div>
                 </div>
             }
-        </div>
-    }
+            </div>
+        }
+    </div>
 }
 
 <!-- ================= NEW ORDER POPUP ================= -->
