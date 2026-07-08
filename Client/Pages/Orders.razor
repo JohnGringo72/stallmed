@@ -1,4 +1,4 @@
-﻿@page "/orders"
+@page "/orders"
 @using Blazored.LocalStorage;
 @using Microsoft.AspNetCore.Authorization;
 @using StallmedManager.Shared
@@ -122,6 +122,32 @@
         .scroll-to-top:hover {
             opacity: 1;
         }
+
+    .sortable-th {
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+    }
+
+        .sortable-th:hover {
+            background-color: #f0f0f0;
+        }
+
+    .pending-group-card {
+        border-left: 4px solid #6c757d;
+    }
+
+        .pending-group-card.pending-ok {
+            border-left-color: #198754;
+        }
+
+        .pending-group-card.pending-warn {
+            border-left-color: #ffc107;
+        }
+
+        .pending-group-card.pending-danger {
+            border-left-color: #dc3545;
+        }
 </style>
 
 <h1 class="mb-3">Παραγγελίες</h1>
@@ -206,12 +232,23 @@
 
 @if (status == "loaded")
 {
-    <div class="d-flex align-items-center gap-3 mb-2">
-        <div class="alert alert-info py-2 mb-0 flex-grow-1">
-            Σύνολο παραγγελιών: <strong>@FilteredPeople.Length</strong> |
-            Σύνολο QNT: <strong>@FilteredPeople.Sum(x => x.QNT ?? 0)</strong>
-        </div>
-        <div style="min-width:220px;">
+    <div class="d-flex align-items-center gap-3 mb-2 flex-wrap">
+        @if (showPendingView)
+        {
+            <div class="alert alert-warning py-2 mb-0 flex-grow-1">
+                Εκκρεμείς ομάδες (status "To be invoiced"): <strong>@PendingGroups.Count</strong> |
+                Σύνολο ειδών: <strong>@PendingGroups.Sum(g => g.Items.Count)</strong> |
+                Σύνολο ποσότητας: <strong>@PendingGroups.Sum(g => g.TotalQNT)</strong>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-info py-2 mb-0 flex-grow-1">
+                Σύνολο παραγγελιών: <strong>@FilteredPeople.Length</strong> |
+                Σύνολο QNT: <strong>@FilteredPeople.Sum(x => x.QNT ?? 0)</strong>
+            </div>
+        }
+        <div style="min-width:220px;" class="d-flex flex-wrap gap-2">
             <select class="form-control" value="@selectedTreatment" @onchange="e => selectedTreatment = e.Value.ToString()">
                 <option value="">Όλες οι Θεραπείες...</option>
                 @foreach (var t in treatmentOptions)
@@ -219,6 +256,9 @@
                     <option value="@t">@t</option>
                 }
             </select>
+            <button class="btn @(showPendingView ? "btn-secondary" : "btn-warning")" @onclick="TogglePendingView" title="Εμβόλια που έχουν έρθει αλλά δεν έχουν πάει ακόμα στα φαρμακεία">
+                @(showPendingView ? "🔙 Πίσω σε Λίστα" : "⏳ Εκκρεμή προς Φαρμακεία")
+            </button>
             <button class="btn btn-success" @onclick="ExportToExcel" title="Εξαγωγή σε Excel">
                 📥 Excel
             </button>
@@ -229,75 +269,158 @@
         </div>
     </div>
 
-    <!-- Desktop table -->
-    <div class="d-none d-md-block">
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Εταιρεία</th>
-                    <th>Ιατρός</th>
-                    <th>Ασθενής</th>
-                    <th>Θεραπεία</th>
-                    <th>Αλλεργιογόνο</th>
-                    <th>Ποσ.</th>
-                    <th>Ημερομηνία</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var order in FilteredPeople)
-                {
-                    <tr style="cursor:pointer;" @onclick="() => OpenPopup(order)">
-                        <td>@order.TreatmentID</td>
-                        <td>
-                            <span class="company-badge" style="background-color:@order.CompanyColor">
-                                @order.CompanyLabel
-                            </span>
-                        </td>
-                        <td>@order.Doctor</td>
-                        <td>@order.Patient</td>
-                        <td>@order.TreatmentDescription</td>
-                        <td class="allergen-cell">
-                            @if (!string.IsNullOrWhiteSpace(order.Allergen))
-                            {
-                                <span>🧪 @order.Allergen</span>
-                            }
-                        </td>
-                        <td>@order.QNT</td>
-                        <td>@(order.Ordered.HasValue? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</td>
-                        <td><span class="badge bg-@order.StatusColor">@order.StatusLabel</span></td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+    @if (showPendingView)
+    {
+        <!-- ===================== PENDING (status 11) GROUPED VIEW ===================== -->
+        <div class="alert alert-secondary py-2 mb-3" style="font-size:0.88rem;">
+            Εμβόλια με status <strong>"To be invoiced"</strong> ομαδοποιημένα ανά Γιατρό/Ασθενή.
+            Η ημερομηνία της ομάδας είναι η πιο πρόσφατη ημ. παραλαβής των ειδών της (γιατί αποδεσμεύονται όλα μαζί).
+            Ταξινόμηση: πιο παλιές (πιο καθυστερημένες) ομάδες πρώτα. Κάνε κλικ σε μια κάρτα για να δεις τα είδη.
+        </div>
 
-    <!-- Mobile cards -->
-    <div class="d-md-none">
-        @foreach (var order in FilteredPeople)
+        @if (pendingLoading)
         {
-            <div class="order-card" @onclick="() => OpenPopup(order)">
+            <p><em>Φορτώνω εκκρεμότητες (τελευταίοι 7 μήνες)...</em></p>
+        }
+        else
+        {
+            @if (!PendingGroups.Any())
+            {
+                <p><em>Δεν υπάρχουν εκκρεμότητες με βάση τα τρέχοντα φίλτρα.</em></p>
+            }
+
+            @foreach (var group in PendingGroups)
+            {
+                var groupKey = $"{group.Doctor}|{group.Patient}";
+                var pendingClass = group.DaysPending > 14 ? "pending-danger" : group.DaysPending > 7 ? "pending-warn" : "pending-ok";
+            var badgeClass = group.DaysPending > 14 ? "bg-danger" : group.DaysPending > 7 ? "bg-warning" : "bg-success";
+
+            <div class="order-card pending-group-card @pendingClass" @onclick="() => ToggleGroup(groupKey)">
                 <div class="card-top">
-                    <span class="doctor-name">@order.Doctor</span>
-                    <div class="d-flex gap-1">
-                        <span class="company-badge" style="background-color:@order.CompanyColor">@order.CompanyLabel</span>
-                        <span class="badge bg-@order.StatusColor">@order.StatusLabel</span>
-                    </div>
+                    <span class="doctor-name">
+                        <span class="badge" style="background-color:@group.CompanyColor; color:#333; margin-right:6px;">@group.CompanyLabel</span>
+                        @group.Doctor
+                    </span>
+                    <span class="badge @badgeClass">@group.DaysPending ημ. εκκρεμότητα</span>
                 </div>
-                <div class="patient-name">👤 @order.Patient</div>
-                <div class="treatment-name">💊 @order.TreatmentDescription</div>
-                @if (!string.IsNullOrWhiteSpace(order.Allergen))
-                {
-                    <div class="allergen-row">🧪 @order.Allergen</div>
-                }
+                <div class="patient-name">👤 @group.Patient</div>
                 <div class="card-bottom">
-                    <span>📅 @(order.Ordered.HasValue? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</span>
-                    <span>Ποσ: @order.QNT</span>
+                    <span>📅 Ημ. Παραλαβής: @(group.GroupDate.HasValue ? group.GroupDate.Value.ToString("dd/MM/yyyy") : "-")</span>
+                    <span>Είδη: @group.Items.Count | Σύνολο: @group.TotalQNT</span>
                 </div>
+
+                @if (expandedGroups.Contains(groupKey))
+                {
+                    <hr />
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Θεραπεία</th>
+                                    <th>Αλλεργιογόνο</th>
+                                    <th>Ποσ.</th>
+                                    <th>Ημ. Παραλαβής</th>
+                                    <th>Φαρμακείο</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in group.Items)
+                                {
+                                    <tr>
+                                        <td>@item.TreatmentDescription</td>
+                                        <td class="allergen-cell">@item.Allergen</td>
+                                        <td>@item.QNT</td>
+                                        <td>@(item.TakingDDate.HasValue ? item.TakingDDate.Value.ToString("dd/MM/yyyy") : "-")</td>
+                                        <td>@item.Pharmacy</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
             </div>
         }
-    </div>
+        }
+    }
+    else
+    {
+        <!-- ===================== NORMAL LIST VIEW ===================== -->
+        @if (listTransitioning)
+        {
+            <p><em>Φορτώνω...</em></p>
+        }
+        else
+        {
+        <!-- Desktop table -->
+        <div class="d-none d-md-block">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        @foreach (var col in sortableColumns)
+                        {
+                            <th class="sortable-th" @onclick="() => SortBy(col.Column)">@col.Label@SortIndicator(col.Column)</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var order in FilteredPeople)
+                    {
+                        <tr style="cursor:pointer;" @onclick="() => OpenPopup(order)">
+                            <td>@order.TreatmentID</td>
+                            <td>
+                                <span class="company-badge" style="background-color:@order.CompanyColor">
+                                    @order.CompanyLabel
+                                </span>
+                            </td>
+                            <td>@order.Doctor</td>
+                            <td>@order.Patient</td>
+                            <td>@order.TreatmentDescription</td>
+                            <td class="allergen-cell">
+                                @if (!string.IsNullOrWhiteSpace(order.Allergen))
+                                {
+                                    <span>🧪 @order.Allergen</span>
+                                }
+                            </td>
+                            <td>@order.QNT</td>
+                            <td>@(order.Ordered.HasValue? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</td>
+                            <td>@(order.TakingDDate.HasValue? order.TakingDDate.Value.ToString("dd/MM/yyyy") : "")</td>
+                            <td><span class="badge bg-@order.StatusColor">@order.StatusLabel</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Mobile cards -->
+        <div class="d-md-none">
+            @foreach (var order in FilteredPeople)
+            {
+                <div class="order-card" @onclick="() => OpenPopup(order)">
+                    <div class="card-top">
+                        <span class="doctor-name">@order.Doctor</span>
+                        <div class="d-flex gap-1">
+                            <span class="company-badge" style="background-color:@order.CompanyColor">@order.CompanyLabel</span>
+                            <span class="badge bg-@order.StatusColor">@order.StatusLabel</span>
+                        </div>
+                    </div>
+                    <div class="patient-name">👤 @order.Patient</div>
+                    <div class="treatment-name">💊 @order.TreatmentDescription</div>
+                    @if (!string.IsNullOrWhiteSpace(order.Allergen))
+                    {
+                        <div class="allergen-row">🧪 @order.Allergen</div>
+                    }
+                    <div class="card-bottom">
+                        <span>📅 @(order.Ordered.HasValue? order.Ordered.Value.ToString("dd/MM/yyyy") : "")</span>
+                        <span>Ποσ: @order.QNT</span>
+                    </div>
+                    <div class="card-bottom">
+                        <span>📦 Παραλαβή: @(order.TakingDDate.HasValue? order.TakingDDate.Value.ToString("dd/MM/yyyy") : "-")</span>
+                    </div>
+                </div>
+            }
+        </div>
+        }
+    }
 }
 
 @if (selectedOrder != null)
@@ -320,6 +443,7 @@
             <p><strong>Ημ. Λήξης:</strong> @selectedOrder.ExpDate</p>
             <p><strong>Status:</strong> <span class="badge bg-@selectedOrder.StatusColor">@selectedOrder.StatusLabel</span></p>
             <p><strong>Ημ. Παραγγελίας:</strong> @(selectedOrder.Ordered.HasValue? selectedOrder.Ordered.Value.ToString("dd/MM/yyyy") : "-")</p>
+            <p><strong>Ημ. Παραλαβής:</strong> @(selectedOrder.TakingDDate.HasValue? selectedOrder.TakingDDate.Value.ToString("dd/MM/yyyy") : "-")</p>
             <p><strong>Ημ. Αποστολής:</strong> @(selectedOrder.SendDateClient.HasValue? selectedOrder.SendDateClient.Value.ToString("dd/MM/yyyy") : "-")</p>
             <button class="btn btn-secondary mt-2 w-100" @onclick="ClosePopup">Κλείσιμο</button>
         </div>
@@ -349,7 +473,44 @@
     private List<string> companyOptions = new();
     private List<string> treatmentOptions = new();
 
-    private WebOrder[] FilteredPeople => people
+    // ---- Sorting state (normal list view) ----
+    private string sortColumn = "Ordered";
+    private bool sortAscending = false;
+
+    private readonly (string Label, string Column)[] sortableColumns = new[]
+    {
+        ("ID", "ID"),
+        ("Εταιρεία", "Company"),
+        ("Ιατρός", "Doctor"),
+        ("Ασθενής", "Patient"),
+        ("Θεραπεία", "Treatment"),
+        ("Αλλεργιογόνο", "Allergen"),
+        ("Ποσ.", "QNT"),
+        ("Ημερομηνία", "Ordered"),
+        ("Ημ. Παραλαβής", "TakingDDate"),
+        ("Status", "Status"),
+    };
+
+    // ---- Pending (status 11) grouped view state ----
+    private bool showPendingView = false;
+    private HashSet<string> expandedGroups = new();
+    private WebOrder[] pendingData = Array.Empty<WebOrder>();
+    private bool pendingLoading = false;
+    private bool listTransitioning = false;
+
+    private class PendingGroup
+    {
+        public string Doctor { get; set; } = "";
+        public string Patient { get; set; } = "";
+        public List<WebOrder> Items { get; set; } = new();
+        public DateTime? GroupDate { get; set; }
+        public int TotalQNT { get; set; }
+        public string CompanyLabel { get; set; } = "";
+        public string CompanyColor { get; set; } = "#6c757d";
+        public int DaysPending => GroupDate.HasValue ? Math.Max(0, (DateTime.Today - GroupDate.Value).Days) : 0;
+    }
+
+    private WebOrder[] FilteredPeopleUnsorted => people
         .Where(x => string.IsNullOrEmpty(selectedCompany) || x.CompanyID == selectedCompany)
         .Where(x => string.IsNullOrEmpty(selectedDoctor) || x.Doctor == selectedDoctor)
         .Where(x => string.IsNullOrEmpty(selectedPatient) || x.Patient == selectedPatient)
@@ -357,6 +518,142 @@
         .Where(x => string.IsNullOrEmpty(selectedStatus) || x.Status == selectedStatus)
         .Where(x => string.IsNullOrEmpty(selectedTreatment) || x.TreatmentDescription == selectedTreatment)
         .ToArray();
+
+    private WebOrder[] FilteredPeople => ApplySort(FilteredPeopleUnsorted).ToArray();
+
+    private IEnumerable<WebOrder> ApplySort(IEnumerable<WebOrder> source)
+    {
+        Func<WebOrder, object> keySelector = sortColumn switch
+        {
+            "ID" => x => x.TreatmentID ?? "",
+            "Company" => x => x.CompanyLabel ?? "",
+            "Doctor" => x => x.Doctor ?? "",
+            "Patient" => x => x.Patient ?? "",
+            "Treatment" => x => x.TreatmentDescription ?? "",
+            "Allergen" => x => x.Allergen ?? "",
+            "QNT" => x => x.QNT ?? 0,
+            "Ordered" => x => x.Ordered ?? DateTime.MinValue,
+            "TakingDDate" => x => x.TakingDDate ?? DateTime.MinValue,
+            "Status" => x => x.StatusLabel ?? "",
+            _ => x => x.Ordered ?? DateTime.MinValue
+        };
+
+        return sortAscending ? source.OrderBy(keySelector) : source.OrderByDescending(keySelector);
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+            sortAscending = !sortAscending;
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+    }
+
+    private string SortIndicator(string column) =>
+        sortColumn != column ? "" : (sortAscending ? " ▲" : " ▼");
+
+    // Πάντα Status == "11", ανεξάρτητα από το dropdown Status· τα υπόλοιπα φίλτρα (εταιρεία/γιατρός/ασθενής/φαρμακείο/θεραπεία) εφαρμόζονται κανονικά.
+    // Πηγή δεδομένων: pendingData (ξεχωριστό, φορτωμένο μόνο με status=11) -- ΟΧΙ το "people" της κανονικής λίστας,
+    // ώστε να μην αλλοιώνεται/φουσκώνει η κανονική προβολή Orders.
+    private WebOrder[] PendingSourceItems => pendingData
+        .Where(x => x.Status == "11")
+        .Where(x => string.IsNullOrEmpty(selectedCompany) || x.CompanyID == selectedCompany)
+        .Where(x => string.IsNullOrEmpty(selectedDoctor) || x.Doctor == selectedDoctor)
+        .Where(x => string.IsNullOrEmpty(selectedPatient) || x.Patient == selectedPatient)
+        .Where(x => string.IsNullOrEmpty(selectedPharmacy) || x.Pharmacy == selectedPharmacy)
+        .Where(x => string.IsNullOrEmpty(selectedTreatment) || x.TreatmentDescription == selectedTreatment)
+        .ToArray();
+
+    // Αν το είδος δόθηκε από ήδη υπάρχον στοκ, η TakingDDate μπορεί να είναι παλιότερη από την Ordered
+    // (π.χ. το στοκ παραλήφθηκε πολύ πριν μπει η παραγγελία). Σε αυτή την περίπτωση δεν υπάρχει
+    // πραγματική καθυστέρηση -- το είδος ήταν έτοιμο αμέσως μόλις μπήκε η παραγγελία, οπότε για τον
+    // υπολογισμό της ομάδας/καθυστέρησης χρησιμοποιούμε σαν "ενεργή" ημερομηνία την πιο μεταγενέστερη
+    // από τις δύο. Η πραγματική TakingDDate συνεχίζει να εμφανίζεται κανονικά στον αναλυτικό πίνακα.
+    private static DateTime? EffectiveTakingDate(WebOrder order)
+    {
+        if (!order.TakingDDate.HasValue)
+            return null;
+
+        if (order.Ordered.HasValue && order.TakingDDate.Value < order.Ordered.Value)
+            return order.Ordered.Value;
+
+        return order.TakingDDate;
+    }
+
+    private List<PendingGroup> PendingGroups => PendingSourceItems
+        .GroupBy(x => new { Doctor = x.Doctor ?? "", Patient = x.Patient ?? "" })
+        .Select(g => new PendingGroup
+        {
+            Doctor = g.Key.Doctor,
+            Patient = g.Key.Patient,
+            Items = g.OrderBy(x => x.TreatmentDescription).ToList(),
+            GroupDate = g.Max(x => EffectiveTakingDate(x)),
+            TotalQNT = g.Sum(x => x.QNT ?? 0),
+            CompanyLabel = g.First().CompanyLabel,
+            CompanyColor = PendingCompanyBadgeColor(g.First().CompanyID)
+        })
+        .OrderBy(g => g.GroupDate ?? DateTime.MaxValue)
+        .ThenBy(g => g.Doctor)
+        .ThenBy(g => g.Patient)
+        .ToList();
+
+    // Light-χρώματα εταιρείας ειδικά για την pending προβολή (SM: ανοιχτό πράσινο, BM: ανοιχτό ματζέντα)
+    private static string PendingCompanyBadgeColor(string? companyId) => companyId switch
+    {
+        "1" => "#b7ecb7", // SM
+        "2" => "#f0b3e0", // BM
+        _ => "#ced4da"
+    };
+
+    private async Task TogglePendingView()
+    {
+        showPendingView = !showPendingView;
+
+        if (showPendingView)
+        {
+            pendingLoading = true;
+            StateHasChanged();
+
+            try
+            {
+                var sevenMonthsAgo = DateTime.Today.AddMonths(-7);
+                var result = await new OrdersService(dataService).GetOrders(
+                    sevenMonthsAgo, DateTime.Today, "", "", "", "", "11");
+
+                pendingData = result ?? Array.Empty<WebOrder>();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TogglePendingView] error: {ex.Message}");
+                pendingData = Array.Empty<WebOrder>();
+            }
+            finally
+            {
+                pendingLoading = false;
+                StateHasChanged();
+            }
+        }
+        else
+        {
+            // Επιστροφή στην κανονική λίστα: δείξε "Φορτώνω..." ΠΡΩΤΑ (μικρό, γρήγορο render),
+            // άσε τον browser να το ζωγραφίσει, και ΜΕΤΑ κάνε το βαρύ render του πίνακα.
+            // Χωρίς αυτό, ο browser μπλοκάρει στο βαρύ render πριν προλάβει να δείξει οτιδήποτε.
+            listTransitioning = true;
+            StateHasChanged();
+            await Task.Delay(1);
+            listTransitioning = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleGroup(string key)
+    {
+        if (!expandedGroups.Add(key))
+            expandedGroups.Remove(key);
+    }
 
     private void OpenPopup(WebOrder order) => selectedOrder = order;
     private void ClosePopup() => selectedOrder = null;
@@ -375,6 +672,8 @@
         statusOptions = options.Statuses;
         companyOptions = options.Companies;
         treatmentOptions = options.Treatments;
+
+        await LoadData();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
