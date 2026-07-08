@@ -1,0 +1,304 @@
+@page "/prick-receiving"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+
+<PageTitle>Prick Test - Παραλαβή</PageTitle>
+
+<style>
+    .stock-check-bar {
+        background: #eef6ff;
+        border: 1px solid #b6d9ff;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+
+    .stock-check-results {
+        background: white;
+        border-radius: 6px;
+        margin-top: 8px;
+        max-height: 260px;
+        overflow-y: auto;
+    }
+
+    .filters-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+
+    .pending-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .company-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        color: white;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .pending-qty {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #dc3545;
+    }
+</style>
+
+<h1 class="mb-3">Prick Test - Παραλαβή</h1>
+
+@if (!string.IsNullOrEmpty(topBannerMessage))
+{
+    <div class="alert alert-success alert-dismissible">
+        @topBannerMessage
+        <button type="button" class="btn-close" @onclick="() => topBannerMessage = string.Empty"></button>
+    </div>
+}
+
+<!-- ================= QUICK STOCK CHECK ================= -->
+<div class="stock-check-bar">
+    <label class="form-label mb-1"><strong>🔍 Γρήγορος Έλεγχος Τρέχοντος Stock</strong></label>
+    <input class="form-control" placeholder="Γράψε κωδικό ή περιγραφή αλλεργιογόνου..."
+           value="@stockCheckQuery" @oninput="OnStockCheckInput" />
+    @if (stockCheckResults.Count > 0)
+    {
+        <div class="stock-check-results">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Κωδικός</th><th>Περιγραφή</th><th>Τύπος</th><th>Εταιρεία</th><th>Διαθέσιμο</th></tr></thead>
+                <tbody>
+                    @foreach (var s in stockCheckResults)
+                    {
+                        <tr>
+                            <td>@s.CodePrick</td>
+                            <td>@s.Description</td>
+                            <td>@s.ProductTypeCode <small class="text-muted">@s.ProductDescription</small></td>
+                            <td>@s.Company</td>
+                            <td><strong>@s.TotalRemaining</strong></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (stockCheckQuery.Length >= 2)
+    {
+        <div class="text-muted small mt-1">Κανένα διαθέσιμο stock για αυτή την αναζήτηση.</div>
+    }
+</div>
+
+<!-- ================= ΦΙΛΤΡΑ ================= -->
+<div class="filters-panel">
+    <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Εταιρεία</label>
+            <select class="form-control" value="@selectedCompany" @onchange="e => OnCompanyChanged(e.Value.ToString())">
+                <option value="">Όλες</option>
+                <option value="SM">StallMedicals</option>
+                <option value="BM">BeltaMed</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Τύπος</label>
+            <select class="form-control" value="@selectedProductType" @onchange="e => { selectedProductType = e.Value.ToString(); }">
+                <option value="">Όλοι</option>
+                @foreach (var p in productTypeOptions)
+                {
+                    <option value="@p.Code">@p.Code - @p.Description</option>
+                }
+            </select>
+        </div>
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Αναζήτηση κωδικού</label>
+            <input class="form-control" placeholder="π.χ. A-001..." @bind="searchCode" @bind:event="oninput" />
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Ταξινόμηση</label>
+            <select class="form-control" @bind="sortBy">
+                <option value="code">Κωδικός</option>
+                <option value="quantity">Ποσότητα</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-3">
+            <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
+        </div>
+    </div>
+</div>
+
+@if (status == "loading")
+{
+    <p><em>Φορτώνω...</em></p>
+}
+
+@if (status == "loaded")
+{
+    @if (FilteredSummary.Count == 0)
+    {
+        <div class="alert alert-info">Δεν υπάρχουν εκκρεμείς παραλαβές με αυτά τα φίλτρα. 🎉</div>
+    }
+    @foreach (var item in FilteredSummary)
+    {
+        <div class="pending-card">
+            <div class="row align-items-center g-2">
+                <div class="col-12 col-md-4">
+                    <span class="company-badge" style="background-color:@(item.Company == "SM" ? "#0d6efd" : "#6f42c1")">@item.Company</span>
+                    <strong class="ms-1">@item.CodePrick</strong> <small class="text-muted">@item.AllergenDescription</small>
+                    <div class="small text-muted">Τύπος: @item.ProductTypeCode (@item.ProductDescription) - @item.OrdersCount παραγγελίες</div>
+                </div>
+                <div class="col-4 col-md-2 text-center">
+                    <div class="pending-qty">@item.TotalPending</div>
+                    <div class="small text-muted">περιμένουμε</div>
+                </div>
+                <div class="col-4 col-md-2">
+                    <label class="form-label mb-1 small">Ήρθαν</label>
+                    <input type="number" min="1" class="form-control form-control-sm" @bind="receiveInputs[Key(item)].Quantity" />
+                </div>
+                <div class="col-4 col-md-2">
+                    <label class="form-label mb-1 small">Ημερομηνία</label>
+                    <input type="date" class="form-control form-control-sm" @bind="receiveInputs[Key(item)].Date" />
+                </div>
+                <div class="col-12 col-md-2">
+                    <button class="btn btn-primary w-100" @onclick="() => SubmitReceive(item)">📥 Καταχώρηση</button>
+                </div>
+            </div>
+            @if (receiveInputs[Key(item)].Message is { Length: > 0 } msg)
+            {
+                <div class="alert alert-info py-2 mt-2 mb-0">@msg</div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private string selectedCompany = "";
+    private string selectedProductType = "";
+    private string searchCode = "";
+    private string sortBy = "code";
+    private string status = "idle";
+    private string topBannerMessage = "";
+    private List<PendingReceiptSummaryDto> summary = new();
+    private List<SimpleCodeOptionDto> productTypeOptions = new();
+
+    private string stockCheckQuery = "";
+    private List<StockCheckDto> stockCheckResults = new();
+    private CancellationTokenSource? stockCheckDebounce;
+
+    private class ReceiveInput
+    {
+        public int Quantity { get; set; } = 1;
+        public DateTime Date { get; set; } = DateTime.Today;
+        public string? Message { get; set; }
+    }
+    private Dictionary<string, ReceiveInput> receiveInputs = new();
+
+    private string Key(PendingReceiptSummaryDto item) => $"{item.CodePrick}|{item.ProductTypeCode}|{item.Company}";
+
+    private List<PendingReceiptSummaryDto> FilteredSummary
+    {
+        get
+        {
+            var filtered = summary.Where(x => (string.IsNullOrEmpty(searchCode) ||
+                                x.CodePrick.Contains(searchCode, StringComparison.OrdinalIgnoreCase) ||
+                                (x.AllergenDescription?.Contains(searchCode, StringComparison.OrdinalIgnoreCase) ?? false)) &&
+                                (string.IsNullOrEmpty(selectedProductType) || x.ProductTypeCode == selectedProductType));
+
+            return sortBy == "code"
+                ? filtered.OrderBy(x => x.CodePrick).ToList()
+                : filtered.OrderByDescending(x => x.TotalPending).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        productTypeOptions = await new PrickProductionService(dataService).GetProductTypes(null);
+        await LoadData();
+    }
+
+    private async Task OnCompanyChanged(string company)
+    {
+        selectedCompany = company;
+        selectedProductType = "";
+        productTypeOptions = await new PrickProductionService(dataService).GetProductTypes(string.IsNullOrEmpty(company) ? null : company);
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        status = "loading";
+        StateHasChanged();
+        summary = await new PrickProductionService(dataService).GetPendingSummary(
+            string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany);
+
+        foreach (var item in summary)
+        {
+            var key = Key(item);
+            if (!receiveInputs.ContainsKey(key))
+                receiveInputs[key] = new ReceiveInput { Quantity = item.TotalPending };
+        }
+
+        status = "loaded";
+        StateHasChanged();
+    }
+
+    private async Task OnStockCheckInput(ChangeEventArgs e)
+    {
+        stockCheckQuery = e.Value?.ToString() ?? "";
+        stockCheckDebounce?.Cancel();
+        stockCheckDebounce = new CancellationTokenSource();
+        var token = stockCheckDebounce.Token;
+        if (stockCheckQuery.Length < 2)
+        {
+            stockCheckResults = new();
+            StateHasChanged();
+            return;
+        }
+        try
+        {
+            await Task.Delay(350, token);
+            stockCheckResults = await new PrickProductionService(dataService).StockCheck(stockCheckQuery);
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task SubmitReceive(PendingReceiptSummaryDto item)
+    {
+        var key = Key(item);
+        var input = receiveInputs[key];
+        input.Message = null;
+
+        if (input.Quantity <= 0)
+        {
+            input.Message = "Δώσε έγκυρη ποσότητα.";
+            return;
+        }
+
+        var req = new ReceiveStockRequest
+        {
+            CodePrick = item.CodePrick,
+            ProductTypeCode = item.ProductTypeCode,
+            ReceivedDate = input.Date,
+            Quantity = input.Quantity,
+            CreatedBy = userManager.User?.IdUser
+        };
+
+        var result = await new PrickProductionService(dataService).ReceiveStock(req);
+        if (result != null)
+        {
+            topBannerMessage = $"✅ {item.CodePrick} ({item.ProductTypeCode}): κάλυψε {result.QuantityAppliedToOrders} εκκρεμείς μονάδες, {result.QuantityExcess} πήγαν ως επιπλέον διαθέσιμο stock.";
+            await LoadData();
+        }
+        else
+        {
+            input.Message = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
+        }
+    }
+}

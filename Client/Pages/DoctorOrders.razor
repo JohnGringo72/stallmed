@@ -211,6 +211,48 @@
         .sub-order-header:hover {
             background: #f8f9fa;
         }
+
+    .stock-ok { color: #198754; font-weight: 600; }
+
+    .attachment-thumb {
+        position: relative;
+        width: 64px;
+        height: 64px;
+    }
+
+        .attachment-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+
+    .attachment-delete {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        padding: 0 4px;
+        line-height: 1.2;
+        font-size: 0.7rem;
+    }
+
+    .elsewhere-row {
+        padding: 8px;
+        border: 1px solid #eee;
+        border-radius: 6px;
+        margin-bottom: 6px;
+        cursor: pointer;
+    }
+
+        .elsewhere-row:hover {
+            background: #f0f7ff;
+        }
+
+        .elsewhere-row.selected {
+            background: #dbeaff;
+            border-color: #0d6efd;
+        }
 </style>
 
 <h1 class="mb-3">Prick Test - Doctor Orders</h1>
@@ -268,10 +310,11 @@
         <div class="col-6 col-md-2">
             <label class="form-label mb-1">Κατάσταση</label>
             <select class="form-control" value="@selectedStatus" @onchange="e => { selectedStatus = e.Value.ToString(); LoadData(); }">
-                <option value="">Ανοιχτές</option>
+                <option value="Open">Ανοιχτές</option>
                 <option value="ReadyToShip">Προς Αποστολή</option>
                 <option value="Fulfilled">Ολοκληρωμένες</option>
                 <option value="Cancelled">Ακυρωμένες</option>
+                <option value="All">Όλες</option>
             </select>
         </div>
         <div class="col-6 col-md-3">
@@ -333,6 +376,8 @@
                         var isOrderOpen = expandedOrder == order.OrderCode;
                         var totalRequested = order.Lines.Sum(l => l.QuantityRequested);
                         var totalPending = order.Lines.Sum(l => l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled);
+                        var totalFulfillable = order.Lines.Sum(l => Math.Min(l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled, l.AvailableStock));
+                        var totalElsewhere = order.Lines.Where(l => (l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled) > 0).Sum(l => l.ElsewhereQuantity);
                         var typeDescription = order.Lines.FirstOrDefault()?.ProductDescription ?? order.Lines.FirstOrDefault()?.ProductTypeCode;
                         <div class="sub-order-card">
                             <div class="sub-order-header" @onclick="() => ToggleOrderExpand(order.OrderCode)">
@@ -355,8 +400,20 @@
                                         <span class="badge bg-secondary">@order.OrderStatus</span>
                                     }
                                     <span class="summary-pill">📦 @totalRequested τεμ. (⏳@totalPending)</span>
+                                    @if (totalPending > 0)
+                                    {
+                                        <span class="summary-pill @(totalFulfillable >= totalPending ? "stock-ok" : "text-danger")">
+                                            Ζητ. @totalPending / Διαθ. @totalFulfillable / Αλλού @totalElsewhere
+                                        </span>
+                                    }
                                 </div>
                                 <div class="d-flex gap-1">
+                                    @if (totalFulfillable > 0)
+                                    {
+                                        <button class="btn btn-sm btn-success" @onclick="() => DoBulkAllocate(order)" @onclick:stopPropagation="true" title="Δέσμευση ό,τι είναι διαθέσιμο σε όλες τις γραμμές">
+                                            ⚡ Allocate Όλα
+                                        </button>
+                                    }
                                     @if (order.OrderStatus == "Open" && totalPending > 0 && totalPending < totalRequested)
                                     {
                                         <button class="btn btn-sm btn-outline-primary" @onclick="() => DoSplitPending(order)" @onclick:stopPropagation="true" title="Στείλε ό,τι είναι έτοιμο, το υπόλοιπο σε νέα παραγγελία">
@@ -373,27 +430,110 @@
                             </div>
                             @if (isOrderOpen)
                             {
-                                <table class="table table-sm mb-0">
+                                <table class="table table-sm mb-2">
                                     <thead>
                                         <tr>
-                                            <th>Κωδικός</th><th>Τύπος</th><th>Ζητ.</th><th>Δεσμ.</th><th>Ακυρ.</th><th>Εκκρεμές</th><th>Status</th>
+                                            <th>Κωδικός</th><th>Τύπος</th><th>Ζητ.</th><th>Δεσμ.</th><th>Ακυρ.</th><th>Εκκρεμές</th>
+                                            <th>Διαθέσιμο</th><th>Αλλού</th><th>Status</th><th></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var line in order.Lines)
                                         {
+                                            var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
                                             <tr>
                                                 <td>@line.CodePrick <small class="text-muted">@line.AllergenDescription</small></td>
                                                 <td>@line.ProductTypeCode</td>
                                                 <td>@line.QuantityRequested</td>
                                                 <td>@line.QuantityAllocated</td>
                                                 <td>@line.QuantityCancelled</td>
-                                                <td><strong>@(line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled)</strong></td>
+                                                <td><strong>@pending</strong></td>
+                                                <td class="@(line.AvailableStock >= pending && pending > 0 ? "stock-ok" : "")">@line.AvailableStock</td>
+                                                <td>
+                                                    @if (line.ElsewhereQuantity > 0)
+                                                    {
+                                                        <button class="btn btn-sm btn-link p-0" @onclick="() => OpenElsewherePopup(line)">@line.ElsewhereQuantity 🔍</button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted">-</span>
+                                                    }
+                                                </td>
                                                 <td><span class="badge bg-secondary">@line.LineStatus</span></td>
+                                                <td class="d-flex gap-1">
+                                                    @if (pending > 0)
+                                                    {
+                                                        <button class="btn btn-sm btn-success" disabled="@(line.AvailableStock <= 0)" @onclick="() => OpenAllocatePopup(line)">Allocate</button>
+                                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DoCancelLine(line)">Ακύρωση</button>
+                                                    }
+                                                    @if (line.QuantityAllocated == 0)
+                                                    {
+                                                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => DoRemoveLine(order, line)">✕</button>
+                                                    }
+                                                </td>
                                             </tr>
                                         }
                                     </tbody>
                                 </table>
+
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    @if (!showAddLineFor.Contains(order.OrderID))
+                                    {
+                                        <button class="btn btn-sm btn-outline-success" @onclick="() => OpenAddLineFor(order)">➕ Προσθήκη αλλεργιογόνου</button>
+                                    }
+                                    else
+                                    {
+                                        <div class="flex-grow-1 position-relative">
+                                            <input class="form-control form-control-sm" placeholder="Γράψε κωδικό ή όνομα..."
+                                                   value="@addLineSearchQuery" @oninput="e => OnAddLineSearch(order, e.Value.ToString())" />
+                                            @if (addLineSuggestions.Count > 0)
+                                            {
+                                                <div class="allergen-suggestions">
+                                                    @foreach (var s in addLineSuggestions)
+                                                    {
+                                                        <div class="allergen-suggestion-row" @onclick="() => SelectAddLineAllergen(order, s)">
+                                                            <strong>@s.Code</strong> - @s.DescriptionGreek
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                        <input type="number" min="1" class="form-control form-control-sm" style="width:80px;" @bind="addLineQuantity" />
+                                        <button class="btn btn-sm btn-success" @onclick="() => SubmitAddLine(order)">Προσθήκη</button>
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => showAddLineFor.Remove(order.OrderID)">Ακύρωση</button>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(addLineMessage))
+                                {
+                                    <div class="alert alert-warning py-1 px-2 small">@addLineMessage</div>
+                                }
+
+                                <div class="mb-2">
+                                    <label class="form-label mb-1 small">📝 Παρατηρήσεις</label>
+                                    <div class="d-flex gap-2">
+                                        <textarea class="form-control form-control-sm" rows="2" @bind="order.Notes"></textarea>
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => SaveNotes(order)">Αποθήκευση</button>
+                                    </div>
+                                </div>
+
+                                <div class="mb-2">
+                                    <label class="form-label mb-1 small">📎 Συνημμένα (@order.AttachmentCount)</label>
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        @if (orderAttachments.TryGetValue(order.OrderID, out var atts))
+                                        {
+                                            @foreach (var att in atts)
+                                            {
+                                                <div class="attachment-thumb">
+                                                    <a href="@GetAttachmentUrl(att.AttachmentID)" target="_blank">
+                                                        <img src="@GetAttachmentUrl(att.AttachmentID)" alt="@att.FileName" />
+                                                    </a>
+                                                    <button class="btn btn-sm btn-outline-danger attachment-delete" @onclick="() => DeleteAttachment(order, att)">✕</button>
+                                                </div>
+                                            }
+                                        }
+                                        <InputFile OnChange="e => OnAttachmentSelected(order, e)" class="form-control form-control-sm" style="max-width:220px;" accept="image/*" />
+                                    </div>
+                                </div>
                             }
                         </div>
                     }
@@ -401,6 +541,75 @@
             }
         </div>
     }
+}
+
+<!-- ================= ALLOCATE POPUP ================= -->
+@if (showAllocatePopup && allocateLine != null)
+{
+    <div class="popup-overlay" @onclick="CloseAllocatePopup">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <h5>Allocate Stock</h5>
+            <hr />
+            <p>@allocateLine.CodePrick (@allocateLine.AllergenDescription) - Τύπος @allocateLine.ProductTypeCode</p>
+            @{ var pendingQty = allocateLine.QuantityRequested - allocateLine.QuantityAllocated - allocateLine.QuantityCancelled; }
+            <p>Εκκρεμές: <strong>@pendingQty</strong> | Διαθέσιμο: <strong>@allocateLine.AvailableStock</strong></p>
+            <div class="mb-2">
+                <label class="form-label mb-1">Ποσότητα προς δέσμευση</label>
+                <input type="number" class="form-control" min="1" max="@Math.Min(pendingQty, allocateLine.AvailableStock)" @bind="allocateQuantity" />
+            </div>
+            @if (!string.IsNullOrEmpty(allocateMessage))
+            {
+                <div class="alert alert-warning py-2">@allocateMessage</div>
+            }
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary flex-fill" @onclick="CloseAllocatePopup">Ακύρωση</button>
+                <button class="btn btn-success flex-fill" @onclick="SubmitAllocate">Δέσμευση</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ================= ELSEWHERE / STEAL POPUP ================= -->
+@if (showElsewherePopup && elsewhereLine != null)
+{
+    <div class="popup-overlay" @onclick="CloseElsewherePopup">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <h5>🔍 Δεσμευμένο σε άλλες παραγγελίες</h5>
+            <hr />
+            <p>@elsewhereLine.CodePrick (@elsewhereLine.AllergenDescription) - Τύπος @elsewhereLine.ProductTypeCode</p>
+            <div style="max-height:220px; overflow-y:auto;">
+                @foreach (var e in elsewhereList)
+                {
+                    <div class="elsewhere-row @(selectedElsewhere == e ? "selected" : "")" @onclick="() => selectedElsewhere = e">
+                        <strong>@e.OrderCode</strong> - @e.DoctorName<br />
+                        <small>Ποσότητα: @e.QuantityAllocated - Δεσμεύτηκε: @e.AllocationDate.ToString("dd/MM/yyyy")</small>
+                    </div>
+                }
+                @if (elsewhereList.Count == 0)
+                {
+                    <div class="text-muted">Καμία ενεργή δέσμευση.</div>
+                }
+            </div>
+
+            @if (selectedElsewhere != null)
+            {
+                <div class="mt-2">
+                    <label class="form-label mb-1">Ποσότητα προς μετακίνηση (μέγιστο @selectedElsewhere.QuantityAllocated)</label>
+                    <input type="number" class="form-control" min="1" max="@selectedElsewhere.QuantityAllocated" @bind="stealQuantity" />
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(elsewhereMessage))
+            {
+                <div class="alert alert-warning py-2 mt-2">@elsewhereMessage</div>
+            }
+
+            <div class="d-flex gap-2 mt-3">
+                <button class="btn btn-secondary flex-fill" @onclick="CloseElsewherePopup">Κλείσιμο</button>
+                <button class="btn btn-primary flex-fill" @onclick="SubmitSteal" disabled="@(selectedElsewhere == null)">Μετακίνηση εδώ</button>
+            </div>
+        </div>
+    </div>
 }
 
 <!-- ================= NEW ORDER POPUP ================= -->
@@ -671,7 +880,7 @@
 
 @code {
     private string selectedCompany = "";
-    private string selectedStatus = "";
+    private string selectedStatus = "Open";
     private string searchOrderCode = "";
     private string status = "idle";
     private string topBannerMessage = "";
@@ -714,6 +923,32 @@
     private string quickAddName = "";
     private string quickAddPhone = "";
     private string quickAddCity = "";
+
+    // --- Allocate popup ---
+    private bool showAllocatePopup = false;
+    private DoctorOrderLineViewDto? allocateLine;
+    private int allocateQuantity = 1;
+    private string allocateMessage = "";
+
+    // --- Elsewhere / Steal popup ---
+    private bool showElsewherePopup = false;
+    private DoctorOrderLineViewDto? elsewhereLine;
+    private List<ElsewhereAllocationDto> elsewhereList = new();
+    private ElsewhereAllocationDto? selectedElsewhere;
+    private int stealQuantity = 1;
+    private string elsewhereMessage = "";
+
+    // --- Add allergen to existing order (inline) ---
+    private HashSet<long> showAddLineFor = new();
+    private string addLineSearchQuery = "";
+    private List<SimpleCodeOptionDto> addLineAllergenOptions = new();
+    private List<SimpleCodeOptionDto> addLineSuggestions = new();
+    private string? addLineSelectedCode;
+    private int addLineQuantity = 1;
+    private string addLineMessage = "";
+
+    // --- Attachments ---
+    private Dictionary<long, List<AttachmentDto>> orderAttachments = new();
 
     private bool showShippingFields = false;
     private string newOrderRecipientName = "";
@@ -850,9 +1085,17 @@
         expandedOrder = null;
     }
 
-    private void ToggleOrderExpand(string orderCode)
+    private async Task ToggleOrderExpand(string orderCode)
     {
-        expandedOrder = (expandedOrder == orderCode) ? null : orderCode;
+        if (expandedOrder == orderCode)
+        {
+            expandedOrder = null;
+            return;
+        }
+        expandedOrder = orderCode;
+        var order = orders.FirstOrDefault(o => o.OrderCode == orderCode);
+        if (order != null)
+            await LoadAttachments(order.OrderID);
     }
 
     protected override async Task OnInitializedAsync()
@@ -869,6 +1112,7 @@
             string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany,
             docId,
             string.IsNullOrEmpty(selectedStatus) ? null : selectedStatus);
+        // (selectedStatus is never empty now - always Open/ReadyToShip/Fulfilled/Cancelled/All)
         status = "loaded";
         StateHasChanged();
     }
@@ -1109,5 +1353,219 @@
         {
             newOrderMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
         }
+    }
+
+    // ===================== Allocate =====================
+    private async Task DoBulkAllocate(DoctorOrderViewDto order)
+    {
+        var svc = new PrickAllocationService(dataService);
+        int linesProcessed = 0, totalAllocated = 0;
+
+        foreach (var line in order.Lines)
+        {
+            var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
+            var toAllocate = Math.Min(pending, line.AvailableStock);
+            if (toAllocate <= 0) continue;
+
+            var req = new AllocateRequest { OrderLineID = line.OrderLineID, Quantity = toAllocate, UserID = userManager.User?.IdUser };
+            var result = await svc.Allocate(req);
+            if (result != null)
+            {
+                linesProcessed++;
+                totalAllocated += result.QuantityActuallyAllocated;
+            }
+        }
+
+        topBannerMessage = linesProcessed > 0
+            ? $"✅ Δεσμεύτηκαν συνολικά {totalAllocated} τεμάχια σε {linesProcessed} γραμμές της παραγγελίας {order.OrderCode}."
+            : "Δεν υπήρχε τίποτα διαθέσιμο για δέσμευση.";
+        await LoadData();
+    }
+
+    private void OpenAllocatePopup(DoctorOrderLineViewDto line)
+    {
+        allocateLine = line;
+        var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
+        allocateQuantity = Math.Min(pending, line.AvailableStock);
+        if (allocateQuantity < 1) allocateQuantity = 1;
+        allocateMessage = "";
+        showAllocatePopup = true;
+    }
+    private void CloseAllocatePopup() => showAllocatePopup = false;
+
+    private async Task SubmitAllocate()
+    {
+        if (allocateLine == null) return;
+        var pending = allocateLine.QuantityRequested - allocateLine.QuantityAllocated - allocateLine.QuantityCancelled;
+        if (allocateQuantity <= 0 || allocateQuantity > pending || allocateQuantity > allocateLine.AvailableStock)
+        {
+            allocateMessage = "Μη έγκυρη ποσότητα.";
+            return;
+        }
+        var req = new AllocateRequest { OrderLineID = allocateLine.OrderLineID, Quantity = allocateQuantity, UserID = userManager.User?.IdUser };
+        var result = await new PrickAllocationService(dataService).Allocate(req);
+        if (result != null)
+        {
+            showAllocatePopup = false;
+            await LoadData();
+        }
+        else
+        {
+            allocateMessage = "Κάτι πήγε στραβά - πιθανόν άλλαξε το διαθέσιμο stock. Δοκίμασε ξανά.";
+        }
+    }
+
+    // ===================== Elsewhere / Steal =====================
+    private async Task OpenElsewherePopup(DoctorOrderLineViewDto line)
+    {
+        elsewhereLine = line;
+        selectedElsewhere = null;
+        elsewhereMessage = "";
+        elsewhereList = await new PrickDoctorOrderService(dataService).GetElsewhere(line.CodePrick, line.ProductTypeCode, line.OrderLineID);
+        showElsewherePopup = true;
+    }
+    private void CloseElsewherePopup() => showElsewherePopup = false;
+
+    private async Task SubmitSteal()
+    {
+        if (elsewhereLine == null || selectedElsewhere == null) return;
+        if (stealQuantity <= 0 || stealQuantity > selectedElsewhere.QuantityAllocated)
+        {
+            elsewhereMessage = "Μη έγκυρη ποσότητα.";
+            return;
+        }
+        var req = new StealRequest
+        {
+            SourceAllocationID = selectedElsewhere.AllocationID,
+            Quantity = stealQuantity,
+            TargetOrderLineID = elsewhereLine.OrderLineID,
+            UserID = userManager.User?.IdUser
+        };
+        var result = await new PrickDoctorOrderService(dataService).Steal(req);
+        if (result != null && result.Success)
+        {
+            showElsewherePopup = false;
+            await LoadData();
+        }
+        else
+        {
+            elsewhereMessage = result?.Message ?? "Κάτι πήγε στραβά, δοκίμασε ξανά.";
+        }
+    }
+
+    // ===================== Cancel / Remove line =====================
+    private async Task DoCancelLine(DoctorOrderLineViewDto line)
+    {
+        var req = new CancelLineRequest { OrderLineID = line.OrderLineID, UserID = userManager.User?.IdUser };
+        var ok = await new PrickDoctorOrderService(dataService).CancelLine(req);
+        if (ok)
+        {
+            topBannerMessage = "✅ Το εκκρεμές υπόλοιπο της γραμμής ακυρώθηκε.";
+            await LoadData();
+        }
+    }
+
+    private async Task DoRemoveLine(DoctorOrderViewDto order, DoctorOrderLineViewDto line)
+    {
+        var req = new RemoveOrderLineRequest { OrderLineID = line.OrderLineID };
+        var ok = await new PrickDoctorOrderService(dataService).RemoveLine(req);
+        if (ok)
+            await LoadData();
+    }
+
+    // ===================== Add allergen to existing order =====================
+    private async Task OpenAddLineFor(DoctorOrderViewDto order)
+    {
+        showAddLineFor.Add(order.OrderID);
+        addLineSearchQuery = "";
+        addLineSuggestions = new();
+        addLineSelectedCode = null;
+        addLineQuantity = 1;
+        addLineMessage = "";
+        addLineAllergenOptions = await new PrickProductionService(dataService).GetAllergens(order.Company);
+    }
+
+    private void OnAddLineSearch(DoctorOrderViewDto order, string value)
+    {
+        addLineSearchQuery = value;
+        addLineSelectedCode = null;
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+        {
+            addLineSuggestions = new();
+            return;
+        }
+        addLineSuggestions = addLineAllergenOptions.Where(a =>
+                (a.Code?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (a.DescriptionGreek?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (a.Description?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false))
+            .Take(8)
+            .ToList();
+    }
+
+    private void SelectAddLineAllergen(DoctorOrderViewDto order, SimpleCodeOptionDto option)
+    {
+        addLineSelectedCode = option.Code;
+        addLineSearchQuery = $"{option.Code} - {option.DescriptionGreek}";
+        addLineSuggestions = new();
+    }
+
+    private async Task SubmitAddLine(DoctorOrderViewDto order)
+    {
+        if (string.IsNullOrEmpty(addLineSelectedCode) || addLineQuantity <= 0)
+        {
+            addLineMessage = "Διάλεξε αλλεργιογόνο και έγκυρη ποσότητα.";
+            return;
+        }
+        if (order.Lines.Any(l => l.CodePrick == addLineSelectedCode))
+        {
+            addLineMessage = "Αυτός ο κωδικός υπάρχει ήδη σε αυτή την παραγγελία.";
+            return;
+        }
+        var req = new AddOrderLineRequest { OrderID = order.OrderID, CodePrick = addLineSelectedCode, Quantity = addLineQuantity };
+        var ok = await new PrickDoctorOrderService(dataService).AddLine(req);
+        if (ok)
+        {
+            showAddLineFor.Remove(order.OrderID);
+            await LoadData();
+        }
+        else
+        {
+            addLineMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
+        }
+    }
+
+    // ===================== Notes =====================
+    private async Task SaveNotes(DoctorOrderViewDto order)
+    {
+        var req = new UpdateNotesRequest { OrderID = order.OrderID, Notes = order.Notes };
+        await new PrickDoctorOrderService(dataService).UpdateNotes(req);
+        topBannerMessage = "✅ Οι παρατηρήσεις αποθηκεύτηκαν.";
+    }
+
+    // ===================== Attachments =====================
+    private async Task LoadAttachments(long orderId)
+    {
+        var list = await new PrickDoctorOrderService(dataService).GetAttachments(orderId);
+        orderAttachments[orderId] = list ?? new();
+    }
+
+    private string GetAttachmentUrl(long attachmentId) => $"api/prickdoctororder/attachments/image/{attachmentId}";
+
+    private async Task OnAttachmentSelected(DoctorOrderViewDto order, InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).CopyToAsync(ms);
+        var bytes = ms.ToArray();
+        await new PrickDoctorOrderService(dataService).UploadAttachment(order.OrderID, bytes, file.Name);
+        await LoadAttachments(order.OrderID);
+        order.AttachmentCount = orderAttachments[order.OrderID].Count;
+    }
+
+    private async Task DeleteAttachment(DoctorOrderViewDto order, AttachmentDto att)
+    {
+        await new PrickDoctorOrderService(dataService).DeleteAttachment(att.AttachmentID);
+        await LoadAttachments(order.OrderID);
+        order.AttachmentCount = orderAttachments[order.OrderID].Count;
     }
 }

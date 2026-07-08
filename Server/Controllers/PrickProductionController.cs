@@ -226,6 +226,46 @@ namespace StallmedManager.Server.Controllers
             return $"{prefix}{Guid.NewGuid().ToString("N").Substring(0, 6)}";
         }
 
+        // ---- Συγκεντρωτική προβολή: πόσο περιμένουμε συνολικά ανά κωδικό+τύπο ----
+        [HttpGet("pending-summary")]
+        public async Task<ActionResult<List<PendingReceiptSummaryDto>>> GetPendingSummary([FromQuery] string? company)
+        {
+            var linesQuery = _context.ProductionOrderLines
+                .Include(l => l.ProductionOrder)
+                .Where(l => l.LineStatus == "Open" || l.LineStatus == "PartiallyReceived");
+
+            if (!string.IsNullOrEmpty(company))
+                linesQuery = linesQuery.Where(l => l.ProductionOrder.Company == company);
+
+            var lines = await linesQuery.ToListAsync();
+
+            var allergenLookup = await _context.AllergenCodes.ToDictionaryAsync(a => a.CodePrick);
+            var productLookup = await _context.ProductTypes.ToDictionaryAsync(p => p.ProductTypeCode);
+
+            var result = lines
+                .GroupBy(l => new { l.CodePrick, l.ProductTypeCode, l.ProductionOrder.Company })
+                .Select(g =>
+                {
+                    allergenLookup.TryGetValue(g.Key.CodePrick, out var allergen);
+                    productLookup.TryGetValue(g.Key.ProductTypeCode, out var product);
+                    return new PendingReceiptSummaryDto
+                    {
+                        CodePrick = g.Key.CodePrick,
+                        AllergenDescription = allergen?.DescriptionGreek ?? allergen?.Description,
+                        ProductTypeCode = g.Key.ProductTypeCode,
+                        ProductDescription = product?.Description,
+                        Company = g.Key.Company,
+                        TotalPending = g.Sum(l => l.QuantityOrdered - l.QuantityReceived),
+                        OrdersCount = g.Select(l => l.ProductionOrderID).Distinct().Count()
+                    };
+                })
+                .Where(x => x.TotalPending > 0)
+                .OrderByDescending(x => x.TotalPending)
+                .ToList();
+
+            return Ok(result);
+        }
+
         // ---- Καταχώρηση παραλαβής (καλεί sp_ReceiveProduction) ----
         [HttpPost("receive")]
         public async Task<ActionResult<ReceiveStockResult>> ReceiveStock([FromBody] ReceiveStockRequest req)

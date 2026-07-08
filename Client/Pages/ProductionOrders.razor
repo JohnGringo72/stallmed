@@ -184,9 +184,6 @@
             <button class="btn btn-success w-100" @onclick="OpenNewOrderPopup">➕ Νέα Παραγγελία</button>
         </div>
         <div class="col-6 col-md-2">
-            <button class="btn btn-primary w-100" @onclick="OpenReceivePopup">📥 Παραλαβή</button>
-        </div>
-        <div class="col-6 col-md-2">
             <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
         </div>
     </div>
@@ -318,68 +315,6 @@
     </div>
 }
 
-@if (showReceivePopup)
-{
-    <div class="popup-overlay" @onclick="CloseReceivePopup">
-        <div class="popup-box" @onclick:stopPropagation="true">
-            <h5>Καταχώρηση Παραλαβής</h5>
-            <hr />
-            <div class="mb-2">
-                <label class="form-label mb-1">Εταιρεία</label>
-                <select class="form-control" value="@receiveCompany" @onchange="e => OnReceiveCompanyChanged(e.Value.ToString())">
-                    <option value="">-- Επίλεξε --</option>
-                    <option value="SM">StallMedicals</option>
-                    <option value="BM">BeltaMed</option>
-                </select>
-            </div>
-            <div class="mb-2">
-                <label class="form-label mb-1">Κωδικός Αλλεργιογόνου</label>
-                <select class="form-control" @bind="receiveCodePrick">
-                    <option value="">-- Επίλεξε --</option>
-                    @foreach (var a in allergenOptions)
-                    {
-                        <option value="@a.Code">@a.Code - @a.Description</option>
-                    }
-                </select>
-            </div>
-            <div class="mb-2">
-                <label class="form-label mb-1">Τύπος Προϊόντος</label>
-                <select class="form-control" @bind="receiveProductType">
-                    <option value="">-- Επίλεξε --</option>
-                    @foreach (var p in productTypeOptions)
-                    {
-                        <option value="@p.Code">@p.Code - @p.Description</option>
-                    }
-                </select>
-            </div>
-            <div class="row g-2 mb-2">
-                <div class="col-6">
-                    <label class="form-label mb-1">Ημερομηνία Παραλαβής</label>
-                    <input type="date" class="form-control" @bind="receiveDate" />
-                </div>
-                <div class="col-6">
-                    <label class="form-label mb-1">Ποσότητα</label>
-                    <input type="number" min="1" class="form-control" @bind="receiveQuantity" />
-                </div>
-            </div>
-            <div class="mb-2">
-                <label class="form-label mb-1">Σημειώσεις</label>
-                <input class="form-control" @bind="receiveNotes" />
-            </div>
-
-            @if (!string.IsNullOrEmpty(receiveMessage))
-            {
-                <div class="alert alert-info py-2">@receiveMessage</div>
-            }
-
-            <div class="d-flex gap-2">
-                <button class="btn btn-secondary flex-fill" @onclick="CloseReceivePopup">Κλείσιμο</button>
-                <button class="btn btn-primary flex-fill" @onclick="SubmitReceive">Καταχώρηση</button>
-            </div>
-        </div>
-    </div>
-}
-
 @code {
     private string selectedCompany = "";
     private string selectedStatus = "";
@@ -401,16 +336,6 @@
     private DateTime newOrderDate = DateTime.Today;
     private List<CreateProductionOrderLineRequest> newOrderLines = new();
     private string newOrderMessage = "";
-
-    // --- Receive popup state ---
-    private bool showReceivePopup = false;
-    private string receiveCompany = "";
-    private string receiveCodePrick = "";
-    private string receiveProductType = "";
-    private DateTime receiveDate = DateTime.Today;
-    private int receiveQuantity = 1;
-    private string receiveNotes = "";
-    private string receiveMessage = "";
 
     private List<ProductionOrderDto> FilteredOrders =>
         orders.Where(o => string.IsNullOrEmpty(searchOrderCode) ||
@@ -512,57 +437,6 @@
         else
         {
             newOrderMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
-        }
-    }
-
-    private void OpenReceivePopup()
-    {
-        receiveCompany = "";
-        receiveCodePrick = "";
-        receiveProductType = "";
-        receiveDate = DateTime.Today;
-        receiveQuantity = 1;
-        receiveNotes = "";
-        receiveMessage = "";
-        showReceivePopup = true;
-    }
-    private void CloseReceivePopup() => showReceivePopup = false;
-
-    private async Task OnReceiveCompanyChanged(string company)
-    {
-        receiveCompany = company;
-        allergenOptions = await new PrickProductionService(dataService).GetAllergens(company);
-        productTypeOptions = await new PrickProductionService(dataService).GetProductTypes(company);
-        StateHasChanged();
-    }
-
-    private async Task SubmitReceive()
-    {
-        if (string.IsNullOrEmpty(receiveCodePrick) || string.IsNullOrEmpty(receiveProductType) || receiveQuantity <= 0)
-        {
-            receiveMessage = "Συμπλήρωσε κωδικό, τύπο και ποσότητα.";
-            return;
-        }
-
-        var req = new ReceiveStockRequest
-        {
-            CodePrick = receiveCodePrick,
-            ProductTypeCode = receiveProductType,
-            ReceivedDate = receiveDate,
-            Quantity = receiveQuantity,
-            Notes = receiveNotes,
-            CreatedBy = userManager.User?.IdUser
-        };
-
-        var result = await new PrickProductionService(dataService).ReceiveStock(req);
-        if (result != null)
-        {
-            receiveMessage = $"✅ Καταχωρήθηκε. Κάλυψε {result.QuantityAppliedToOrders} εκκρεμείς μονάδες παραγωγής, {result.QuantityExcess} πήγαν ως επιπλέον διαθέσιμο stock.";
-            await LoadData();
-        }
-        else
-        {
-            receiveMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
         }
     }
 }

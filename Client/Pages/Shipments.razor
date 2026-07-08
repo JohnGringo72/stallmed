@@ -1,0 +1,264 @@
+@page "/prick-shipments"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+
+<PageTitle>Prick Test - Αποστολές</PageTitle>
+
+<style>
+    .filters-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+
+    .ship-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .company-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        color: white;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .summary-pill {
+        background: #f1f3f5;
+        border-radius: 14px;
+        padding: 3px 12px;
+        font-size: 0.85rem;
+        color: #444;
+    }
+
+    .popup-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .popup-box {
+        background: white;
+        padding: 24px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 480px;
+    }
+</style>
+
+<h1 class="mb-3">Prick Test - Αποστολές</h1>
+
+@if (!string.IsNullOrEmpty(topBannerMessage))
+{
+    <div class="alert alert-success alert-dismissible">
+        @topBannerMessage
+        <button type="button" class="btn-close" @onclick="() => topBannerMessage = string.Empty"></button>
+    </div>
+}
+
+<div class="filters-panel">
+    <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Εταιρεία</label>
+            <select class="form-control" value="@selectedCompany" @onchange="e => { selectedCompany = e.Value.ToString(); LoadData(); }">
+                <option value="">Όλες</option>
+                <option value="SM">StallMedicals</option>
+                <option value="BM">BeltaMed</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-4">
+            <label class="form-label mb-1">Αναζήτηση (γιατρός/κωδικός)</label>
+            <input class="form-control" placeholder="π.χ. Παπαδόπουλος ή SM2607..." @bind="searchQuery" @bind:event="oninput" />
+        </div>
+        <div class="col-6 col-md-3">
+            <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
+        </div>
+    </div>
+</div>
+
+@if (status == "loading")
+{
+    <p><em>Φορτώνω...</em></p>
+}
+
+@if (status == "loaded")
+{
+    @if (FilteredOrders.Count == 0)
+    {
+        <div class="alert alert-info">Καμία παραγγελία προς αποστολή αυτή τη στιγμή. 🎉</div>
+    }
+    @foreach (var order in FilteredOrders)
+    {
+        var totalQty = order.Lines.Sum(l => l.QuantityRequested);
+        <div class="ship-card">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <strong>@order.OrderCode</strong>
+                <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
+                <span>👨‍⚕️ @order.DoctorName</span>
+                <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
+                <span class="summary-pill">📦 @totalQty τεμ. - @order.Lines.Count κωδικοί</span>
+                @if (order.AttachmentCount > 0)
+                {
+                    <span class="summary-pill">📎 @order.AttachmentCount</span>
+                }
+            </div>
+            <button class="btn btn-primary" @onclick="() => OpenShipPopup(order)">📦 Αποστολή</button>
+        </div>
+    }
+}
+
+@if (showShipPopup && shipOrder != null)
+{
+    <div class="popup-overlay" @onclick="CloseShipPopup">
+        <div class="popup-box" @onclick:stopPropagation="true">
+            <h5>📦 Αποστολή Παραγγελίας</h5>
+            <hr />
+            <p><strong>@shipOrder.OrderCode</strong> - @shipOrder.DoctorName</p>
+
+            <div class="mb-2">
+                <label class="form-label mb-1">Τρόπος Αποστολής</label>
+                <select class="form-control" @bind="shipCarrier">
+                    <option value="Salesperson">Πωλητής</option>
+                    <option value="ACS">ACS</option>
+                    <option value="Intralink">Intralink</option>
+                </select>
+            </div>
+
+            @if (shipCarrier == "Salesperson")
+            {
+                <div class="mb-2">
+                    <label class="form-label mb-1">Πωλητής</label>
+                    <select class="form-control" @bind="shipDeliveryUserId">
+                        <option value="">-- Επίλεξε --</option>
+                        @foreach (var sp in salespeople)
+                        {
+                            <option value="@sp.IdUser">@sp.FullName</option>
+                        }
+                    </select>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-secondary py-2 small">
+                    📮 Φόρμα voucher ACS: θα προστεθεί αργότερα. Προς το παρόν απλά κλείνει με ημερομηνία.
+                </div>
+            }
+
+            <div class="mb-2">
+                <label class="form-label mb-1">Ημερομηνία</label>
+                <input type="date" class="form-control" @bind="shipDate" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(shipMessage))
+            {
+                <div class="alert alert-warning py-2">@shipMessage</div>
+            }
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary flex-fill" @onclick="CloseShipPopup">Ακύρωση</button>
+                <button class="btn btn-success flex-fill" @onclick="SubmitShip">✅ Κλείσιμο Αποστολής</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string selectedCompany = "";
+    private string searchQuery = "";
+    private string status = "idle";
+    private string topBannerMessage = "";
+    private List<DoctorOrderViewDto> orders = new();
+    private List<SalespersonOptionDto> salespeople = new();
+
+    private bool showShipPopup = false;
+    private DoctorOrderViewDto? shipOrder;
+    private string shipCarrier = "Salesperson";
+    private string shipDeliveryUserId = "";
+    private DateTime shipDate = DateTime.Today;
+    private string shipMessage = "";
+
+    private List<DoctorOrderViewDto> FilteredOrders =>
+        orders.Where(o => string.IsNullOrEmpty(searchQuery) ||
+                           o.OrderCode.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                           (o.DoctorName?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false))
+              .OrderBy(o => o.OrderDate)
+              .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        salespeople = await new PrickDoctorOrderService(dataService).GetSalespeople();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        status = "loading";
+        StateHasChanged();
+        orders = await new PrickDoctorOrderService(dataService).GetOrders(
+            string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany, null, "ReadyToShip");
+        status = "loaded";
+        StateHasChanged();
+    }
+
+    private void OpenShipPopup(DoctorOrderViewDto order)
+    {
+        shipOrder = order;
+        shipCarrier = "Salesperson";
+        shipDeliveryUserId = "";
+        shipDate = DateTime.Today;
+        shipMessage = "";
+        showShipPopup = true;
+    }
+    private void CloseShipPopup() => showShipPopup = false;
+
+    private async Task SubmitShip()
+    {
+        if (shipOrder == null) return;
+        if (shipCarrier == "Salesperson" && string.IsNullOrEmpty(shipDeliveryUserId))
+        {
+            shipMessage = "Επίλεξε πωλητή.";
+            return;
+        }
+
+        var req = new SetShipmentRequest
+        {
+            OrderID = shipOrder.OrderID,
+            ShippingCarrier = shipCarrier,
+            DeliveryUserID = shipCarrier == "Salesperson" ? int.Parse(shipDeliveryUserId) : null,
+            ShippedDate = shipDate,
+            UserID = userManager.User?.IdUser
+        };
+
+        var ok = await new PrickDoctorOrderService(dataService).SetShipment(req);
+        if (ok)
+        {
+            topBannerMessage = $"✅ Η παραγγελία {shipOrder.OrderCode} απεστάλη.";
+            showShipPopup = false;
+            await LoadData();
+        }
+        else
+        {
+            shipMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
+        }
+    }
+}

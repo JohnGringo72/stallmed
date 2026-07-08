@@ -75,6 +75,8 @@ namespace StallmedManager.Shared.Models
         public string OrderStatus { get; set; }
         public DateTime? ShippedAt { get; set; }
         public string? CourierTrackingCode { get; set; }
+        public string? ShippingCarrier { get; set; }
+        public int? DeliveryUserID { get; set; }
         public string? Notes { get; set; }
         public int? CreatedBy { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -190,6 +192,19 @@ namespace StallmedManager.Shared.Models
         public long ReceiptID { get; set; }
         public long ProductionOrderLineID { get; set; }
         public int QuantityApplied { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    [Table("DoctorOrderAttachments")]
+    public class DoctorOrderAttachment
+    {
+        [Key]
+        public long AttachmentID { get; set; }
+        public long OrderID { get; set; }
+        public string? FileName { get; set; }
+        public string? ContentType { get; set; }
+        public byte[] ImageData { get; set; }
+        public int? UploadedBy { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

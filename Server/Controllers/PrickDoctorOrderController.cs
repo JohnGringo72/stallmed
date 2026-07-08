@@ -29,10 +29,11 @@ namespace StallmedManager.Server.Controllers
                 query = query.Where(o => o.Company == company);
             if (doctorId.HasValue)
                 query = query.Where(o => o.DoctorID == doctorId.Value);
-            if (!string.IsNullOrEmpty(status))
-                query = query.Where(o => o.OrderStatus == status);
-            else
+            if (string.IsNullOrEmpty(status) || status == "Open")
                 query = query.Where(o => o.OrderStatus == "Open");
+            else if (status != "All")
+                query = query.Where(o => o.OrderStatus == status);
+            // status == "All" -> καμία φίλτρανση, δείχνει όλες τις καταστάσεις
 
             var orders = await query.OrderByDescending(o => o.OrderDate).ToListAsync();
             var orderIds = orders.Select(o => o.OrderID).ToList();
@@ -40,9 +41,42 @@ namespace StallmedManager.Server.Controllers
             var lines = await _context.DoctorOrderLines
                 .Where(l => orderIds.Contains(l.OrderID))
                 .ToListAsync();
+            var lineIds = lines.Select(l => l.OrderLineID).ToList();
 
             var allergenLookup = await _context.AllergenCodes.ToDictionaryAsync(a => a.CodePrick);
             var productLookup = await _context.ProductTypes.ToDictionaryAsync(p => p.ProductTypeCode);
+
+            // Διαθέσιμο stock ανά κωδικό+τύπο (μόνο ελεύθερο, μη δεσμευμένο)
+            var stockAgg = await _context.StockReceipts
+                .Where(r => !r.IsDepleted)
+                .GroupBy(r => new { r.CodePrick, r.ProductTypeCode })
+                .Select(g => new { g.Key.CodePrick, g.Key.ProductTypeCode, Total = g.Sum(x => x.QuantityRemaining) })
+                .ToListAsync();
+            var stockDict = stockAgg.ToDictionary(x => (x.CodePrick, x.ProductTypeCode), x => x.Total);
+
+            // "Δεσμευμένο αλλού": ενεργές δεσμεύσεις σε ΑΛΛΕΣ γραμμές, ίδιου κωδικού+τύπου
+            var activeAllocs = await _context.OrderAllocations
+                .Where(a => a.AllocationStatus == "Active")
+                .ToListAsync();
+            var allLineCodes = await _context.DoctorOrderLines
+                .Select(l => new { l.OrderLineID, l.CodePrick, l.ProductTypeCode })
+                .ToListAsync();
+            var lineCodeLookup = allLineCodes.ToDictionary(l => l.OrderLineID, l => (l.CodePrick, l.ProductTypeCode));
+
+            int ElsewhereFor(long thisLineId, string codePrick, string productTypeCode)
+            {
+                return activeAllocs
+                    .Where(a => a.OrderLineID != thisLineId &&
+                                lineCodeLookup.TryGetValue(a.OrderLineID, out var cc) &&
+                                cc.CodePrick == codePrick && cc.ProductTypeCode == productTypeCode)
+                    .Sum(a => a.QuantityAllocated);
+            }
+
+            var attachmentCounts = await _context.DoctorOrderAttachments
+                .Where(a => orderIds.Contains(a.OrderID))
+                .GroupBy(a => a.OrderID)
+                .Select(g => new { OrderID = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.OrderID, x => x.Count);
 
             var result = orders.Select(o => new DoctorOrderViewDto
             {
@@ -59,10 +93,13 @@ namespace StallmedManager.Server.Controllers
                 ShippingCity = o.ShippingCity,
                 ShippingPostalCode = o.ShippingPostalCode,
                 ShippingPhone = o.ShippingPhone,
+                Notes = o.Notes,
+                AttachmentCount = attachmentCounts.TryGetValue(o.OrderID, out var cnt) ? cnt : 0,
                 Lines = lines.Where(l => l.OrderID == o.OrderID).Select(l =>
                 {
                     allergenLookup.TryGetValue(l.CodePrick, out var allergen);
                     productLookup.TryGetValue(l.ProductTypeCode, out var product);
+                    stockDict.TryGetValue((l.CodePrick, l.ProductTypeCode), out var available);
                     return new DoctorOrderLineViewDto
                     {
                         OrderLineID = l.OrderLineID,
@@ -73,7 +110,9 @@ namespace StallmedManager.Server.Controllers
                         QuantityRequested = l.QuantityRequested,
                         QuantityAllocated = l.QuantityAllocated,
                         QuantityCancelled = l.QuantityCancelled,
-                        LineStatus = l.LineStatus
+                        LineStatus = l.LineStatus,
+                        AvailableStock = available,
+                        ElsewhereQuantity = ElsewhereFor(l.OrderLineID, l.CodePrick, l.ProductTypeCode)
                     };
                 }).ToList()
             }).ToList();
@@ -173,6 +212,255 @@ namespace StallmedManager.Server.Controllers
                 OrderStatus = order.OrderStatus
             });
         }
+
+        // =====================================================================
+        // "Δεσμευμένο αλλού" + Κλέψιμο
+        // =====================================================================
+
+        // ---- Λίστα ενεργών δεσμεύσεων ίδιου κωδικού+τύπου σε ΑΛΛΕΣ γραμμές ----
+        [HttpGet("elsewhere")]
+        public async Task<ActionResult<List<ElsewhereAllocationDto>>> GetElsewhere(
+            [FromQuery] string codePrick, [FromQuery] string productTypeCode, [FromQuery] long excludeOrderLineId)
+        {
+            var otherLineIds = await _context.DoctorOrderLines
+                .Where(l => l.CodePrick == codePrick && l.ProductTypeCode == productTypeCode && l.OrderLineID != excludeOrderLineId)
+                .Select(l => l.OrderLineID)
+                .ToListAsync();
+
+            var allocs = await _context.OrderAllocations
+                .Where(a => a.AllocationStatus == "Active" && otherLineIds.Contains(a.OrderLineID))
+                .OrderBy(a => a.AllocationDate)
+                .ToListAsync();
+
+            var lineOrderMap = await _context.DoctorOrderLines
+                .Where(l => otherLineIds.Contains(l.OrderLineID))
+                .Select(l => new { l.OrderLineID, l.OrderID })
+                .ToListAsync();
+            var orderIds = lineOrderMap.Select(x => x.OrderID).Distinct().ToList();
+            var ordersInfo = await _context.DoctorOrders.Include(o => o.Doctor)
+                .Where(o => orderIds.Contains(o.OrderID)).ToListAsync();
+
+            var result = allocs.Select(a =>
+            {
+                var lineOrder = lineOrderMap.First(x => x.OrderLineID == a.OrderLineID);
+                var ord = ordersInfo.First(o => o.OrderID == lineOrder.OrderID);
+                return new ElsewhereAllocationDto
+                {
+                    AllocationID = a.AllocationID,
+                    OrderLineID = a.OrderLineID,
+                    OrderCode = ord.OrderCode,
+                    DoctorName = ord.Doctor != null ? ord.Doctor.FullName : ord.DoctorName,
+                    QuantityAllocated = a.QuantityAllocated,
+                    AllocationDate = a.AllocationDate
+                };
+            }).ToList();
+
+            return Ok(result);
+        }
+
+        // ---- Κλέψιμο: reverse του source, allocate στο target, re-allocate το υπόλοιπο πίσω ----
+        [HttpPost("steal")]
+        public async Task<ActionResult<StealResult>> Steal([FromBody] StealRequest req)
+        {
+            var connection = (MySqlConnector.MySqlConnection)_context.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+                await connection.OpenAsync();
+
+            var alloc = await _context.OrderAllocations.FindAsync(req.SourceAllocationID);
+            if (alloc == null || alloc.AllocationStatus != "Active")
+                return BadRequest(new StealResult { Success = false, Message = "Η δέσμευση δεν είναι πλέον ενεργή." });
+
+            if (req.Quantity <= 0 || req.Quantity > alloc.QuantityAllocated)
+                return BadRequest(new StealResult { Success = false, Message = "Μη έγκυρη ποσότητα." });
+
+            var sourceLineId = alloc.OrderLineID;
+            var originalQuantity = alloc.QuantityAllocated;
+
+            using (var cmd1 = connection.CreateCommand())
+            {
+                cmd1.CommandText = "sp_ReverseAllocation";
+                cmd1.CommandType = System.Data.CommandType.StoredProcedure;
+                cmd1.Parameters.Add(new MySqlConnector.MySqlParameter("p_AllocationID", MySqlConnector.MySqlDbType.Int64) { Value = req.SourceAllocationID });
+                cmd1.Parameters.Add(new MySqlConnector.MySqlParameter("p_UserID", MySqlConnector.MySqlDbType.Int32) { Value = (object?)req.UserID ?? DBNull.Value });
+                cmd1.Parameters.Add(new MySqlConnector.MySqlParameter("p_Reason", MySqlConnector.MySqlDbType.VarChar) { Value = "Μετακίνηση (κλέψιμο) σε άλλη παραγγελία" });
+                await cmd1.ExecuteNonQueryAsync();
+            }
+
+            using (var cmd2 = connection.CreateCommand())
+            {
+                cmd2.CommandText = "sp_AllocateStock";
+                cmd2.CommandType = System.Data.CommandType.StoredProcedure;
+                cmd2.Parameters.Add(new MySqlConnector.MySqlParameter("p_OrderLineID", MySqlConnector.MySqlDbType.Int64) { Value = req.TargetOrderLineID });
+                cmd2.Parameters.Add(new MySqlConnector.MySqlParameter("p_QuantityToAllocate", MySqlConnector.MySqlDbType.Int32) { Value = req.Quantity });
+                cmd2.Parameters.Add(new MySqlConnector.MySqlParameter("p_UserID", MySqlConnector.MySqlDbType.Int32) { Value = (object?)req.UserID ?? DBNull.Value });
+                var outAlloc = new MySqlConnector.MySqlParameter("p_QuantityActuallyAllocated", MySqlConnector.MySqlDbType.Int32) { Direction = System.Data.ParameterDirection.Output };
+                cmd2.Parameters.Add(outAlloc);
+                await cmd2.ExecuteNonQueryAsync();
+            }
+
+            var remainder = originalQuantity - req.Quantity;
+            if (remainder > 0)
+            {
+                using var cmd3 = connection.CreateCommand();
+                cmd3.CommandText = "sp_AllocateStock";
+                cmd3.CommandType = System.Data.CommandType.StoredProcedure;
+                cmd3.Parameters.Add(new MySqlConnector.MySqlParameter("p_OrderLineID", MySqlConnector.MySqlDbType.Int64) { Value = sourceLineId });
+                cmd3.Parameters.Add(new MySqlConnector.MySqlParameter("p_QuantityToAllocate", MySqlConnector.MySqlDbType.Int32) { Value = remainder });
+                cmd3.Parameters.Add(new MySqlConnector.MySqlParameter("p_UserID", MySqlConnector.MySqlDbType.Int32) { Value = (object?)req.UserID ?? DBNull.Value });
+                var outAlloc2 = new MySqlConnector.MySqlParameter("p_QuantityActuallyAllocated", MySqlConnector.MySqlDbType.Int32) { Direction = System.Data.ParameterDirection.Output };
+                cmd3.Parameters.Add(outAlloc2);
+                await cmd3.ExecuteNonQueryAsync();
+            }
+
+            return Ok(new StealResult { Success = true });
+        }
+
+        // =====================================================================
+        // Ακύρωση γραμμής
+        // =====================================================================
+        [HttpPost("cancel-line")]
+        public async Task<ActionResult> CancelLine([FromBody] CancelLineRequest req)
+        {
+            var line = await _context.DoctorOrderLines.FindAsync(req.OrderLineID);
+            if (line == null) return NotFound();
+
+            var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
+            if (pending <= 0)
+                return BadRequest("Δεν υπάρχει εκκρεμές υπόλοιπο σε αυτή τη γραμμή για ακύρωση.");
+
+            line.QuantityCancelled += pending;
+            if (line.QuantityAllocated == 0)
+                line.LineStatus = "Cancelled";
+            else
+                line.LineStatus = "Fulfilled";
+            line.UpdatedAt = DateTime.Now;
+
+            await _context.SaveChangesAsync();
+
+            var order = await _context.DoctorOrders.FindAsync(line.OrderID);
+            var siblingLines = await _context.DoctorOrderLines.Where(l => l.OrderID == line.OrderID).ToListAsync();
+            if (order != null && order.OrderStatus == "Open" &&
+                siblingLines.All(l => l.LineStatus == "Fulfilled" || l.LineStatus == "Cancelled"))
+            {
+                order.OrderStatus = "ReadyToShip";
+                order.UpdatedAt = DateTime.Now;
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok();
+        }
+
+        // =====================================================================
+        // Επεξεργασία παραγγελίας: notes, προσθήκη/αφαίρεση γραμμής
+        // =====================================================================
+        [HttpPost("update-notes")]
+        public async Task<ActionResult> UpdateNotes([FromBody] UpdateNotesRequest req)
+        {
+            var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+            if (order == null) return NotFound();
+            order.Notes = req.Notes;
+            order.UpdatedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
+        [HttpPost("add-line")]
+        public async Task<ActionResult> AddLine([FromBody] AddOrderLineRequest req)
+        {
+            var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+            if (order == null) return NotFound();
+            if (req.Quantity <= 0) return BadRequest("Μη έγκυρη ποσότητα.");
+
+            var existingLine = await _context.DoctorOrderLines.FirstOrDefaultAsync(l => l.OrderID == req.OrderID);
+            var productTypeCode = existingLine?.ProductTypeCode ?? "";
+
+            _context.DoctorOrderLines.Add(new DoctorOrderLine
+            {
+                OrderID = req.OrderID,
+                CodePrick = req.CodePrick,
+                ProductTypeCode = productTypeCode,
+                QuantityRequested = req.Quantity,
+                QuantityAllocated = 0,
+                QuantityCancelled = 0,
+                LineStatus = "Pending",
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            });
+
+            if (order.OrderStatus == "ReadyToShip")
+                order.OrderStatus = "Open";
+            order.UpdatedAt = DateTime.Now;
+
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
+        [HttpPost("remove-line")]
+        public async Task<ActionResult> RemoveLine([FromBody] RemoveOrderLineRequest req)
+        {
+            var line = await _context.DoctorOrderLines.FindAsync(req.OrderLineID);
+            if (line == null) return NotFound();
+            if (line.QuantityAllocated > 0)
+                return BadRequest("Δεν μπορείς να αφαιρέσεις γραμμή που έχει ήδη δεσμευμένο stock - ανακάλεσε πρώτα τη δέσμευση.");
+
+            _context.DoctorOrderLines.Remove(line);
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
+        // =====================================================================
+        // Attachments (εικόνες)
+        // =====================================================================
+        [HttpGet("attachments/{orderId}")]
+        public async Task<ActionResult<List<AttachmentDto>>> GetAttachments(long orderId)
+        {
+            var list = await _context.DoctorOrderAttachments
+                .Where(a => a.OrderID == orderId)
+                .OrderByDescending(a => a.CreatedAt)
+                .Select(a => new AttachmentDto { AttachmentID = a.AttachmentID, FileName = a.FileName, CreatedAt = a.CreatedAt })
+                .ToListAsync();
+            return Ok(list);
+        }
+
+        [HttpPost("attachments/{orderId}")]
+        public async Task<ActionResult> UploadAttachment(long orderId, IFormFile file)
+        {
+            if (file == null || file.Length == 0) return BadRequest("Δεν στάλθηκε αρχείο.");
+
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+
+            _context.DoctorOrderAttachments.Add(new DoctorOrderAttachment
+            {
+                OrderID = orderId,
+                FileName = file.FileName,
+                ContentType = file.ContentType,
+                ImageData = ms.ToArray(),
+                CreatedAt = DateTime.Now
+            });
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
+        [HttpGet("attachments/image/{attachmentId}")]
+        [AllowAnonymous]
+        public async Task<ActionResult> GetAttachmentImage(long attachmentId)
+        {
+            var att = await _context.DoctorOrderAttachments.FindAsync(attachmentId);
+            if (att == null) return NotFound();
+            return File(att.ImageData, att.ContentType ?? "application/octet-stream");
+        }
+
+        [HttpPost("attachments/delete/{attachmentId}")]
+        public async Task<ActionResult> DeleteAttachment(long attachmentId)
+        {
+            var att = await _context.DoctorOrderAttachments.FindAsync(attachmentId);
+            if (att == null) return NotFound();
+            _context.DoctorOrderAttachments.Remove(att);
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
 
         // ---- Λήψη προτύπου Excel για import ----
         [HttpGet("import/template")]

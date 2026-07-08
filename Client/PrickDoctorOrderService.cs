@@ -61,5 +61,80 @@ namespace StallmedManager.Client
         {
             return await dataService.Post<ShipOrderRequest, ShipResult>("api/prickdoctororder/split-pending", req);
         }
+
+        public async Task<List<ElsewhereAllocationDto>> GetElsewhere(string codePrick, string productTypeCode, long excludeOrderLineId)
+        {
+            var query = $"?codePrick={Uri.EscapeDataString(codePrick)}&productTypeCode={Uri.EscapeDataString(productTypeCode)}&excludeOrderLineId={excludeOrderLineId}";
+            return await dataService.Get<List<ElsewhereAllocationDto>>($"api/prickdoctororder/elsewhere{query}");
+        }
+
+        public async Task<StealResult> Steal(StealRequest req)
+        {
+            return await dataService.Post<StealRequest, StealResult>("api/prickdoctororder/steal", req);
+        }
+
+        public async Task<bool> CancelLine(CancelLineRequest req)
+        {
+            await dataService.Post<CancelLineRequest, object>("api/prickdoctororder/cancel-line", req);
+            return true;
+        }
+
+        public async Task<bool> UncancelLine(UncancelLineRequest req)
+        {
+            await dataService.Post<UncancelLineRequest, object>("api/prickdoctororder/uncancel-line", req);
+            return true;
+        }
+
+        public async Task<bool> ReverseLine(ReverseLineRequest req)
+        {
+            await dataService.Post<ReverseLineRequest, object>("api/prickdoctororder/reverse-line", req);
+            return true;
+        }
+
+        public async Task<bool> UpdateNotes(UpdateNotesRequest req)
+        {
+            await dataService.Post<UpdateNotesRequest, object>("api/prickdoctororder/update-notes", req);
+            return true;
+        }
+
+        public async Task<bool> AddLine(AddOrderLineRequest req)
+        {
+            await dataService.Post<AddOrderLineRequest, object>("api/prickdoctororder/add-line", req);
+            return true;
+        }
+
+        public async Task<bool> RemoveLine(RemoveOrderLineRequest req)
+        {
+            await dataService.Post<RemoveOrderLineRequest, object>("api/prickdoctororder/remove-line", req);
+            return true;
+        }
+
+        public async Task<List<AttachmentDto>> GetAttachments(long orderId)
+        {
+            return await dataService.Get<List<AttachmentDto>>($"api/prickdoctororder/attachments/{orderId}");
+        }
+
+        public async Task<bool> UploadAttachment(long orderId, byte[] fileBytes, string fileName)
+        {
+            await dataService.PostFile<object>($"api/prickdoctororder/attachments/{orderId}", fileBytes, fileName);
+            return true;
+        }
+
+        public async Task<bool> DeleteAttachment(long attachmentId)
+        {
+            await dataService.Post<object, object>($"api/prickdoctororder/attachments/delete/{attachmentId}", new { });
+            return true;
+        }
+
+        public async Task<List<SalespersonOptionDto>> GetSalespeople()
+        {
+            return await dataService.Get<List<SalespersonOptionDto>>("api/prickdoctororder/salespeople");
+        }
+
+        public async Task<bool> SetShipment(SetShipmentRequest req)
+        {
+            await dataService.Post<SetShipmentRequest, object>("api/prickdoctororder/set-shipment", req);
+            return true;
+        }
     }
 }

@@ -76,4 +76,15 @@ namespace StallmedManager.Shared.Models
         public string? Company { get; set; }
         public int TotalRemaining { get; set; }
     }
+
+    public class PendingReceiptSummaryDto
+    {
+        public string CodePrick { get; set; }
+        public string? AllergenDescription { get; set; }
+        public string ProductTypeCode { get; set; }
+        public string? ProductDescription { get; set; }
+        public string Company { get; set; }
+        public int TotalPending { get; set; }
+        public int OrdersCount { get; set; }
+    }
 }

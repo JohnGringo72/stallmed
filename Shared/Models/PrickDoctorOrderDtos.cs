@@ -11,6 +11,8 @@ namespace StallmedManager.Shared.Models
         public int QuantityAllocated { get; set; }
         public int QuantityCancelled { get; set; }
         public string LineStatus { get; set; }
+        public int AvailableStock { get; set; }
+        public int ElsewhereQuantity { get; set; }
     }
 
     public class DoctorOrderViewDto
@@ -23,11 +25,15 @@ namespace StallmedManager.Shared.Models
         public string OrderStatus { get; set; }
         public DateTime? ShippedAt { get; set; }
         public string? CourierTrackingCode { get; set; }
+        public string? ShippingCarrier { get; set; }
+        public string? DeliveryPersonName { get; set; }
         public string? RecipientName { get; set; }
         public string? ShippingAddress { get; set; }
         public string? ShippingCity { get; set; }
         public string? ShippingPostalCode { get; set; }
         public string? ShippingPhone { get; set; }
+        public string? Notes { get; set; }
+        public int AttachmentCount { get; set; }
         public List<DoctorOrderLineViewDto> Lines { get; set; } = new();
     }
 

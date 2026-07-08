@@ -37,6 +37,12 @@ namespace StallmedManager.Client
             return await dataService.Get<List<StockCheckDto>>($"api/prickproduction/stockcheck?query={Uri.EscapeDataString(query)}");
         }
 
+        public async Task<List<PendingReceiptSummaryDto>> GetPendingSummary(string? company)
+        {
+            var query = string.IsNullOrEmpty(company) ? "" : $"?company={company}";
+            return await dataService.Get<List<PendingReceiptSummaryDto>>($"api/prickproduction/pending-summary{query}");
+        }
+
         public async Task<ProductionOrderDto> CreateOrder(CreateProductionOrderRequest req)
         {
             return await dataService.Post<CreateProductionOrderRequest, ProductionOrderDto>("api/prickproduction/orders", req);

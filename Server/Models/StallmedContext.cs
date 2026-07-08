@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using StallmedManager.Shared.Models;
 namespace StallmedManager.Server.Models
 {
@@ -20,6 +20,7 @@ namespace StallmedManager.Server.Models
         public virtual DbSet<StockTransaction> StockTransactions { get; set; }
         public virtual DbSet<OrderAllocation> OrderAllocations { get; set; }
         public virtual DbSet<ProductionReceiptAllocation> ProductionReceiptAllocations { get; set; }
+        public virtual DbSet<DoctorOrderAttachment> DoctorOrderAttachments { get; set; }
 
         public StallmedContext(DbContextOptions<StallmedContext> options) : base(options)
         {
