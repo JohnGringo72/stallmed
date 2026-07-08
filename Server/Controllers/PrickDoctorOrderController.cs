@@ -362,40 +362,129 @@ namespace StallmedManager.Server.Controllers
             return Ok(created);
         }
 
-        // ---- Κλείσιμο παραγγελίας για αποστολή ----
-        // (το πεδίο CourierTrackingCode προβλέπεται για μελλοντική σύνδεση με ACS API)
-        // ForceComplete: για διορθωτικές καταχωρήσεις (π.χ. ατελές migration) - κλειδώνει
-        // όλες τις γραμμές ως Fulfilled ΧΩΡΙΣ να πειράξει το πραγματικό stock/ledger.
-        [HttpPost("ship")]
-        public async Task<ActionResult<bool>> ShipOrder([FromBody] ShipOrderRequest req)
+        // ---- ForceComplete: διορθωτικές καταχωρήσεις (π.χ. ατελές migration) ----
+        // Η παραγγελία στην πραγματικότητα έχει ήδη σταλεί - κλειδώνει απευθείας σε
+        // Fulfilled + ShippedAt, ΧΩΡΙΣ να πειράξει το πραγματικό stock/ledger.
+        [HttpPost("force-complete")]
+        public async Task<ActionResult<ShipResult>> ForceComplete([FromBody] ShipOrderRequest req)
         {
             var order = await _context.DoctorOrders.FindAsync(req.OrderID);
             if (order == null)
                 return NotFound();
 
-            if (req.ForceComplete)
+            var lines = await _context.DoctorOrderLines.Where(l => l.OrderID == req.OrderID).ToListAsync();
+            foreach (var line in lines)
             {
-                var lines = await _context.DoctorOrderLines.Where(l => l.OrderID == req.OrderID).ToListAsync();
-                foreach (var line in lines)
-                {
-                    line.QuantityAllocated = line.QuantityRequested - line.QuantityCancelled;
-                    line.LineStatus = "Fulfilled";
-                    line.UpdatedAt = DateTime.Now;
-                }
-                order.OrderStatus = "Fulfilled";
+                line.QuantityAllocated = line.QuantityRequested - line.QuantityCancelled;
+                line.LineStatus = "Fulfilled";
+                line.UpdatedAt = DateTime.Now;
             }
-
+            order.OrderStatus = "Fulfilled";
             order.ShippedAt = DateTime.Now;
-            order.RecipientName = req.RecipientName ?? order.RecipientName;
-            order.ShippingAddress = req.ShippingAddress ?? order.ShippingAddress;
-            order.ShippingCity = req.ShippingCity ?? order.ShippingCity;
-            order.ShippingPostalCode = req.ShippingPostalCode ?? order.ShippingPostalCode;
-            order.ShippingPhone = req.ShippingPhone ?? order.ShippingPhone;
-            order.CourierTrackingCode = req.CourierTrackingCode;
             order.UpdatedAt = DateTime.Now;
 
             await _context.SaveChangesAsync();
-            return Ok(true);
+            return Ok(new ShipResult { Success = true });
+        }
+
+        // ---- Διαχωρισμός: στέλνει μόνο ό,τι έχει ήδη δεσμευτεί ----
+        // Η αρχική παραγγελία "κλειδώνει" σε ό,τι δεσμεύτηκε και παίρνει status
+        // ReadyToShip (όχι Fulfilled/ShippedAt ακόμα - αυτό θα γίνεται από τη
+        // μελλοντική σελίδα διαχείρισης αποστολών). Το εκκρεμές υπόλοιπο πάει σε
+        // ΝΕΑ παραγγελία. Κωδικοί: πρώτος διαχωρισμός -> -A/-B, επόμενος -> -C, κ.ο.κ.
+        [HttpPost("split-pending")]
+        public async Task<ActionResult<ShipResult>> SplitPending([FromBody] ShipOrderRequest req)
+        {
+            var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+            if (order == null)
+                return NotFound();
+
+            var lines = await _context.DoctorOrderLines.Where(l => l.OrderID == req.OrderID).ToListAsync();
+            var pendingLines = lines
+                .Where(l => (l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled) > 0)
+                .ToList();
+
+            if (pendingLines.Count == 0)
+                return BadRequest("Δεν υπάρχει εκκρεμές υπόλοιπο για διαχωρισμό.");
+
+            var baseCode = GetBaseOrderCode(order.OrderCode);
+
+            if (!HasLetterSuffix(order.OrderCode))
+            {
+                var letterForOriginal = await GenerateNextSplitLetter(baseCode);
+                order.OrderCode = $"{baseCode}-{letterForOriginal}";
+            }
+            var newLetter = await GenerateNextSplitLetter(baseCode);
+            var newOrderCode = $"{baseCode}-{newLetter}";
+
+            var newOrder = new DoctorOrder
+            {
+                OrderCode = newOrderCode,
+                DoctorID = order.DoctorID,
+                DoctorName = order.DoctorName,
+                Company = order.Company,
+                OrderDate = DateTime.Today,
+                OrderStatus = "Open",
+                Notes = $"Διαχωρισμός από {order.OrderCode} (εκκρεμές υπόλοιπο)",
+                CreatedBy = req.UserID,
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            };
+            _context.DoctorOrders.Add(newOrder);
+            await _context.SaveChangesAsync();
+
+            foreach (var pl in pendingLines)
+            {
+                var pendingQty = pl.QuantityRequested - pl.QuantityAllocated - pl.QuantityCancelled;
+
+                _context.DoctorOrderLines.Add(new DoctorOrderLine
+                {
+                    OrderID = newOrder.OrderID,
+                    CodePrick = pl.CodePrick,
+                    ProductTypeCode = pl.ProductTypeCode,
+                    QuantityRequested = pendingQty,
+                    QuantityAllocated = 0,
+                    QuantityCancelled = 0,
+                    LineStatus = "Pending",
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now
+                });
+
+                // Το υπόλοιπο της αρχικής γραμμής "κλειδώνει" στο ό,τι δεσμεύτηκε
+                pl.QuantityRequested = pl.QuantityAllocated + pl.QuantityCancelled;
+                pl.LineStatus = "Fulfilled";
+                pl.UpdatedAt = DateTime.Now;
+            }
+
+            order.OrderStatus = "ReadyToShip";
+            order.UpdatedAt = DateTime.Now;
+
+            await _context.SaveChangesAsync();
+            return Ok(new ShipResult { Success = true, NewOrderCode = newOrderCode });
+        }
+
+        private static bool HasLetterSuffix(string code) =>
+            code.Length >= 2 && code[^2] == '-' && char.IsUpper(code[^1]);
+
+        private static string GetBaseOrderCode(string code) =>
+            HasLetterSuffix(code) ? code[..^2] : code;
+
+        private async Task<string> GenerateNextSplitLetter(string baseCode)
+        {
+            var siblings = await _context.DoctorOrders
+                .Where(o => o.OrderCode == baseCode || o.OrderCode.StartsWith(baseCode + "-"))
+                .Select(o => o.OrderCode)
+                .ToListAsync();
+
+            var used = new HashSet<char>();
+            foreach (var c in siblings)
+            {
+                if (HasLetterSuffix(c))
+                    used.Add(c[^1]);
+            }
+            var next = 'A';
+            while (used.Contains(next)) next++;
+            return next.ToString();
         }
 
         // ---- Δημιουργία κωδικού παραγγελίας: SM/BM + YYMMDD + αύξων αριθμός ημέρας ----

@@ -52,9 +52,14 @@ namespace StallmedManager.Client
             return await dataService.Post<CommitImportRequest, int>("api/prickdoctororder/import/commit", req);
         }
 
-        public async Task<bool> ShipOrder(ShipOrderRequest req)
+        public async Task<ShipResult> ForceComplete(ShipOrderRequest req)
         {
-            return await dataService.Post<ShipOrderRequest, bool>("api/prickdoctororder/ship", req);
+            return await dataService.Post<ShipOrderRequest, ShipResult>("api/prickdoctororder/force-complete", req);
+        }
+
+        public async Task<ShipResult> SplitPending(ShipOrderRequest req)
+        {
+            return await dataService.Post<ShipOrderRequest, ShipResult>("api/prickdoctororder/split-pending", req);
         }
     }
 }

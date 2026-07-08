@@ -187,103 +187,7 @@
             justify-content: center;
             margin: 6px 0;
         }
-
-        /* Σε κινητό: κάθετη στοίβα αντί για σταθερό grid, ώστε να
-           φαίνεται πλήρες το όνομα/ημερομηνία χωρίς οριζόντιο scroll */
-        .col-header-row.doctor-row-grid,
-        .col-header-row.order-row-grid {
-            display: none;
-        }
-
-        .order-card-header.doctor-row-grid,
-        .sub-order-header.order-row-grid {
-            display: flex !important;
-            flex-wrap: wrap;
-            min-width: 0 !important;
-            row-gap: 4px;
-            column-gap: 8px;
-            white-space: normal;
-        }
-
-            .order-card-header.doctor-row-grid .doctor-name-cell,
-            .sub-order-header.order-row-grid > div:nth-of-type(1) {
-                flex: 1 1 100%;
-                order: -1;
-                font-size: 1rem;
-                overflow: visible;
-                text-overflow: unset;
-                white-space: normal;
-            }
-
-            .order-card-header.doctor-row-grid > div,
-            .sub-order-header.order-row-grid > div {
-                flex: 0 0 auto;
-                overflow: visible;
-                text-overflow: unset;
-                font-size: 0.82rem;
-                background: #f1f3f5;
-                border-radius: 10px;
-                padding: 2px 8px;
-            }
-
-        .grid-scroll-wrapper {
-            overflow-x: visible;
-        }
     }
-
-    .order-row-grid {
-        display: grid;
-        grid-template-columns: 24px 130px 1fr 130px 90px 130px 60px;
-        column-gap: 10px;
-        align-items: center;
-        min-width: 700px;
-    }
-
-    .doctor-row-grid {
-        display: grid;
-        grid-template-columns: 24px 1fr 110px 110px 140px;
-        column-gap: 10px;
-        align-items: center;
-        min-width: 500px;
-    }
-
-    .grid-scroll-wrapper {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .col-header-row, .order-card-header, .sub-order-header {
-        white-space: nowrap;
-    }
-
-        .col-header-row > div, .order-card-header .doctor-name-cell, .sub-order-header > div {
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-    .col-header-row {
-        background: #343a40;
-        color: white;
-        border-radius: 6px 6px 0 0;
-        padding: 8px 16px;
-        font-weight: 600;
-        font-size: 0.85rem;
-    }
-
-        .col-header-row.inner {
-            background: #6c757d;
-            border-radius: 4px;
-            margin-bottom: 4px;
-        }
-
-    .col-header {
-        cursor: pointer;
-        user-select: none;
-    }
-
-        .col-header:hover {
-            text-decoration: underline;
-        }
 
     .sub-order-card {
         background: white;
@@ -294,8 +198,13 @@
     }
 
     .sub-order-header {
-        padding: 8px 16px;
+        padding: 10px 14px;
         cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
         font-size: 0.9rem;
     }
 
@@ -305,6 +214,14 @@
 </style>
 
 <h1 class="mb-3">Prick Test - Doctor Orders</h1>
+
+@if (!string.IsNullOrEmpty(topBannerMessage))
+{
+    <div class="alert alert-success alert-dismissible">
+        @topBannerMessage
+        <button type="button" class="btn-close" @onclick="() => topBannerMessage = string.Empty"></button>
+    </div>
+}
 
 <!-- ================= QUICK STOCK CHECK ================= -->
 <div class="stock-check-bar">
@@ -352,6 +269,7 @@
             <label class="form-label mb-1">Κατάσταση</label>
             <select class="form-control" value="@selectedStatus" @onchange="e => { selectedStatus = e.Value.ToString(); LoadData(); }">
                 <option value="">Ανοιχτές</option>
+                <option value="ReadyToShip">Προς Αποστολή</option>
                 <option value="Fulfilled">Ολοκληρωμένες</option>
                 <option value="Cancelled">Ακυρωμένες</option>
             </select>
@@ -361,13 +279,20 @@
             <input class="form-control" placeholder="π.χ. Παπαδόπουλος ή SM2607..." @bind="searchOrderCode" @bind:event="oninput" />
         </div>
         <div class="col-6 col-md-2">
-            <button class="btn btn-success w-100" @onclick="OpenNewOrderPopup">➕ Νέα Παραγγελία</button>
+            <label class="form-label mb-1">Ταξινόμηση</label>
+            <select class="form-control" @bind="doctorSortBy">
+                <option value="date">Τελευταία Παραγγελία</option>
+                <option value="name">Όνομα Γιατρού</option>
+                <option value="pending">Εκκρεμές</option>
+                <option value="count">Αρ. Παραγγελιών</option>
+            </select>
         </div>
-        <div class="col-6 col-md-2">
-            <button class="btn btn-outline-primary w-100" @onclick="OpenImportPopup">📊 Excel Import</button>
-        </div>
-        <div class="col-6 col-md-2">
-            <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
+        <div class="col-6 col-md-3">
+            <div class="d-flex gap-2">
+                <button class="btn btn-success flex-fill" @onclick="OpenNewOrderPopup">➕ Νέα</button>
+                <button class="btn btn-outline-primary flex-fill" @onclick="OpenImportPopup">📊 Excel</button>
+                <button class="btn btn-outline-secondary flex-fill" @onclick="LoadData">↻</button>
+            </div>
         </div>
     </div>
 </div>
@@ -384,83 +309,65 @@
         <div class="alert alert-info">Δεν υπάρχουν παραγγελίες με αυτά τα φίλτρα.</div>
     }
 
-    <!-- Επικεφαλίδα στήλης Γιατρών (sortable, σαν Excel) -->
-    <div class="grid-scroll-wrapper">
-        <div class="col-header-row doctor-row-grid">
-            <div></div>
-            <div class="col-header" @onclick='() => SetDoctorSort("name")'>
-                Γιατρός @SortArrow("name", doctorSortBy, doctorSortAsc)
-            </div>
-            <div class="col-header" @onclick='() => SetDoctorSort("count")'>
-                Παραγγελίες @SortArrow("count", doctorSortBy, doctorSortAsc)
-            </div>
-            <div class="col-header" @onclick='() => SetDoctorSort("pending")'>
-                Εκκρεμές @SortArrow("pending", doctorSortBy, doctorSortAsc)
-            </div>
-            <div class="col-header" @onclick='() => SetDoctorSort("date")'>
-                Τελευταία @SortArrow("date", doctorSortBy, doctorSortAsc)
-            </div>
-        </div>
-
-        @foreach (var dg in SortedDoctorGroups)
-        {
-            var isDoctorOpen = expandedDoctor == dg.DoctorName;
-            <div class="order-card">
-                <div class="order-card-header doctor-row-grid" @onclick="() => ToggleDoctorExpand(dg.DoctorName)">
+    @foreach (var dg in SortedDoctorGroups)
+    {
+        var isDoctorOpen = expandedDoctor == dg.DoctorName;
+        <div class="order-card">
+            <div class="order-card-header" @onclick="() => ToggleDoctorExpand(dg.DoctorName)">
+                <div class="d-flex align-items-center gap-2">
                     <span class="expand-arrow @(isDoctorOpen ? "open" : "")">▶</span>
-                    <div class="doctor-name-cell"><strong>👨‍⚕️ @dg.DoctorName</strong></div>
-                    <div>@dg.TotalOrders</div>
-                    <div class="@(dg.TotalPending > 0 ? "stock-low" : "")">@dg.TotalPending</div>
-                    <div>📅 @dg.LastOrderDate.ToString("dd/MM/yyyy")</div>
+                    <strong>👨‍⚕️ @dg.DoctorName</strong>
                 </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="summary-pill">📋 @dg.TotalOrders παραγγελίες</span>
+                    <span class="summary-pill @(dg.TotalPending > 0 ? "stock-low" : "")">⏳ @dg.TotalPending εκκρεμή</span>
+                    <span class="summary-pill">📅 @dg.LastOrderDate.ToString("dd/MM/yyyy")</span>
+                </div>
+            </div>
 
-                @if (isDoctorOpen)
-                {
-                    <div class="order-card-body">
-                        <div class="grid-scroll-wrapper">
-                    <!-- Επικεφαλίδα στήλης Παραγγελιών (sortable) -->
-                    <div class="col-header-row inner order-row-grid">
-                        <div></div>
-                        <div class="col-header" @onclick='() => SetOrderSort("code")'>
-                            Κωδικός @SortArrow("code", orderSortBy, orderSortAsc)
-                        </div>
-                        <div class="col-header" @onclick='() => SetOrderSort("date")'>
-                            Ημερομηνία @SortArrow("date", orderSortBy, orderSortAsc)
-                        </div>
-                        <div class="col-header">Τύπος</div>
-                        <div class="col-header" @onclick='() => SetOrderSort("status")'>
-                            Status @SortArrow("status", orderSortBy, orderSortAsc)
-                        </div>
-                        <div class="col-header" @onclick='() => SetOrderSort("quantity")'>
-                            Ποσότητα @SortArrow("quantity", orderSortBy, orderSortAsc)
-                        </div>
-                        <div class="col-header">Αποστολή</div>
-                    </div>
-
-                    @foreach (var order in SortOrders(dg.Orders))
+            @if (isDoctorOpen)
+            {
+                <div class="order-card-body">
+                    @foreach (var order in dg.Orders.OrderByDescending(o => o.OrderDate))
                     {
                         var isOrderOpen = expandedOrder == order.OrderCode;
                         var totalRequested = order.Lines.Sum(l => l.QuantityRequested);
                         var totalPending = order.Lines.Sum(l => l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled);
+                        var typeDescription = order.Lines.FirstOrDefault()?.ProductDescription ?? order.Lines.FirstOrDefault()?.ProductTypeCode;
                         <div class="sub-order-card">
-                            <div class="sub-order-header order-row-grid" @onclick="() => ToggleOrderExpand(order.OrderCode)">
-                                <span class="expand-arrow @(isOrderOpen ? "open" : "")">▶</span>
-                                <div><strong>@order.OrderCode</strong></div>
-                                <div>
-                                    📅 @order.OrderDate.ToString("dd/MM/yyyy")
-                                    <span class="company-badge ms-1" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
-                                </div>
-                                <div>@(order.Lines.FirstOrDefault()?.ProductDescription ?? order.Lines.FirstOrDefault()?.ProductTypeCode)</div>
-                                <div><span class="badge bg-secondary">@order.OrderStatus</span></div>
-                                <div>@totalRequested τεμ. (⏳@totalPending)</div>
-                                <div>
-                                    @if (order.ShippedAt.HasValue)
+                            <div class="sub-order-header" @onclick="() => ToggleOrderExpand(order.OrderCode)">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="expand-arrow @(isOrderOpen ? "open" : "")">▶</span>
+                                    <strong>@order.OrderCode</strong>
+                                    <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
+                                    <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
+                                    <span class="summary-pill">🧪 @typeDescription</span>
+                                    @if (order.OrderStatus == "ReadyToShip")
                                     {
-                                        <span class="badge bg-success">🚚 @order.ShippedAt.Value.ToString("dd/MM")</span>
+                                        <span class="badge bg-info text-dark">📦 Προς Αποστολή</span>
+                                    }
+                                    else if (order.OrderStatus == "Fulfilled")
+                                    {
+                                        <span class="badge bg-success">🚚 Απεστάλη @(order.ShippedAt?.ToString("dd/MM"))</span>
                                     }
                                     else
                                     {
-                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenShipPopup(order)" @onclick:stopPropagation="true">🚚</button>
+                                        <span class="badge bg-secondary">@order.OrderStatus</span>
+                                    }
+                                    <span class="summary-pill">📦 @totalRequested τεμ. (⏳@totalPending)</span>
+                                </div>
+                                <div class="d-flex gap-1">
+                                    @if (order.OrderStatus == "Open" && totalPending > 0 && totalPending < totalRequested)
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => DoSplitPending(order)" @onclick:stopPropagation="true" title="Στείλε ό,τι είναι έτοιμο, το υπόλοιπο σε νέα παραγγελία">
+                                            🔀 Διαχωρισμός
+                                        </button>
+                                    }
+                                    @if (order.OrderStatus != "Fulfilled")
+                                    {
+                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => DoForceComplete(order)" @onclick:stopPropagation="true" title="Διορθωτικό κλείσιμο (π.χ. λόγω migration)">
+                                            ⚠️
+                                        </button>
                                     }
                                 </div>
                             </div>
@@ -490,12 +397,10 @@
                             }
                         </div>
                     }
-                    </div>
                 </div>
             }
-            </div>
-        }
-    </div>
+        </div>
+    }
 }
 
 <!-- ================= NEW ORDER POPUP ================= -->
@@ -764,78 +669,17 @@
     </div>
 }
 
-@if (showShipPopup && shippingOrder != null)
-{
-    <div class="popup-overlay" @onclick="CloseShipPopup">
-        <div class="popup-box" @onclick:stopPropagation="true">
-            <h5>🚚 Κλείσιμο για Αποστολή</h5>
-            <hr />
-            <p><strong>@shippingOrder.OrderCode</strong> - @shippingOrder.DoctorName</p>
-
-            <div class="row g-2 mb-2">
-                <div class="col-6">
-                    <label class="form-label mb-1">Όνομα παραλήπτη</label>
-                    <input class="form-control form-control-sm" @bind="shipRecipientName" />
-                </div>
-                <div class="col-6">
-                    <label class="form-label mb-1">Τηλέφωνο</label>
-                    <input class="form-control form-control-sm" @bind="shipPhone" />
-                </div>
-                <div class="col-12">
-                    <label class="form-label mb-1">Διεύθυνση</label>
-                    <input class="form-control form-control-sm" @bind="shipAddress" />
-                </div>
-                <div class="col-6">
-                    <label class="form-label mb-1">Πόλη</label>
-                    <input class="form-control form-control-sm" @bind="shipCity" />
-                </div>
-                <div class="col-6">
-                    <label class="form-label mb-1">Τ.Κ.</label>
-                    <input class="form-control form-control-sm" @bind="shipPostalCode" />
-                </div>
-            </div>
-
-            <div class="alert alert-secondary py-2 small">
-                📮 Έκδοση voucher ACS: θα ενεργοποιηθεί μόλις κανονιστεί λογαριασμός/API με την ACS.
-                Προς το παρόν η παραγγελία απλά σημειώνεται ως έτοιμη/απεσταλμένη.
-            </div>
-
-            <div class="form-check mb-2 p-2" style="background:#fff3cd; border-radius:6px;">
-                <input class="form-check-input" type="checkbox" id="forceCompleteCheck" @bind="shipForceComplete" />
-                <label class="form-check-label" for="forceCompleteCheck">
-                    <strong>⚠️ Διορθωτικό κλείσιμο:</strong> η παραγγελία στην πραγματικότητα έχει ήδη
-                    παραληφθεί και αποσταλεί, αλλά το σύστημα τη δείχνει ακόμα εκκρεμή (π.χ. λόγω migration).
-                    Κλείσε όλες τις γραμμές ως ολοκληρωμένες.
-                    <br /><small class="text-muted">Δεν επηρεάζει το πραγματικό stock/ledger — μόνο διορθώνει το status αυτής της παραγγελίας.</small>
-                </label>
-            </div>
-
-            @if (!string.IsNullOrEmpty(shipMessage))
-            {
-                <div class="alert alert-warning py-2">@shipMessage</div>
-            }
-
-            <div class="d-flex gap-2">
-                <button class="btn btn-secondary flex-fill" @onclick="CloseShipPopup">Ακύρωση</button>
-                <button class="btn btn-primary flex-fill" @onclick="SubmitShip">✅ Επιβεβαίωση Αποστολής</button>
-            </div>
-        </div>
-    </div>
-}
-
 @code {
     private string selectedCompany = "";
     private string selectedStatus = "";
     private string searchOrderCode = "";
     private string status = "idle";
+    private string topBannerMessage = "";
     private List<DoctorOrderViewDto> orders = new();
     private string? expandedDoctor = null;
     private string? expandedOrder = null;
 
     private string doctorSortBy = "date";
-    private bool doctorSortAsc = false;
-    private string orderSortBy = "date";
-    private bool orderSortAsc = false;
 
     private List<SimpleCodeOptionDto> allergenOptions = new();
     private List<SimpleCodeOptionDto> productTypeOptions = new();
@@ -877,17 +721,6 @@
     private string newOrderShippingCity = "";
     private string newOrderShippingPostalCode = "";
     private string newOrderShippingPhone = "";
-
-    // --- Ship popup ---
-    private bool showShipPopup = false;
-    private DoctorOrderViewDto? shippingOrder;
-    private string shipRecipientName = "";
-    private string shipAddress = "";
-    private string shipCity = "";
-    private string shipPostalCode = "";
-    private string shipPhone = "";
-    private string shipMessage = "";
-    private bool shipForceComplete = false;
 
     // --- Excel Import ---
     private bool showImportPopup = false;
@@ -945,42 +778,35 @@
         StateHasChanged();
     }
 
-    private void OpenShipPopup(DoctorOrderViewDto order)
+    private async Task DoSplitPending(DoctorOrderViewDto order)
     {
-        shippingOrder = order;
-        shipRecipientName = order.RecipientName ?? order.DoctorName ?? "";
-        shipAddress = order.ShippingAddress ?? "";
-        shipCity = order.ShippingCity ?? "";
-        shipPostalCode = order.ShippingPostalCode ?? "";
-        shipPhone = order.ShippingPhone ?? "";
-        shipMessage = "";
-        shipForceComplete = false;
-        showShipPopup = true;
-    }
-    private void CloseShipPopup() => showShipPopup = false;
-
-    private async Task SubmitShip()
-    {
-        if (shippingOrder == null) return;
-        var req = new ShipOrderRequest
+        var req = new ShipOrderRequest { OrderID = order.OrderID, UserID = userManager.User?.IdUser };
+        var result = await new PrickDoctorOrderService(dataService).SplitPending(req);
+        if (result != null && result.Success)
         {
-            OrderID = shippingOrder.OrderID,
-            RecipientName = shipRecipientName,
-            ShippingAddress = shipAddress,
-            ShippingCity = shipCity,
-            ShippingPostalCode = shipPostalCode,
-            ShippingPhone = shipPhone,
-            ForceComplete = shipForceComplete
-        };
-        var ok = await new PrickDoctorOrderService(dataService).ShipOrder(req);
-        if (ok)
-        {
-            showShipPopup = false;
+            topBannerMessage = !string.IsNullOrEmpty(result.NewOrderCode)
+                ? $"✅ Η παραγγελία {order.OrderCode} πάει προς αποστολή. Το εκκρεμές υπόλοιπο δημιούργησε νέα παραγγελία {result.NewOrderCode}."
+                : "✅ Η παραγγελία πάει προς αποστολή.";
             await LoadData();
         }
         else
         {
-            shipMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
+            topBannerMessage = "⚠️ Κάτι πήγε στραβά με τον διαχωρισμό, δοκίμασε ξανά.";
+        }
+    }
+
+    private async Task DoForceComplete(DoctorOrderViewDto order)
+    {
+        var req = new ShipOrderRequest { OrderID = order.OrderID, UserID = userManager.User?.IdUser };
+        var result = await new PrickDoctorOrderService(dataService).ForceComplete(req);
+        if (result != null && result.Success)
+        {
+            topBannerMessage = $"✅ Η παραγγελία {order.OrderCode} σημειώθηκε ως ολοκληρωμένη (διορθωτικό κλείσιμο).";
+            await LoadData();
+        }
+        else
+        {
+            topBannerMessage = "⚠️ Κάτι πήγε στραβά, δοκίμασε ξανά.";
         }
     }
 
@@ -1009,44 +835,14 @@
             IEnumerable<DoctorGroup> groups = DoctorGroups;
             groups = doctorSortBy switch
             {
-                "count" => doctorSortAsc ? groups.OrderBy(g => g.TotalOrders) : groups.OrderByDescending(g => g.TotalOrders),
-                "pending" => doctorSortAsc ? groups.OrderBy(g => g.TotalPending) : groups.OrderByDescending(g => g.TotalPending),
-                "name" => doctorSortAsc ? groups.OrderBy(g => g.DoctorName) : groups.OrderByDescending(g => g.DoctorName),
-                _ => doctorSortAsc ? groups.OrderBy(g => g.LastOrderDate) : groups.OrderByDescending(g => g.LastOrderDate)
+                "count" => groups.OrderByDescending(g => g.TotalOrders),
+                "pending" => groups.OrderByDescending(g => g.TotalPending),
+                "name" => groups.OrderBy(g => g.DoctorName),
+                _ => groups.OrderByDescending(g => g.LastOrderDate)
             };
             return groups.ToList();
         }
     }
-
-    private List<DoctorOrderViewDto> SortOrders(List<DoctorOrderViewDto> list)
-    {
-        IEnumerable<DoctorOrderViewDto> q = list;
-        q = orderSortBy switch
-        {
-            "code" => orderSortAsc ? q.OrderBy(o => o.OrderCode) : q.OrderByDescending(o => o.OrderCode),
-            "status" => orderSortAsc ? q.OrderBy(o => o.OrderStatus) : q.OrderByDescending(o => o.OrderStatus),
-            "quantity" => orderSortAsc
-                ? q.OrderBy(o => o.Lines.Sum(l => l.QuantityRequested))
-                : q.OrderByDescending(o => o.Lines.Sum(l => l.QuantityRequested)),
-            _ => orderSortAsc ? q.OrderBy(o => o.OrderDate) : q.OrderByDescending(o => o.OrderDate)
-        };
-        return q.ToList();
-    }
-
-    private void SetDoctorSort(string col)
-    {
-        if (doctorSortBy == col) doctorSortAsc = !doctorSortAsc;
-        else { doctorSortBy = col; doctorSortAsc = false; }
-    }
-
-    private void SetOrderSort(string col)
-    {
-        if (orderSortBy == col) orderSortAsc = !orderSortAsc;
-        else { orderSortBy = col; orderSortAsc = false; }
-    }
-
-    private string SortArrow(string col, string currentSort, bool asc) =>
-        currentSort == col ? (asc ? "▲" : "▼") : "";
 
     private void ToggleDoctorExpand(string doctorName)
     {

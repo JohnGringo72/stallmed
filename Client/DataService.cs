@@ -13,6 +13,7 @@ namespace StallmedManager.Client
             this.userManager = userManager;
             this.http = http;
         }
+
         public async Task<T> Get<T>(string path)
         {
             if (userManager?.User == null)
@@ -25,7 +26,16 @@ namespace StallmedManager.Client
                 await userManager.Logout();
                 return default(T);
             }
-            return await response.Content.ReadFromJsonAsync<T>();
+            if (!response.IsSuccessStatusCode)
+                return default(T);
+            try
+            {
+                return await response.Content.ReadFromJsonAsync<T>();
+            }
+            catch
+            {
+                return default(T);
+            }
         }
 
         public async Task<TResponse> Post<TRequest, TResponse>(string path, TRequest body)
@@ -41,7 +51,16 @@ namespace StallmedManager.Client
                 await userManager.Logout();
                 return default(TResponse);
             }
-            return await response.Content.ReadFromJsonAsync<TResponse>();
+            if (!response.IsSuccessStatusCode)
+                return default(TResponse);
+            try
+            {
+                return await response.Content.ReadFromJsonAsync<TResponse>();
+            }
+            catch
+            {
+                return default(TResponse);
+            }
         }
 
         public async Task<byte[]> GetBytes(string path)
@@ -56,7 +75,16 @@ namespace StallmedManager.Client
                 await userManager.Logout();
                 return null;
             }
-            return await response.Content.ReadAsByteArrayAsync();
+            if (!response.IsSuccessStatusCode)
+                return null;
+            try
+            {
+                return await response.Content.ReadAsByteArrayAsync();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public async Task<TResponse> PostFile<TResponse>(string path, byte[] fileBytes, string fileName)
@@ -75,7 +103,16 @@ namespace StallmedManager.Client
                 await userManager.Logout();
                 return default(TResponse);
             }
-            return await response.Content.ReadFromJsonAsync<TResponse>();
+            if (!response.IsSuccessStatusCode)
+                return default(TResponse);
+            try
+            {
+                return await response.Content.ReadFromJsonAsync<TResponse>();
+            }
+            catch
+            {
+                return default(TResponse);
+            }
         }
     }
 }

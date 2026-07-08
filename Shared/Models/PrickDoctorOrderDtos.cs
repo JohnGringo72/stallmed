@@ -56,13 +56,13 @@ namespace StallmedManager.Shared.Models
     public class ShipOrderRequest
     {
         public long OrderID { get; set; }
-        public string? RecipientName { get; set; }
-        public string? ShippingAddress { get; set; }
-        public string? ShippingCity { get; set; }
-        public string? ShippingPostalCode { get; set; }
-        public string? ShippingPhone { get; set; }
-        public string? CourierTrackingCode { get; set; }
-        public bool ForceComplete { get; set; }
+        public int? UserID { get; set; }
+    }
+
+    public class ShipResult
+    {
+        public bool Success { get; set; }
+        public string? NewOrderCode { get; set; }
     }
 
     public class QuickAddDoctorRequest
