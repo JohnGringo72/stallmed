@@ -635,12 +635,12 @@
                     <label class="form-label mb-1">Εταιρεία</label>
                     <select class="form-control" value="@newOrderCompany" @onchange="e => OnNewOrderCompanyChanged(e.Value.ToString())">
                         <option value="">-- Επίλεξε --</option>
-                        <option value="SM">StallMedicals</option>
-                        <option value="BM">BeltaMed</option>
+                        <option value="SM">Stall</option>
+                        <option value="BM">Belta</option>
                     </select>
                 </div>
                 <div class="col-4">
-                    <label class="form-label mb-1">Τύπος (για όλη την παραγγελία)</label>
+                    <label class="form-label mb-1">Είδος</label>
                     <select class="form-control" @bind="newOrderProductType">
                         <option value="">-- Επίλεξε --</option>
                         @foreach (var p in productTypeOptions)
@@ -695,49 +695,54 @@
 
             <hr />
             <label class="form-label mb-1">Αλλεργιογόνα</label>
-            @for (int i = 0; i < newOrderLines.Count; i++)
+            @if (string.IsNullOrEmpty(newOrderCompany))
             {
-                var idx = i;
-                var line = newOrderLines[idx];
-                <div class="allergen-line-row mb-2">
-                    <div class="d-flex gap-2 align-items-start">
-                        <div class="flex-grow-1 position-relative">
-                            @if (!string.IsNullOrEmpty(line.SelectedCode))
-                            {
-                                <div class="d-flex align-items-center gap-2">
-                                    <span class="badge bg-info text-dark">@line.SelectedCode - @line.SelectedDescription</span>
-                                    <button class="btn btn-sm btn-link p-0" @onclick="() => ClearLineSelection(idx)">αλλαγή</button>
-                                </div>
-                            }
-                            else
-                            {
-                                <input class="form-control form-control-sm" placeholder="Γράψε κωδικό ή όνομα (π.χ. derm, A001, γάτα...)"
-                                       value="@line.SearchQuery" @oninput="e => OnLineSearchInput(idx, e.Value.ToString())" />
-                                @if (line.Suggestions.Count > 0)
-                                {
-                                    <div class="allergen-suggestions">
-                                        @foreach (var s in line.Suggestions)
-                                        {
-                                            <div class="allergen-suggestion-row" @onclick="() => SelectLineAllergen(idx, s)">
-                                                <strong>@s.Code</strong> - @s.DescriptionGreek <small class="text-muted">(@s.DescriptionOther)</small>
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                            }
-                        </div>
-                        <div class="qty-stepper">
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => ChangeQuantity(idx, -1)">−</button>
-                            <span class="qty-value">@line.Quantity</span>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => ChangeQuantity(idx, 1)">+</button>
-                        </div>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => newOrderLines.RemoveAt(idx)">✕</button>
-                    </div>
-                </div>
+                <div class="text-muted small">Επίλεξε πρώτα εταιρεία για να εμφανιστούν τα αλλεργιογόνα.</div>
             }
-            <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="() => newOrderLines.Add(new LineForm())">
-                ➕ Προσθήκη αλλεργιογόνου
-            </button>
+            else
+            {
+                <input class="form-control form-control-sm mb-2" placeholder="Φιλτράρισμα κωδικού/ονόματος..."
+                       @bind="newOrderAllergenFilter" @bind:event="oninput" />
+
+                <div style="max-height:320px; overflow-y:auto; border:1px solid #eee; border-radius:6px;">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead style="position:sticky; top:0; background:#f8f9fa; z-index:1;">
+                            <tr>
+                                <th>Κωδικός</th>
+                                <th>Περιγραφή</th>
+                                <th style="width:110px; text-align:center;">Ποσότητα</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var a in FilteredNewOrderAllergens)
+                            {
+                                var qty = GetNewOrderQty(a.Code);
+                                <tr class="@(qty > 0 ? "table-success" : "")">
+                                    <td><strong>@a.Code</strong></td>
+                                    <td><small>@a.DescriptionGreek</small></td>
+                                    <td>
+                                        <div class="d-flex align-items-center justify-content-center gap-1">
+                                            <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                    @onclick="() => ChangeNewOrderQty(a.Code, -1)"
+                                                    disabled="@(qty == 0)">−</button>
+                                            <span style="min-width:20px; text-align:center; @(qty > 0 ? "font-weight:700;" : "color:#aaa;")">@qty</span>
+                                            <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                    @onclick="() => ChangeNewOrderQty(a.Code, 1)">+</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (newOrderQtyMap.Any(x => x.Value > 0))
+                {
+                    <div class="mt-2 small text-success">
+                        ✅ Επιλεγμένα: @newOrderQtyMap.Count(x => x.Value > 0) αλλεργιογόνα,
+                        @newOrderQtyMap.Where(x => x.Value > 0).Sum(x => x.Value) τεμάχια συνολικά
+                    </div>
+                }
+            }
 
             <hr />
             <label class="form-label mb-1">
@@ -901,17 +906,29 @@
     private string newOrderCompany = "";
     private string newOrderProductType = "";
     private DateTime newOrderDate = DateTime.Today;
-    private List<LineForm> newOrderLines = new();
     private string newOrderMessage = "";
     private string successMessage = "";
+    private string newOrderAllergenFilter = "";
+    private Dictionary<string, int> newOrderQtyMap = new();
 
-    private class LineForm
+    private List<SimpleCodeOptionDto> FilteredNewOrderAllergens =>
+        allergenOptions
+            .Where(a => string.IsNullOrEmpty(newOrderAllergenFilter) ||
+                        a.Code.Contains(newOrderAllergenFilter, StringComparison.OrdinalIgnoreCase) ||
+                        (a.DescriptionGreek?.Contains(newOrderAllergenFilter, StringComparison.OrdinalIgnoreCase) ?? false))
+            .OrderBy(a => a.Code)
+            .ToList();
+
+    private int GetNewOrderQty(string code) =>
+        newOrderQtyMap.TryGetValue(code, out var q) ? q : 0;
+
+    private void ChangeNewOrderQty(string code, int delta)
     {
-        public string SearchQuery = "";
-        public string? SelectedCode;
-        public string? SelectedDescription;
-        public int Quantity = 1;
-        public List<SimpleCodeOptionDto> Suggestions = new();
+        var current = GetNewOrderQty(code);
+        var updated = current + delta;
+        if (updated < 0) updated = 0;
+        if (updated == 0) newOrderQtyMap.Remove(code);
+        else newOrderQtyMap[code] = updated;
     }
 
     private string doctorSearchQuery = "";
@@ -1143,7 +1160,8 @@
         newOrderCompany = "";
         newOrderProductType = "";
         newOrderDate = DateTime.Today;
-        newOrderLines = new List<LineForm> { new LineForm() };
+        newOrderQtyMap = new();
+        newOrderAllergenFilter = "";
         newOrderMessage = "";
         successMessage = "";
         closeConfirmPending = false;
@@ -1162,7 +1180,7 @@
     private bool HasUnsavedData =>
         selectedDoctor != null ||
         !string.IsNullOrEmpty(newOrderCompany) ||
-        newOrderLines.Any(l => !string.IsNullOrEmpty(l.SelectedCode));
+        newOrderQtyMap.Any(x => x.Value > 0);
 
     private bool closeConfirmPending = false;
 
@@ -1185,116 +1203,10 @@
     private async Task OnNewOrderCompanyChanged(string company)
     {
         newOrderCompany = company;
+        newOrderQtyMap = new();
         allergenOptions = await new PrickProductionService(dataService).GetAllergens(company);
         productTypeOptions = await new PrickProductionService(dataService).GetProductTypes(company);
         StateHasChanged();
-    }
-
-    private void OnLineSearchInput(int idx, string value)
-    {
-        var line = newOrderLines[idx];
-        line.SearchQuery = value;
-        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
-        {
-            line.Suggestions = new();
-            return;
-        }
-        line.Suggestions = allergenOptions.Where(a =>
-                (a.Code?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (a.DescriptionGreek?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (a.DescriptionOther?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                (a.Description?.Contains(value, StringComparison.OrdinalIgnoreCase) ?? false))
-            .Take(8)
-            .ToList();
-    }
-
-    private void SelectLineAllergen(int idx, SimpleCodeOptionDto option)
-    {
-        var line = newOrderLines[idx];
-        if (newOrderLines.Any(l => !ReferenceEquals(l, line) && l.SelectedCode == option.Code))
-        {
-            newOrderMessage = $"⚠️ Ο κωδικός {option.Code} υπάρχει ήδη σε άλλη γραμμή αυτής της παραγγελίας.";
-            return;
-        }
-        line.SelectedCode = option.Code;
-        line.SelectedDescription = option.DescriptionGreek ?? option.Description;
-        line.Suggestions = new();
-        line.SearchQuery = "";
-        newOrderMessage = "";
-    }
-
-    private void ClearLineSelection(int idx)
-    {
-        var line = newOrderLines[idx];
-        line.SelectedCode = null;
-        line.SelectedDescription = null;
-        line.SearchQuery = "";
-    }
-
-    private void ChangeQuantity(int idx, int delta)
-    {
-        var line = newOrderLines[idx];
-        var newQty = line.Quantity + delta;
-        if (newQty >= 1)
-            line.Quantity = newQty;
-    }
-
-    private async Task OnDoctorSearchInput(ChangeEventArgs e)
-    {
-        doctorSearchQuery = e.Value?.ToString() ?? "";
-        doctorSearchDebounce?.Cancel();
-        doctorSearchDebounce = new CancellationTokenSource();
-        var token = doctorSearchDebounce.Token;
-        if (doctorSearchQuery.Length < 2)
-        {
-            doctorSearchResults = new();
-            StateHasChanged();
-            return;
-        }
-        try
-        {
-            await Task.Delay(300, token);
-            doctorSearchResults = await new PrickDoctorOrderService(dataService).SearchDoctors(doctorSearchQuery);
-            StateHasChanged();
-        }
-        catch (TaskCanceledException) { }
-    }
-
-    private void SelectDoctor(DoctorOptionDto d)
-    {
-        selectedDoctor = d;
-        doctorSearchResults = new();
-    }
-    private void ClearSelectedDoctor()
-    {
-        selectedDoctor = null;
-        doctorSearchQuery = "";
-    }
-
-    private async Task SubmitQuickAddDoctor()
-    {
-        if (string.IsNullOrWhiteSpace(quickAddName))
-        {
-            newOrderMessage = "Συμπλήρωσε το ονοματεπώνυμο του γιατρού.";
-            return;
-        }
-        var req = new QuickAddDoctorRequest
-        {
-            FullName = quickAddName,
-            Phone = quickAddPhone,
-            City = quickAddCity,
-            CreatedBy = userManager.User?.IdUser
-        };
-        var result = await new PrickDoctorOrderService(dataService).QuickAddDoctor(req);
-        if (result != null)
-        {
-            selectedDoctor = result;
-            showQuickAddDoctor = false;
-        }
-        else
-        {
-            newOrderMessage = "Απέτυχε η δημιουργία γιατρού.";
-        }
     }
 
     private async Task SubmitNewOrder()
@@ -1314,21 +1226,20 @@
             newOrderMessage = "Επίλεξε ή δημιούργησε γιατρό.";
             return;
         }
-        var validLines = newOrderLines
-            .Where(l => !string.IsNullOrEmpty(l.SelectedCode) && l.Quantity > 0)
-            .Select(l => new CreateDoctorOrderLineRequest
+        var validLines = newOrderQtyMap
+            .Where(kv => kv.Value > 0)
+            .Select(kv => new CreateDoctorOrderLineRequest
             {
-                CodePrick = l.SelectedCode,
+                CodePrick = kv.Key,
                 ProductTypeCode = newOrderProductType,
-                QuantityRequested = l.Quantity
+                QuantityRequested = kv.Value
             })
             .ToList();
         if (validLines.Count == 0)
         {
-            newOrderMessage = "Πρόσθεσε τουλάχιστον ένα έγκυρο αλλεργιογόνο.";
+            newOrderMessage = "Πρόσθεσε τουλάχιστον ένα αλλεργιογόνο (ποσότητα > 0).";
             return;
         }
-
         var req = new CreateDoctorOrderRequest
         {
             Company = newOrderCompany,
@@ -1342,7 +1253,6 @@
             ShippingPhone = string.IsNullOrWhiteSpace(newOrderShippingPhone) ? null : newOrderShippingPhone,
             Lines = validLines
         };
-
         var result = await new PrickDoctorOrderService(dataService).CreateOrder(req);
         if (result != null)
         {
@@ -1567,5 +1477,65 @@
         await new PrickDoctorOrderService(dataService).DeleteAttachment(att.AttachmentID);
         await LoadAttachments(order.OrderID);
         order.AttachmentCount = orderAttachments[order.OrderID].Count;
+    }
+
+    private void SelectDoctor(DoctorOptionDto d)
+    {
+        selectedDoctor = d;
+        doctorSearchResults = new();
+    }
+
+    private void ClearSelectedDoctor()
+    {
+        selectedDoctor = null;
+        doctorSearchQuery = "";
+    }
+
+    private async Task OnDoctorSearchInput(ChangeEventArgs e)
+    {
+        doctorSearchQuery = e.Value?.ToString() ?? "";
+        doctorSearchDebounce?.Cancel();
+        doctorSearchDebounce = new CancellationTokenSource();
+        var token = doctorSearchDebounce.Token;
+        if (doctorSearchQuery.Length < 2)
+        {
+            doctorSearchResults = new();
+            StateHasChanged();
+            return;
+        }
+        try
+        {
+            await Task.Delay(300, token);
+            doctorSearchResults = await new PrickDoctorOrderService(dataService).SearchDoctors(doctorSearchQuery);
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+
+    private async Task SubmitQuickAddDoctor()
+    {
+        if (string.IsNullOrWhiteSpace(quickAddName))
+        {
+            newOrderMessage = "Συμπλήρωσε το ονοματεπώνυμο του γιατρού.";
+            return;
+        }
+        var req = new QuickAddDoctorRequest
+        {
+            FullName = quickAddName,
+            Phone = quickAddPhone,
+            City = quickAddCity,
+            CreatedBy = userManager.User?.IdUser
+        };
+        var result = await new PrickDoctorOrderService(dataService).QuickAddDoctor(req);
+        if (result != null)
+        {
+            selectedDoctor = result;
+            showQuickAddDoctor = false;
+        }
+        else
+        {
+            newOrderMessage = "Απέτυχε η δημιουργία γιατρού.";
+        }
     }
 }

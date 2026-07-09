@@ -48,6 +48,12 @@ namespace StallmedManager.Client
             return await dataService.Post<CreateProductionOrderRequest, ProductionOrderDto>("api/prickproduction/orders", req);
         }
 
+        public async Task<List<ReceivingImportRowDto>> ParseReceivingExcel(byte[] fileBytes, string fileName)
+        {
+            return await dataService.PostFile<List<ReceivingImportRowDto>>(
+                "api/prickproduction/parse-receiving-excel", fileBytes, fileName);
+        }
+
         public async Task<ReceiveStockResult> ReceiveStock(ReceiveStockRequest req)
         {
             return await dataService.Post<ReceiveStockRequest, ReceiveStockResult>("api/prickproduction/receive", req);

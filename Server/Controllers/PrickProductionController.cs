@@ -266,6 +266,59 @@ namespace StallmedManager.Server.Controllers
             return Ok(result);
         }
 
+        // ---- Parse Excel αρχείου παραλαβής (3 στήλες: Είδος / Κωδικός / Τεμάχια) ----
+        [HttpPost("parse-receiving-excel")]
+        public async Task<ActionResult<List<ReceivingImportRowDto>>> ParseReceivingExcel(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("Δεν στάλθηκε αρχείο.");
+
+            using var stream = new MemoryStream();
+            await file.CopyToAsync(stream);
+            stream.Position = 0;
+
+            var allergenCodes = (await _context.AllergenCodes.Select(a => a.CodePrick).ToListAsync()).ToHashSet();
+            var productTypeCodes = (await _context.ProductTypes.Select(p => p.ProductTypeCode).ToListAsync()).ToHashSet();
+
+            using var wb = new ClosedXML.Excel.XLWorkbook(stream);
+            var ws = wb.Worksheets.First();
+            var result = new List<ReceivingImportRowDto>();
+
+            foreach (var row in ws.RangeUsed().RowsUsed().Skip(1))
+            {
+                if (row.IsEmpty()) continue;
+
+                var typeCode = row.Cell(1).Value.ToString().Trim();
+                var code = row.Cell(2).Value.ToString().Trim().ToUpper();
+                var qtyStr = row.Cell(3).Value.ToString().Trim();
+                int.TryParse(qtyStr, out int qty);
+
+                var dto = new ReceivingImportRowDto
+                {
+                    ProductTypeCode = typeCode,
+                    CodePrick = code,
+                    Quantity = qty
+                };
+
+                if (string.IsNullOrEmpty(typeCode))
+                    dto.Error = "Λείπει Είδος";
+                else if (!productTypeCodes.Contains(typeCode))
+                    dto.Error = $"Άγνωστο Είδος '{typeCode}'";
+                else if (string.IsNullOrEmpty(code))
+                    dto.Error = "Λείπει Κωδικός";
+                else if (!allergenCodes.Contains(code))
+                    dto.Error = $"Άγνωστος κωδικός '{code}'";
+                else if (qty <= 0)
+                    dto.Error = "Μη έγκυρη ποσότητα";
+                else
+                    dto.Valid = true;
+
+                result.Add(dto);
+            }
+
+            return Ok(result);
+        }
+
         // ---- Καταχώρηση παραλαβής (καλεί sp_ReceiveProduction) ----
         [HttpPost("receive")]
         public async Task<ActionResult<ReceiveStockResult>> ReceiveStock([FromBody] ReceiveStockRequest req)

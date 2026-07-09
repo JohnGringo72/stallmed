@@ -31,4 +31,18 @@ namespace StallmedManager.Shared.Models
         public List<PrickStockLevelDto> StockLevels { get; set; } = new();
         public List<PrickAgingLineDto> AgingLines { get; set; } = new();
     }
+
+    public class StockOrderProposalItemDto
+    {
+        public string CodePrick { get; set; }
+        public string? AllergenDescription { get; set; }
+        public string ProductTypeCode { get; set; }
+        public string? ProductDescription { get; set; }
+        public string Company { get; set; }
+        public int CurrentStock { get; set; }
+        public int PendingDemand { get; set; }
+        public int SecurityStock { get; set; }
+        public int Proposed { get; set; }
+        public int OrderQuantity { get; set; } // editable by user
+    }
 }

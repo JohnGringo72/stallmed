@@ -16,5 +16,17 @@ namespace StallmedManager.Client
             var query = string.IsNullOrEmpty(company) ? "" : $"?company={company}";
             return await dataService.Get<PrickDashboardSummaryDto>($"api/prickdashboard/summary{query}");
         }
+
+        public async Task<List<StockOrderProposalItemDto>> GetStockOrderProposal(string? company)
+        {
+            var query = string.IsNullOrEmpty(company) ? "" : $"?company={company}";
+            return await dataService.Get<List<StockOrderProposalItemDto>>($"api/prickdashboard/stock-order-proposal{query}");
+        }
+
+        public async Task<byte[]> ExportProposalExcel(string company, List<StockOrderProposalItemDto> items)
+        {
+            return await dataService.Post<List<StockOrderProposalItemDto>, byte[]>(
+                $"api/prickdashboard/stock-order-export?company={company}", items);
+        }
     }
 }

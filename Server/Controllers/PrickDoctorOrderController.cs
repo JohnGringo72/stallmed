@@ -575,7 +575,10 @@ namespace StallmedManager.Server.Controllers
             }
 
             foreach (var g in groupsDict.Values)
-                g.HasErrors = !g.ProductTypeValid || g.Lines.Any(l => !l.CodeValid);
+                // Η παραγγελία θεωρείται "με σφάλμα" ΜΟΝΟ αν δεν έχει ΚΑΜΙΑ έγκυρη γραμμή
+                // ή αν ο τύπος προϊόντος δεν αναγνωρίστηκε - σε αντίθετη περίπτωση
+                // περνάει κανονικά με μόνο τις έγκυρες γραμμές
+                g.HasErrors = !g.ProductTypeValid || !g.Lines.Any(l => l.CodeValid);
 
             return Ok(new ImportPreviewResult
             {
@@ -628,7 +631,7 @@ namespace StallmedManager.Server.Controllers
                 _context.DoctorOrders.Add(order);
                 await _context.SaveChangesAsync();
 
-                foreach (var l in g.Lines)
+                foreach (var l in g.Lines.Where(l => l.CodeValid))
                 {
                     _context.DoctorOrderLines.Add(new DoctorOrderLine
                     {

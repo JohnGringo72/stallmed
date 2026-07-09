@@ -1,7 +1,9 @@
 @page "/prick-receiving"
 @using StallmedManager.Shared.Models
+@using Microsoft.AspNetCore.Components.Forms
 @inject DataService dataService
 @inject UserManager userManager
+@inject IJSRuntime JS
 
 <PageTitle>Prick Test - Παραλαβή</PageTitle>
 
@@ -51,6 +53,16 @@
         font-size: 1.4rem;
         font-weight: 700;
         color: #dc3545;
+    }
+
+    .popup-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5); z-index: 1000;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .popup-box {
+        background: white; padding: 24px; border-radius: 10px;
+        width: 90%; max-width: 480px;
     }
 </style>
 
@@ -130,6 +142,9 @@
         <div class="col-6 col-md-3">
             <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
         </div>
+        <div class="col-6 col-md-2">
+            <button class="btn btn-outline-primary w-100" @onclick="OpenImportPopup">📊 Import Excel</button>
+        </div>
     </div>
 </div>
 
@@ -177,6 +192,70 @@
     }
 }
 
+@if (showImportPopup)
+{
+    <div class="popup-overlay" @onclick="CloseImportPopup">
+        <div class="popup-box" style="max-width:600px;" @onclick:stopPropagation="true">
+            <h5>📊 Import Παραλαβής από Excel</h5>
+            <hr />
+            <p class="text-muted small">
+                Το αρχείο πρέπει να έχει 3 στήλες: <strong>Είδος</strong> (κωδικός τύπου, π.χ. 91),
+                <strong>Κωδικός</strong> (π.χ. A-001), <strong>Τεμάχια</strong> (αριθμός).
+                Η πρώτη γραμμή είναι επικεφαλίδες.
+            </p>
+            <div class="mb-3">
+                <InputFile OnChange="OnImportFileSelected" accept=".xlsx" class="form-control" />
+            </div>
+
+            @if (importLoading)
+            {
+                <p><em>Επεξεργασία...</em></p>
+            }
+
+            @if (importPreviewRows.Count > 0)
+            {
+                <div style="max-height:280px; overflow-y:auto;">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr><th>Είδος</th><th>Κωδικός</th><th>Τεμάχια</th><th>Κατάσταση</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in importPreviewRows)
+                            {
+                                <tr class="@(row.Valid ? "" : "table-danger")">
+                                    <td>@row.ProductTypeCode</td>
+                                    <td>@row.CodePrick</td>
+                                    <td>@row.Quantity</td>
+                                    <td>@(row.Valid ? "✓" : $"⚠ {row.Error}")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="alert @(importPreviewRows.Any(r => !r.Valid) ? "alert-warning" : "alert-success") py-2 small">
+                    Έγκυρες: @importPreviewRows.Count(r => r.Valid) |
+                    Προβλήματα: @importPreviewRows.Count(r => !r.Valid)
+                </div>
+                @if (!string.IsNullOrEmpty(importMessage))
+                {
+                    <div class="alert alert-info py-2">@importMessage</div>
+                }
+                <div class="d-flex gap-2">
+                    <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup">Ακύρωση</button>
+                    <button class="btn btn-success flex-fill" @onclick="SubmitImport"
+                            disabled="@(!importPreviewRows.Any(r => r.Valid))">
+                        📥 Καταχώρηση (@importPreviewRows.Count(r => r.Valid) γραμμές)
+                    </button>
+                </div>
+            }
+            else if (!importLoading)
+            {
+                <button class="btn btn-secondary" @onclick="CloseImportPopup">Κλείσιμο</button>
+            }
+        </div>
+    </div>
+}
+
 @code {
     private string selectedCompany = "";
     private string selectedProductType = "";
@@ -184,6 +263,21 @@
     private string sortBy = "code";
     private string status = "idle";
     private string topBannerMessage = "";
+
+    // --- Import Excel ---
+    private bool showImportPopup = false;
+    private bool importLoading = false;
+    private string importMessage = "";
+
+    private class ImportPreviewRow
+    {
+        public string ProductTypeCode { get; set; } = "";
+        public string CodePrick { get; set; } = "";
+        public int Quantity { get; set; }
+        public bool Valid { get; set; }
+        public string? Error { get; set; }
+    }
+    private List<ImportPreviewRow> importPreviewRows = new();
     private List<PendingReceiptSummaryDto> summary = new();
     private List<SimpleCodeOptionDto> productTypeOptions = new();
 
@@ -300,5 +394,74 @@
         {
             input.Message = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
         }
+    }
+
+    // ===================== Import Excel =====================
+    private void OpenImportPopup()
+    {
+        showImportPopup = true;
+        importPreviewRows = new();
+        importMessage = "";
+        importLoading = false;
+    }
+    private void CloseImportPopup() => showImportPopup = false;
+
+    private async Task OnImportFileSelected(InputFileChangeEventArgs e)
+    {
+        importLoading = true;
+        importPreviewRows = new();
+        importMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            using var ms = new System.IO.MemoryStream();
+            await e.File.OpenReadStream(5 * 1024 * 1024).CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            // Στέλνω στον Server για parsing (ClosedXML είναι μόνο εκεί)
+            var result = await new PrickProductionService(dataService).ParseReceivingExcel(bytes, e.File.Name);
+            if (result != null)
+                importPreviewRows = result.Select(r => new ImportPreviewRow
+                {
+                    ProductTypeCode = r.ProductTypeCode,
+                    CodePrick = r.CodePrick,
+                    Quantity = r.Quantity,
+                    Valid = r.Valid,
+                    Error = r.Error
+                }).ToList();
+        }
+        catch (Exception ex)
+        {
+            importMessage = $"Σφάλμα: {ex.Message}";
+        }
+
+        importLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task SubmitImport()
+    {
+        var validRows = importPreviewRows.Where(r => r.Valid).ToList();
+        if (!validRows.Any()) return;
+
+        int success = 0;
+        foreach (var row in validRows)
+        {
+            var req = new ReceiveStockRequest
+            {
+                CodePrick = row.CodePrick,
+                ProductTypeCode = row.ProductTypeCode,
+                ReceivedDate = DateTime.Today,
+                Quantity = row.Quantity,
+                CreatedBy = userManager.User?.IdUser
+            };
+            var result = await new PrickProductionService(dataService).ReceiveStock(req);
+            if (result != null) success++;
+        }
+
+        topBannerMessage = $"✅ Καταχωρήθηκαν {success} παραλαβές από Excel.";
+        showImportPopup = false;
+        await LoadData();
     }
 }

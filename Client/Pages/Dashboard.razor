@@ -1,6 +1,7 @@
 @page "/prick-dashboard"
 @using StallmedManager.Shared.Models
 @inject DataService dataService
+@inject IJSRuntime JS
 
 <PageTitle>Prick Test - Dashboard</PageTitle>
 
@@ -47,6 +48,12 @@
         font-size: 0.78rem;
         font-weight: 600;
     }
+
+    .proposal-row-ok { background-color: #d1e7dd !important; }
+    .proposal-row-warn { background-color: #fff3cd !important; }
+    .proposal-row-danger { background-color: #f8d7da !important; }
+    .qty-stepper { display: flex; align-items: center; gap: 4px; }
+    .qty-value { min-width: 30px; text-align: center; font-weight: 700; }
 </style>
 
 <h1 class="mb-3">Prick Test - Dashboard</h1>
@@ -100,6 +107,102 @@
             </div>
         </div>
     </div>
+
+    <!-- ===== ΠΡΟΤΑΣΗ ΠΑΡΑΓΓΕΛΙΑΣ ΣΤΟΚ ===== -->
+    <div class="d-flex align-items-center gap-3 mt-2 mb-2">
+        <h4 class="mb-0">🛒 Πρόταση Παραγγελίας Στοκ</h4>
+        <button class="btn btn-outline-primary btn-sm" @onclick="LoadProposal">
+            @(proposalStatus == "loading" ? "Φορτώνω..." : "🔄 Υπολογισμός")
+        </button>
+    </div>
+
+    @if (proposalStatus == "loaded" && proposal != null)
+    {
+        @if (!proposal.Any())
+        {
+            <div class="alert alert-success mb-3">✅ Δεν χρειάζεται παραγγελία αυτή τη στιγμή!</div>
+        }
+        else
+        {
+            @foreach (var grp in proposal.GroupBy(x => new { x.ProductTypeCode, x.ProductDescription }).OrderBy(g => g.Key.ProductTypeCode))
+            {
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center py-2">
+                        <strong>@grp.Key.ProductTypeCode — @grp.Key.ProductDescription</strong>
+                        <div class="d-flex gap-2">
+                            @if (grp.Any(x => x.Company == "BM" && x.OrderQuantity > 0))
+                            {
+                                <button class="btn btn-sm btn-success" @onclick='() => CreateStockOrderByType("BM", grp.Key.ProductTypeCode)'>
+                                    🛒 Παραγγελία BM
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportProposalExcelByType("BM", grp.Key.ProductTypeCode)'>
+                                    📊 Excel BM
+                                </button>
+                            }
+                            @if (grp.Any(x => x.Company == "SM" && x.OrderQuantity > 0))
+                            {
+                                <button class="btn btn-sm btn-success" @onclick='() => CreateStockOrderByType("SM", grp.Key.ProductTypeCode)'>
+                                    🛒 Παραγγελία SM
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportProposalExcelByType("SM", grp.Key.ProductTypeCode)'>
+                                    📊 Excel SM
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Κωδικός</th>
+                                        <th>Περιγραφή</th>
+                                        <th>Εταιρεία</th>
+                                        <th title="Τρέχον διαθέσιμο stock">Stock</th>
+                                        <th title="Εκκρεμής ζήτηση">Εκκρεμές</th>
+                                        <th title="Μέσος εβδ. × 2">Security</th>
+                                        <th>Παραγγελία</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in grp.OrderBy(x => x.CodePrick))
+                                    {
+                                        var rowClass = item.CurrentStock == 0 ? "proposal-row-danger"
+                                                     : item.CurrentStock < item.PendingDemand ? "proposal-row-warn"
+                                                     : "proposal-row-ok";
+                                        <tr class="@rowClass">
+                                            <td><strong>@item.CodePrick</strong></td>
+                                            <td><small>@item.AllergenDescription</small></td>
+                                            <td>
+                                                <span class="company-badge" style="background-color:@(item.Company == "SM" ? "#0d6efd" : "#6f42c1")">@item.Company</span>
+                                            </td>
+                                            <td>@item.CurrentStock</td>
+                                            <td>@item.PendingDemand</td>
+                                            <td>@item.SecurityStock</td>
+                                            <td>
+                                                <div class="qty-stepper">
+                                                    <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                            @onclick="() => ChangeProposalQty(item, -1)">−</button>
+                                                    <span class="qty-value">@item.OrderQuantity</span>
+                                                    <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                            @onclick="() => ChangeProposalQty(item, 1)">+</button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(proposalMessage))
+            {
+                <div class="alert alert-info mb-3">@proposalMessage</div>
+            }
+        }
+    }
 
     <h4 class="mb-2">📦 Τρέχον Stock</h4>
     <div class="table-responsive mb-4">
@@ -169,12 +272,17 @@
             </tbody>
         </table>
     </div>
+
 }
 
 @code {
     private string selectedCompany = "";
     private string status = "idle";
     private PrickDashboardSummaryDto summary;
+
+    private string proposalStatus = "idle";
+    private List<StockOrderProposalItemDto> proposal;
+    private string proposalMessage = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -191,5 +299,58 @@
 
         status = "loaded";
         StateHasChanged();
+    }
+
+    private async Task LoadProposal()
+    {
+        proposalStatus = "loading";
+        proposalMessage = "";
+        StateHasChanged();
+
+        proposal = await new PrickDashboardService(dataService).GetStockOrderProposal(
+            string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany);
+
+        proposalStatus = "loaded";
+        StateHasChanged();
+    }
+
+    private void ChangeProposalQty(StockOrderProposalItemDto item, int delta)
+    {
+        var updated = item.OrderQuantity + delta;
+        if (updated >= 0) item.OrderQuantity = updated;
+    }
+
+    private async Task CreateStockOrderByType(string company, string productTypeCode)
+    {
+        if (proposal == null) return;
+        var lines = proposal.Where(x => x.Company == company && x.ProductTypeCode == productTypeCode && x.OrderQuantity > 0).ToList();
+        if (!lines.Any()) return;
+
+        var req = new CreateProductionOrderRequest
+        {
+            Company = company,
+            OrderDate = DateTime.Today,
+            CreatedBy = null,
+            Lines = lines.Select(x => new CreateProductionOrderLineRequest
+            {
+                CodePrick = x.CodePrick,
+                ProductTypeCode = x.ProductTypeCode,
+                QuantityOrdered = x.OrderQuantity
+            }).ToList()
+        };
+        await new PrickProductionService(dataService).CreateOrder(req);
+        proposalMessage = $"✅ Παραγγελία στοκ {company} / {productTypeCode} δημιουργήθηκε. Δες τη στη σελίδα Stock Orders.";
+        StateHasChanged();
+    }
+
+    private async Task ExportProposalExcelByType(string company, string productTypeCode)
+    {
+        if (proposal == null) return;
+        var lines = proposal.Where(x => x.Company == company && x.ProductTypeCode == productTypeCode && x.OrderQuantity > 0).ToList();
+        if (!lines.Any()) return;
+
+        var bytes = await new PrickDashboardService(dataService).ExportProposalExcel(company, lines);
+        if (bytes != null)
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"StockOrder_{company}_{productTypeCode}_{DateTime.Today:yyyyMMdd}.xlsx", bytes);
     }
 }

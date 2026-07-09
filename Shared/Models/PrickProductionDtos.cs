@@ -87,4 +87,13 @@ namespace StallmedManager.Shared.Models
         public int TotalPending { get; set; }
         public int OrdersCount { get; set; }
     }
+
+    public class ReceivingImportRowDto
+    {
+        public string ProductTypeCode { get; set; }
+        public string CodePrick { get; set; }
+        public int Quantity { get; set; }
+        public bool Valid { get; set; }
+        public string? Error { get; set; }
+    }
 }
