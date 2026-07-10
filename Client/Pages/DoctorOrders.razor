@@ -153,12 +153,12 @@
         flex-shrink: 0;
     }
 
-        .qty-stepper button {
-            min-width: 36px;
-            min-height: 36px;
-            font-size: 1.1rem;
-            font-weight: 700;
-        }
+    .qty-stepper button {
+        min-width: 36px;
+        min-height: 36px;
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
 
     .qty-value {
         min-width: 28px;
@@ -212,10 +212,7 @@
             background: #f8f9fa;
         }
 
-    .stock-ok {
-        color: #198754;
-        font-weight: 600;
-    }
+    .stock-ok { color: #198754; font-weight: 600; }
 
     .attachment-thumb {
         position: relative;
@@ -436,16 +433,8 @@
                                 <table class="table table-sm mb-2">
                                     <thead>
                                         <tr>
-                                            <th>Κωδικός</th>
-                                            <th>Τύπος</th>
-                                            <th>Ζητ.</th>
-                                            <th>Δεσμ.</th>
-                                            <th>Ακυρ.</th>
-                                            <th>Εκκρεμές</th>
-                                            <th>Διαθέσιμο</th>
-                                            <th>Αλλού</th>
-                                            <th>Status</th>
-                                            <th></th>
+                                            <th>Κωδικός</th><th>Τύπος</th><th>Ζητ.</th><th>Δεσμ.</th><th>Ακυρ.</th><th>Εκκρεμές</th>
+                                            <th>Διαθέσιμο</th><th>Αλλού</th><th>Status</th><th></th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -562,9 +551,7 @@
             <h5>Allocate Stock</h5>
             <hr />
             <p>@allocateLine.CodePrick (@allocateLine.AllergenDescription) - Τύπος @allocateLine.ProductTypeCode</p>
-            @{
-                var pendingQty = allocateLine.QuantityRequested - allocateLine.QuantityAllocated - allocateLine.QuantityCancelled;
-            }
+            @{ var pendingQty = allocateLine.QuantityRequested - allocateLine.QuantityAllocated - allocateLine.QuantityCancelled; }
             <p>Εκκρεμές: <strong>@pendingQty</strong> | Διαθέσιμο: <strong>@allocateLine.AvailableStock</strong></p>
             <div class="mb-2">
                 <label class="form-label mb-1">Ποσότητα προς δέσμευση</label>
@@ -640,35 +627,9 @@
             }
             else
             {
-                <h5>Νέα Παραγγελία Γιατρού</h5>
-                <hr />
+            <h5>Νέα Παραγγελία Γιατρού</h5>
+            <hr />
 
-<<<<<<< HEAD
-                <div class="row g-2 mb-2">
-                    <div class="col-4">
-                        <label class="form-label mb-1">Εταιρεία</label>
-                        <select class="form-control" value="@newOrderCompany" @onchange="e => OnNewOrderCompanyChanged(e.Value.ToString())">
-                            <option value="">-- Επίλεξε --</option>
-                            <option value="SM">StallMedicals</option>
-                            <option value="BM">BeltaMed</option>
-                        </select>
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label mb-1">Τύπος (για όλη την παραγγελία)</label>
-                        <select class="form-control" @bind="newOrderProductType">
-                            <option value="">-- Επίλεξε --</option>
-                            @foreach (var p in productTypeOptions)
-                            {
-                                <option value="@p.Code">@p.Code - @p.Description</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="col-4">
-                        <label class="form-label mb-1">Ημερομηνία</label>
-                        <input type="date" class="form-control" @bind="newOrderDate" />
-                    </div>
-                </div>
-=======
             <div class="row g-2 mb-2">
                 <div class="col-4">
                     <label class="form-label mb-1">Εταιρεία</label>
@@ -693,131 +654,45 @@
                     <input type="date" class="form-control" @bind="newOrderDate" />
                 </div>
             </div>
->>>>>>> 19367f24ddaed23d88375854d2035f5191915b8e
 
-                <label class="form-label mb-1">Γιατρός</label>
-                @if (selectedDoctor != null)
+            <label class="form-label mb-1">Γιατρός</label>
+            @if (selectedDoctor != null)
+            {
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-primary">@selectedDoctor.FullName</span>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDoctor">Αλλαγή</button>
+                </div>
+            }
+            else
+            {
+                <input class="form-control mb-1" placeholder="Αναζήτησε γιατρό με όνομα..."
+                       value="@doctorSearchQuery" @oninput="OnDoctorSearchInput" />
+                <div style="max-height:150px; overflow-y:auto;">
+                    @foreach (var d in doctorSearchResults)
+                    {
+                        <div class="doctor-search-row" @onclick="() => SelectDoctor(d)">@d.FullName</div>
+                    }
+                </div>
+                @if (!showQuickAddDoctor)
                 {
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="badge bg-primary">@selectedDoctor.FullName</span>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDoctor">Αλλαγή</button>
-                    </div>
+                    <button class="btn btn-sm btn-outline-success mt-1" @onclick="() => showQuickAddDoctor = true">
+                        ➕ Δεν βρίσκω τον γιατρό - Νέος Γιατρός
+                    </button>
                 }
                 else
                 {
-                    <input class="form-control mb-1" placeholder="Αναζήτησε γιατρό με όνομα..."
-                           value="@doctorSearchQuery" @oninput="OnDoctorSearchInput" />
-                    <div style="max-height:150px; overflow-y:auto;">
-                        @foreach (var d in doctorSearchResults)
-                        {
-                            <div class="doctor-search-row" @onclick="() => SelectDoctor(d)">@d.FullName</div>
-                        }
-                    </div>
-                    @if (!showQuickAddDoctor)
-                    {
-                        <button class="btn btn-sm btn-outline-success mt-1" @onclick="() => showQuickAddDoctor = true">
-                            ➕ Δεν βρίσκω τον γιατρό - Νέος Γιατρός
-                        </button>
-                    }
-                    else
-                    {
-                        <div class="border rounded p-2 mt-1">
-                            <input class="form-control form-control-sm mb-1" placeholder="Ονοματεπώνυμο" @bind="quickAddName" />
-                            <input class="form-control form-control-sm mb-1" placeholder="Τηλέφωνο (προαιρετικό)" @bind="quickAddPhone" />
-                            <input class="form-control form-control-sm mb-1" placeholder="Πόλη (προαιρετικό)" @bind="quickAddCity" />
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-secondary flex-fill" @onclick="() => showQuickAddDoctor = false">Ακύρωση</button>
-                                <button class="btn btn-sm btn-success flex-fill" @onclick="SubmitQuickAddDoctor">Προσθήκη</button>
-                            </div>
-                        </div>
-                    }
-                }
-
-                <hr />
-                <label class="form-label mb-1">Αλλεργιογόνα</label>
-                @for (int i = 0; i < newOrderLines.Count; i++)
-                {
-                    var idx = i;
-                    var line = newOrderLines[idx];
-                    <div class="allergen-line-row mb-2">
-                        <div class="d-flex gap-2 align-items-start">
-                            <div class="flex-grow-1 position-relative">
-                                @if (!string.IsNullOrEmpty(line.SelectedCode))
-                                {
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="badge bg-info text-dark">@line.SelectedCode - @line.SelectedDescription</span>
-                                        <button class="btn btn-sm btn-link p-0" @onclick="() => ClearLineSelection(idx)">αλλαγή</button>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <input class="form-control form-control-sm" placeholder="Γράψε κωδικό ή όνομα (π.χ. derm, A001, γάτα...)"
-                                           value="@line.SearchQuery" @oninput="e => OnLineSearchInput(idx, e.Value.ToString())" />
-                                    @if (line.Suggestions.Count > 0)
-                                    {
-                                        <div class="allergen-suggestions">
-                                            @foreach (var s in line.Suggestions)
-                                            {
-                                                <div class="allergen-suggestion-row" @onclick="() => SelectLineAllergen(idx, s)">
-                                                    <strong>@s.Code</strong> - @s.DescriptionGreek <small class="text-muted">(@s.DescriptionOther)</small>
-                                                </div>
-                                            }
-                                        </div>
-                                    }
-                                }
-                            </div>
-                            <div class="qty-stepper">
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ChangeQuantity(idx, -1)">−</button>
-                                <span class="qty-value">@line.Quantity</span>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => ChangeQuantity(idx, 1)">+</button>
-                            </div>
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => newOrderLines.RemoveAt(idx)">✕</button>
+                    <div class="border rounded p-2 mt-1">
+                        <input class="form-control form-control-sm mb-1" placeholder="Ονοματεπώνυμο" @bind="quickAddName" />
+                        <input class="form-control form-control-sm mb-1" placeholder="Τηλέφωνο (προαιρετικό)" @bind="quickAddPhone" />
+                        <input class="form-control form-control-sm mb-1" placeholder="Πόλη (προαιρετικό)" @bind="quickAddCity" />
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-secondary flex-fill" @onclick="() => showQuickAddDoctor = false">Ακύρωση</button>
+                            <button class="btn btn-sm btn-success flex-fill" @onclick="SubmitQuickAddDoctor">Προσθήκη</button>
                         </div>
                     </div>
                 }
-                <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="() => newOrderLines.Add(new LineForm())">
-                    ➕ Προσθήκη αλλεργιογόνου
-                </button>
-
-<<<<<<< HEAD
-                <hr />
-                <label class="form-label mb-1">
-                    <a href="#" @onclick:preventDefault @onclick="() => showShippingFields = !showShippingFields">
-                        📦 Στοιχεία Αποστολής (προαιρετικά - @(showShippingFields ? "απόκρυψη" : "εμφάνιση"))
-                    </a>
-                </label>
-                @if (showShippingFields)
-                {
-                    <div class="row g-2 mb-2">
-                        <div class="col-6">
-                            <input class="form-control form-control-sm" placeholder="Όνομα παραλήπτη" @bind="newOrderRecipientName" />
-                        </div>
-                        <div class="col-6">
-                            <input class="form-control form-control-sm" placeholder="Τηλέφωνο" @bind="newOrderShippingPhone" />
-                        </div>
-                        <div class="col-12">
-                            <input class="form-control form-control-sm" placeholder="Διεύθυνση" @bind="newOrderShippingAddress" />
-                        </div>
-                        <div class="col-6">
-                            <input class="form-control form-control-sm" placeholder="Πόλη" @bind="newOrderShippingCity" />
-                        </div>
-                        <div class="col-6">
-                            <input class="form-control form-control-sm" placeholder="Τ.Κ." @bind="newOrderShippingPostalCode" />
-                        </div>
-                    </div>
-                }
-
-                @if (!string.IsNullOrEmpty(newOrderMessage))
-                {
-                    <div class="alert alert-warning py-2">@newOrderMessage</div>
-                }
-
-                <div class="d-flex gap-2">
-                    <button class="btn btn-secondary flex-fill" @onclick="TryCloseNewOrderPopup">Ακύρωση</button>
-                    <button class="btn btn-success flex-fill" @onclick="SubmitNewOrder">Δημιουργία Παραγγελίας</button>
-                </div>
             }
-=======
+
             <hr />
             <label class="form-label mb-1">Αλλεργιογόνα</label>
             @if (string.IsNullOrEmpty(newOrderCompany))
@@ -906,7 +781,6 @@
                 <button class="btn btn-success flex-fill" @onclick="SubmitNewOrder">Δημιουργία Παραγγελίας</button>
             </div>
             }
->>>>>>> 19367f24ddaed23d88375854d2035f5191915b8e
         </div>
     </div>
 }
@@ -1604,9 +1478,6 @@
         await LoadAttachments(order.OrderID);
         order.AttachmentCount = orderAttachments[order.OrderID].Count;
     }
-<<<<<<< HEAD
-}
-=======
 
     private void SelectDoctor(DoctorOptionDto d)
     {
@@ -1668,4 +1539,3 @@
         }
     }
 }
->>>>>>> 19367f24ddaed23d88375854d2035f5191915b8e
