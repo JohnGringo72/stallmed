@@ -1370,6 +1370,7 @@
         var ok = await new PrickDoctorOrderService(dataService).CancelLine(req);
         if (ok)
         {
+            //test
             topBannerMessage = "✅ Το εκκρεμές υπόλοιπο της γραμμής ακυρώθηκε.";
             await LoadData();
         }
