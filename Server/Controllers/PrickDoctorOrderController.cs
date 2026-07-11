@@ -339,10 +339,12 @@ namespace StallmedManager.Server.Controllers
 
             var order = await _context.DoctorOrders.FindAsync(line.OrderID);
             var siblingLines = await _context.DoctorOrderLines.Where(l => l.OrderID == line.OrderID).ToListAsync();
-            if (order != null && order.OrderStatus == "Open" &&
-                siblingLines.All(l => l.LineStatus == "Fulfilled" || l.LineStatus == "Cancelled"))
+            var allResolved = siblingLines.All(l => l.LineStatus == "Fulfilled" || l.LineStatus == "Cancelled");
+            var hasAnyFulfilled = siblingLines.Any(l => l.LineStatus == "Fulfilled");
+
+            if (order != null && order.OrderStatus == "Open" && allResolved)
             {
-                order.OrderStatus = "ReadyToShip";
+                order.OrderStatus = hasAnyFulfilled ? "ReadyToShip" : "Cancelled";
                 order.UpdatedAt = DateTime.Now;
                 await _context.SaveChangesAsync();
             }
