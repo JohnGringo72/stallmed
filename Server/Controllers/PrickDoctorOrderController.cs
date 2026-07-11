@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using StallmedManager.Server.Models;
 using StallmedManager.Shared.Models;
-
+//test
 namespace StallmedManager.Server.Controllers
 {
     [Route("api/[controller]")]
