@@ -80,6 +80,24 @@
         color: #444;
     }
 
+    .orders-summary-bar {
+        background: #f0f7ff;
+        border: 1px solid #d6e9ff;
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+        .orders-summary-bar .summary-pill {
+            background: white;
+            border: 1px solid #d6e9ff;
+            font-weight: 600;
+        }
+
     .expand-arrow {
         transition: transform 0.15s;
         display: inline-block;
@@ -363,6 +381,18 @@
     </div>
 </div>
 
+@if (status == "loaded" && DoctorGroups.Count > 0)
+{
+    var summary = SummaryStats;
+    <div class="orders-summary-bar">
+        <span class="summary-pill">📋 @summary.TotalOrders παραγγελίες</span>
+        <span class="summary-pill">🧪 Ζητ. @summary.TotalRequested</span>
+        <span class="summary-pill">✅ Διαθ. @summary.TotalAvailable</span>
+        <span class="summary-pill">⏳ Εκκρεμές @summary.TotalPending</span>
+        <span class="summary-pill">🔴 Χωρίς stock @summary.NoStock</span>
+    </div>
+}
+
 @if (status == "loading")
 {
     <p><em>Φορτώνω...</em></p>
@@ -407,6 +437,7 @@
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <span class="expand-arrow @(isOrderOpen ? "open" : "")">▶</span>
                                     <strong>@order.OrderCode</strong>
+                                    <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
                                     <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
                                     <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
                                     <span class="summary-pill">🧪 @typeDescription</span>
@@ -576,6 +607,28 @@
                                     <div class="d-flex gap-2">
                                         <textarea class="form-control form-control-sm" rows="2"
                                                   value="@GetNotesValue(order)" @oninput="e => SetNotesValue(order, e.Value.ToString())"></textarea>
+                                    </div>
+                                </div>
+
+                                <div class="mb-2">
+                                    <label class="form-label mb-1 small">💰 Τιμολόγηση</label>
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        @if (!editingInvoiceFor.Contains(order.OrderID))
+                                        {
+                                            <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenInvoiceEdit(order)">✏️ Επεξεργασία</button>
+                                        }
+                                        else
+                                        {
+                                            <select class="form-control form-control-sm" style="max-width:160px;" @bind="invoiceEditType">
+                                                <option value="Κανονικό">Κανονικό</option>
+                                                <option value="Δωρεάν">Δωρεάν</option>
+                                                <option value="Έκπτωση">Έκπτωση %</option>
+                                            </select>
+                                            <input class="form-control form-control-sm" style="max-width:220px;" placeholder="π.χ. 20%, νοσοκομείο, προσφορά..." @bind="invoiceEditNote" />
+                                            <button class="btn btn-sm btn-success" @onclick="() => SaveInvoice(order)">Αποθήκευση</button>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => CloseInvoiceEdit(order.OrderID)">Ακύρωση</button>
+                                        }
                                     </div>
                                 </div>
 
@@ -807,6 +860,21 @@
                     </div>
                 </div>
             }
+
+            <hr />
+            <label class="form-label mb-1">💰 Τιμολόγηση</label>
+            <div class="row g-2 mb-2">
+                <div class="col-6">
+                    <select class="form-control form-control-sm" @bind="newOrderInvoiceType">
+                        <option value="Κανονικό">Κανονικό</option>
+                        <option value="Δωρεάν">Δωρεάν</option>
+                        <option value="Έκπτωση">Έκπτωση %</option>
+                    </select>
+                </div>
+                <div class="col-6">
+                    <input class="form-control form-control-sm" placeholder="π.χ. 20%, νοσοκομείο, προσφορά..." @bind="newOrderInvoiceNote" />
+                </div>
+            </div>
 
             @if (!string.IsNullOrEmpty(newOrderMessage))
             {
@@ -1056,6 +1124,37 @@
     private string GetNotesValue(DoctorOrderViewDto order) => GetPending(order.OrderID).Notes ?? order.Notes ?? "";
     private void SetNotesValue(DoctorOrderViewDto order, string value) => GetPending(order.OrderID).Notes = value;
 
+    // --- Τιμολόγηση (invoice type/note) ---
+    private HashSet<long> editingInvoiceFor = new();
+    private string invoiceEditType = "Κανονικό";
+    private string invoiceEditNote = "";
+
+    private string GetInvoiceBadgeClass(string? invoiceType) => invoiceType switch
+    {
+        "Δωρεάν" => "bg-danger",
+        "Έκπτωση" => "bg-warning text-dark",
+        _ => "bg-success"
+    };
+
+    private void OpenInvoiceEdit(DoctorOrderViewDto order)
+    {
+        editingInvoiceFor.Add(order.OrderID);
+        invoiceEditType = string.IsNullOrEmpty(order.InvoiceType) ? "Κανονικό" : order.InvoiceType;
+        invoiceEditNote = order.InvoiceNote ?? "";
+    }
+
+    private void CloseInvoiceEdit(long orderId) => editingInvoiceFor.Remove(orderId);
+
+    private async Task SaveInvoice(DoctorOrderViewDto order)
+    {
+        var note = string.IsNullOrWhiteSpace(invoiceEditNote) ? null : invoiceEditNote;
+        var req = new UpdateInvoiceRequest { OrderID = order.OrderID, InvoiceType = invoiceEditType, InvoiceNote = note };
+        await new PrickDoctorOrderService(dataService).UpdateInvoice(req);
+        order.InvoiceType = invoiceEditType;
+        order.InvoiceNote = note;
+        editingInvoiceFor.Remove(order.OrderID);
+    }
+
     private void DiscardOrderChanges(DoctorOrderViewDto order) => pendingChanges.Remove(order.OrderID);
 
     private async Task SaveOrderChanges(DoctorOrderViewDto order)
@@ -1118,6 +1217,8 @@
     private string newOrderShippingCity = "";
     private string newOrderShippingPostalCode = "";
     private string newOrderShippingPhone = "";
+    private string newOrderInvoiceType = "Κανονικό";
+    private string newOrderInvoiceNote = "";
 
     // --- Excel Import ---
     private bool showImportPopup = false;
@@ -1227,6 +1328,34 @@
             .Select(g => new DoctorGroup { DoctorName = g.Key, Orders = g.ToList() })
             .ToList();
 
+    private class OrdersSummaryStats
+    {
+        public int TotalOrders { get; set; }
+        public int TotalRequested { get; set; }
+        public int TotalAvailable { get; set; }
+        public int TotalPending { get; set; }
+        public int NoStock { get; set; }
+    }
+
+    private OrdersSummaryStats SummaryStats
+    {
+        get
+        {
+            var visibleOrders = DoctorGroups.SelectMany(g => g.Orders).ToList();
+            var allLines = visibleOrders.SelectMany(o => o.Lines).ToList();
+            return new OrdersSummaryStats
+            {
+                TotalOrders = visibleOrders.Count,
+                TotalRequested = allLines.Sum(l => l.QuantityRequested),
+                TotalAvailable = allLines.Sum(l => Math.Min(l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled, l.AvailableStock)),
+                TotalPending = allLines.Sum(l => l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled),
+                NoStock = visibleOrders.Count(o =>
+                    o.Lines.Sum(l => l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled) > 0 &&
+                    o.Lines.All(l => l.AvailableStock == 0))
+            };
+        }
+    }
+
     private List<DoctorGroup> SortedDoctorGroups
     {
         get
@@ -1320,6 +1449,7 @@
         showShippingFields = false;
         newOrderRecipientName = ""; newOrderShippingAddress = ""; newOrderShippingCity = "";
         newOrderShippingPostalCode = ""; newOrderShippingPhone = "";
+        newOrderInvoiceType = "Κανονικό"; newOrderInvoiceNote = "";
         showNewOrderPopup = true;
     }
     private void CloseNewOrderPopup() => showNewOrderPopup = false;
@@ -1398,6 +1528,8 @@
             ShippingCity = string.IsNullOrWhiteSpace(newOrderShippingCity) ? null : newOrderShippingCity,
             ShippingPostalCode = string.IsNullOrWhiteSpace(newOrderShippingPostalCode) ? null : newOrderShippingPostalCode,
             ShippingPhone = string.IsNullOrWhiteSpace(newOrderShippingPhone) ? null : newOrderShippingPhone,
+            InvoiceType = newOrderInvoiceType,
+            InvoiceNote = string.IsNullOrWhiteSpace(newOrderInvoiceNote) ? null : newOrderInvoiceNote,
             Lines = validLines
         };
         var result = await new PrickDoctorOrderService(dataService).CreateOrder(req);

@@ -33,6 +33,8 @@ namespace StallmedManager.Shared.Models
         public string? ShippingPostalCode { get; set; }
         public string? ShippingPhone { get; set; }
         public string? Notes { get; set; }
+        public string? InvoiceType { get; set; }
+        public string? InvoiceNote { get; set; }
         public int AttachmentCount { get; set; }
         public List<DoctorOrderLineViewDto> Lines { get; set; } = new();
     }
@@ -56,7 +58,16 @@ namespace StallmedManager.Shared.Models
         public string? ShippingCity { get; set; }
         public string? ShippingPostalCode { get; set; }
         public string? ShippingPhone { get; set; }
+        public string? InvoiceType { get; set; }
+        public string? InvoiceNote { get; set; }
         public List<CreateDoctorOrderLineRequest> Lines { get; set; } = new();
+    }
+
+    public class UpdateInvoiceRequest
+    {
+        public long OrderID { get; set; }
+        public string? InvoiceType { get; set; }
+        public string? InvoiceNote { get; set; }
     }
 
     public class ShipOrderRequest

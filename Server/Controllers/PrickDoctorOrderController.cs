@@ -94,6 +94,8 @@ namespace StallmedManager.Server.Controllers
                 ShippingPostalCode = o.ShippingPostalCode,
                 ShippingPhone = o.ShippingPhone,
                 Notes = o.Notes,
+                InvoiceType = o.InvoiceType,
+                InvoiceNote = o.InvoiceNote,
                 AttachmentCount = attachmentCounts.TryGetValue(o.OrderID, out var cnt) ? cnt : 0,
                 Lines = lines.Where(l => l.OrderID == o.OrderID).Select(l =>
                 {
@@ -174,6 +176,8 @@ namespace StallmedManager.Server.Controllers
                 OrderDate = req.OrderDate,
                 OrderStatus = "Open",
                 Notes = req.Notes,
+                InvoiceType = string.IsNullOrEmpty(req.InvoiceType) ? "Κανονικό" : req.InvoiceType,
+                InvoiceNote = req.InvoiceNote,
                 RecipientName = req.RecipientName,
                 ShippingAddress = req.ShippingAddress,
                 ShippingCity = req.ShippingCity,
@@ -453,6 +457,19 @@ namespace StallmedManager.Server.Controllers
             var order = await _context.DoctorOrders.FindAsync(req.OrderID);
             if (order == null) return NotFound();
             order.Notes = req.Notes;
+            order.UpdatedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
+        // ---- Ενημέρωση τιμολόγησης (τύπος + σχόλιο), χωρίς να πειράξει τίποτα άλλο ----
+        [HttpPost("update-invoice")]
+        public async Task<ActionResult> UpdateInvoice([FromBody] UpdateInvoiceRequest req)
+        {
+            var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+            if (order == null) return NotFound();
+            order.InvoiceType = string.IsNullOrEmpty(req.InvoiceType) ? "Κανονικό" : req.InvoiceType;
+            order.InvoiceNote = req.InvoiceNote;
             order.UpdatedAt = DateTime.Now;
             await _context.SaveChangesAsync();
             return Ok();

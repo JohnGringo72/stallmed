@@ -78,6 +78,8 @@ namespace StallmedManager.Shared.Models
         public string? ShippingCarrier { get; set; }
         public int? DeliveryUserID { get; set; }
         public string? Notes { get; set; }
+        public string? InvoiceType { get; set; } = "Κανονικό";
+        public string? InvoiceNote { get; set; }
         public int? CreatedBy { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

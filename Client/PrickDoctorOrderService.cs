@@ -97,6 +97,12 @@ namespace StallmedManager.Client
             return true;
         }
 
+        public async Task<bool> UpdateInvoice(UpdateInvoiceRequest req)
+        {
+            await dataService.Post<UpdateInvoiceRequest, object>("api/prickdoctororder/update-invoice", req);
+            return true;
+        }
+
         public async Task<bool> AddLine(AddOrderLineRequest req)
         {
             await dataService.Post<AddOrderLineRequest, object>("api/prickdoctororder/add-line", req);
