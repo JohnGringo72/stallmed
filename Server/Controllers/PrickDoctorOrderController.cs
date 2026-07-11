@@ -316,8 +316,42 @@ namespace StallmedManager.Server.Controllers
         }
 
         // =====================================================================
-        // Ακύρωση γραμμής
+        // Ακύρωση / Αναίρεση ακύρωσης / Ανάκληση δέσμευσης γραμμής
         // =====================================================================
+
+        // Κατάσταση γραμμής με βάση τις τρέχουσες ποσότητες (χρησιμοποιείται
+        // από cancel-line, uncancel-line και reverse-line ώστε να μένουν συνεπή).
+        private static string RecomputeLineStatus(DoctorOrderLine line)
+        {
+            if (line.QuantityCancelled >= line.QuantityRequested)
+                return "Cancelled";
+            if (line.QuantityAllocated == 0)
+                return "Pending";
+            if (line.QuantityAllocated < line.QuantityRequested - line.QuantityCancelled)
+                return "PartiallyAllocated";
+            return "Fulfilled";
+        }
+
+        // Αναπροσαρμόζει το OrderStatus με βάση τις (ήδη ενημερωμένες) γραμμές του.
+        // Δεν πειράζει παραγγελίες που έχουν ήδη ολοκληρωθεί/απεσταλεί (Fulfilled).
+        private async Task RecomputeOrderStatus(DoctorOrder order)
+        {
+            if (order.OrderStatus == "Fulfilled") return;
+
+            var siblingLines = await _context.DoctorOrderLines.Where(l => l.OrderID == order.OrderID).ToListAsync();
+            var anyUnresolved = siblingLines.Any(l => l.LineStatus == "Pending" || l.LineStatus == "PartiallyAllocated");
+            var hasAnyFulfilled = siblingLines.Any(l => l.LineStatus == "Fulfilled");
+            var allCancelled = siblingLines.All(l => l.LineStatus == "Cancelled");
+
+            var newStatus = anyUnresolved ? "Open" : allCancelled ? "Cancelled" : hasAnyFulfilled ? "ReadyToShip" : order.OrderStatus;
+
+            if (order.OrderStatus != newStatus)
+            {
+                order.OrderStatus = newStatus;
+                order.UpdatedAt = DateTime.Now;
+            }
+        }
+
         [HttpPost("cancel-line")]
         public async Task<ActionResult> CancelLine([FromBody] CancelLineRequest req)
         {
@@ -329,23 +363,81 @@ namespace StallmedManager.Server.Controllers
                 return BadRequest("Δεν υπάρχει εκκρεμές υπόλοιπο σε αυτή τη γραμμή για ακύρωση.");
 
             line.QuantityCancelled += pending;
-            if (line.QuantityAllocated == 0)
-                line.LineStatus = "Cancelled";
-            else
-                line.LineStatus = "Fulfilled";
+            line.LineStatus = RecomputeLineStatus(line);
             line.UpdatedAt = DateTime.Now;
-
             await _context.SaveChangesAsync();
 
             var order = await _context.DoctorOrders.FindAsync(line.OrderID);
-            var siblingLines = await _context.DoctorOrderLines.Where(l => l.OrderID == line.OrderID).ToListAsync();
-            var allResolved = siblingLines.All(l => l.LineStatus == "Fulfilled" || l.LineStatus == "Cancelled");
-            var hasAnyFulfilled = siblingLines.Any(l => l.LineStatus == "Fulfilled");
-
-            if (order != null && order.OrderStatus == "Open" && allResolved)
+            if (order != null)
             {
-                order.OrderStatus = hasAnyFulfilled ? "ReadyToShip" : "Cancelled";
-                order.UpdatedAt = DateTime.Now;
+                await RecomputeOrderStatus(order);
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok();
+        }
+
+        // ---- Αναίρεση ακύρωσης: επαναφέρει την ακυρωμένη ποσότητα σε εκκρεμές ----
+        [HttpPost("uncancel-line")]
+        public async Task<ActionResult> UncancelLine([FromBody] UncancelLineRequest req)
+        {
+            var line = await _context.DoctorOrderLines.FindAsync(req.OrderLineID);
+            if (line == null) return NotFound();
+            if (line.QuantityCancelled <= 0)
+                return BadRequest("Δεν υπάρχει ακυρωμένη ποσότητα σε αυτή τη γραμμή για αναίρεση.");
+
+            line.QuantityCancelled = 0;
+            line.LineStatus = RecomputeLineStatus(line);
+            line.UpdatedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+
+            var order = await _context.DoctorOrders.FindAsync(line.OrderID);
+            if (order != null)
+            {
+                await RecomputeOrderStatus(order);
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok();
+        }
+
+        // ---- Ανάκληση δέσμευσης: αναιρεί ΟΛΕΣ τις ενεργές δεσμεύσεις της γραμμής ----
+        [HttpPost("reverse-line")]
+        public async Task<ActionResult> ReverseLine([FromBody] ReverseLineRequest req)
+        {
+            var line = await _context.DoctorOrderLines.FindAsync(req.OrderLineID);
+            if (line == null) return NotFound();
+            if (line.QuantityAllocated <= 0)
+                return BadRequest("Δεν υπάρχει ενεργή δέσμευση σε αυτή τη γραμμή για ανάκληση.");
+
+            var activeAllocs = await _context.OrderAllocations
+                .Where(a => a.OrderLineID == req.OrderLineID && a.AllocationStatus == "Active")
+                .ToListAsync();
+
+            var connection = (MySqlConnector.MySqlConnection)_context.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+                await connection.OpenAsync();
+
+            foreach (var alloc in activeAllocs)
+            {
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "sp_ReverseAllocation";
+                cmd.CommandType = System.Data.CommandType.StoredProcedure;
+                cmd.Parameters.Add(new MySqlConnector.MySqlParameter("p_AllocationID", MySqlConnector.MySqlDbType.Int64) { Value = alloc.AllocationID });
+                cmd.Parameters.Add(new MySqlConnector.MySqlParameter("p_UserID", MySqlConnector.MySqlDbType.Int32) { Value = (object?)req.UserID ?? DBNull.Value });
+                cmd.Parameters.Add(new MySqlConnector.MySqlParameter("p_Reason", MySqlConnector.MySqlDbType.VarChar) { Value = "Ανάκληση δέσμευσης γραμμής παραγγελίας" });
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            await _context.Entry(line).ReloadAsync();
+            line.LineStatus = RecomputeLineStatus(line);
+            line.UpdatedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+
+            var order = await _context.DoctorOrders.FindAsync(line.OrderID);
+            if (order != null)
+            {
+                await RecomputeOrderStatus(order);
                 await _context.SaveChangesAsync();
             }
 

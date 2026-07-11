@@ -253,6 +253,29 @@
             background: #dbeaff;
             border-color: #0d6efd;
         }
+
+    .pending-remove {
+        background: #e9ecef !important;
+        text-decoration: line-through;
+        opacity: 0.7;
+    }
+
+    .batch-save-bar {
+        background: #fff9e6;
+        border: 1px solid #ffe58f;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .pending-add-row td {
+        background: #f0fff4;
+    }
 </style>
 
 <h1 class="mb-3">Prick Test - Doctor Orders</h1>
@@ -430,6 +453,17 @@
                             </div>
                             @if (isOrderOpen)
                             {
+                                var pendingForOrder = GetPending(order.OrderID);
+                                @if (pendingForOrder.HasChanges)
+                                {
+                                    <div class="batch-save-bar">
+                                        <span>⏳ Έχεις εκκρεμείς αλλαγές σε αυτή την παραγγελία.</span>
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => DiscardOrderChanges(order)">↩ Αναίρεση</button>
+                                            <button class="btn btn-sm btn-primary" @onclick="() => SaveOrderChanges(order)">💾 Αποθήκευση (@pendingForOrder.ChangeCount αλλαγές)</button>
+                                        </div>
+                                    </div>
+                                }
                                 <table class="table table-sm mb-2">
                                     <thead>
                                         <tr>
@@ -441,7 +475,13 @@
                                         @foreach (var line in order.Lines)
                                         {
                                             var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
-                                            <tr>
+                                            var markedRemove = pendingForOrder.RemoveLines.Contains(line.OrderLineID);
+                                            var markedCancel = pendingForOrder.Cancellations.Contains(line.OrderLineID);
+                                            var markedReverse = pendingForOrder.Reversals.Contains(line.OrderLineID);
+                                            var markedUncancel = pendingForOrder.Uncancellations.Contains(line.OrderLineID);
+                                            var rowClass = markedRemove ? "pending-remove" : markedCancel ? "table-danger" : markedReverse ? "table-warning" : "";
+                                            var allocateMax = Math.Max(0, Math.Min(pending, line.AvailableStock));
+                                            <tr class="@rowClass">
                                                 <td>@line.CodePrick <small class="text-muted">@line.AllergenDescription</small></td>
                                                 <td>@line.ProductTypeCode</td>
                                                 <td>@line.QuantityRequested</td>
@@ -460,17 +500,40 @@
                                                     }
                                                 </td>
                                                 <td><span class="badge bg-secondary">@line.LineStatus</span></td>
-                                                <td class="d-flex gap-1">
-                                                    @if (pending > 0)
-                                                    {
-                                                        <button class="btn btn-sm btn-success" disabled="@(line.AvailableStock <= 0)" @onclick="() => OpenAllocatePopup(line)">Allocate</button>
-                                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DoCancelLine(line)">Ακύρωση</button>
-                                                    }
-                                                    @if (line.QuantityAllocated == 0)
-                                                    {
-                                                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => DoRemoveLine(order, line)">✕</button>
-                                                    }
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-1 flex-wrap">
+                                                        @if (pending > 0 && !markedRemove)
+                                                        {
+                                                            <div class="qty-stepper">
+                                                                <button class="btn btn-sm btn-outline-secondary" disabled="@(GetAllocateQty(order, line) <= 0)" @onclick="() => ChangeAllocateQty(order, line, -1)">−</button>
+                                                                <span class="qty-value">@GetAllocateQty(order, line)</span>
+                                                                <button class="btn btn-sm btn-outline-success" disabled="@(GetAllocateQty(order, line) >= allocateMax)" @onclick="() => ChangeAllocateQty(order, line, 1)">+</button>
+                                                            </div>
+                                                            <button class="btn btn-sm @(markedCancel ? "btn-danger" : "btn-outline-danger")" @onclick="() => ToggleCancelLine(order, line)">Ακύρωση</button>
+                                                        }
+                                                        @if (line.LineStatus == "Cancelled")
+                                                        {
+                                                            <button class="btn btn-sm @(markedUncancel ? "btn-secondary" : "btn-outline-secondary")" title="Αναίρεση ακύρωσης" @onclick="() => ToggleUncancelLine(order, line)">↺</button>
+                                                        }
+                                                        @if (line.QuantityAllocated > 0 && !markedRemove)
+                                                        {
+                                                            <button class="btn btn-sm @(markedReverse ? "btn-warning" : "btn-outline-warning")" title="Ανάκληση δέσμευσης" @onclick="() => ToggleReverseLine(order, line)">↩️</button>
+                                                        }
+                                                        @if (line.QuantityAllocated == 0)
+                                                        {
+                                                            <button class="btn btn-sm @(markedRemove ? "btn-secondary" : "btn-outline-secondary")" title="Αφαίρεση" @onclick="() => ToggleRemoveLine(order, line)">✕</button>
+                                                        }
+                                                    </div>
                                                 </td>
+                                            </tr>
+                                        }
+                                        @foreach (var add in pendingForOrder.AddLines)
+                                        {
+                                            <tr class="pending-add-row">
+                                                <td><strong>@add.Code</strong> <small class="text-muted">@GetAllergenDesc(add.Code)</small></td>
+                                                <td colspan="4"><span class="text-success">➕ νέα γραμμή, ποσότητα @add.Qty</span></td>
+                                                <td colspan="4"></td>
+                                                <td><button class="btn btn-sm btn-outline-secondary" @onclick="() => pendingForOrder.AddLines.Remove(add)">✕</button></td>
                                             </tr>
                                         }
                                     </tbody>
@@ -511,8 +574,8 @@
                                 <div class="mb-2">
                                     <label class="form-label mb-1 small">📝 Παρατηρήσεις</label>
                                     <div class="d-flex gap-2">
-                                        <textarea class="form-control form-control-sm" rows="2" @bind="order.Notes"></textarea>
-                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => SaveNotes(order)">Αποθήκευση</button>
+                                        <textarea class="form-control form-control-sm" rows="2"
+                                                  value="@GetNotesValue(order)" @oninput="e => SetNotesValue(order, e.Value.ToString())"></textarea>
                                     </div>
                                 </div>
 
@@ -541,32 +604,6 @@
             }
         </div>
     }
-}
-
-<!-- ================= ALLOCATE POPUP ================= -->
-@if (showAllocatePopup && allocateLine != null)
-{
-    <div class="popup-overlay" @onclick="CloseAllocatePopup">
-        <div class="popup-box" @onclick:stopPropagation="true">
-            <h5>Allocate Stock</h5>
-            <hr />
-            <p>@allocateLine.CodePrick (@allocateLine.AllergenDescription) - Τύπος @allocateLine.ProductTypeCode</p>
-            @{ var pendingQty = allocateLine.QuantityRequested - allocateLine.QuantityAllocated - allocateLine.QuantityCancelled; }
-            <p>Εκκρεμές: <strong>@pendingQty</strong> | Διαθέσιμο: <strong>@allocateLine.AvailableStock</strong></p>
-            <div class="mb-2">
-                <label class="form-label mb-1">Ποσότητα προς δέσμευση</label>
-                <input type="number" class="form-control" min="1" max="@Math.Min(pendingQty, allocateLine.AvailableStock)" @bind="allocateQuantity" />
-            </div>
-            @if (!string.IsNullOrEmpty(allocateMessage))
-            {
-                <div class="alert alert-warning py-2">@allocateMessage</div>
-            }
-            <div class="d-flex gap-2">
-                <button class="btn btn-secondary flex-fill" @onclick="CloseAllocatePopup">Ακύρωση</button>
-                <button class="btn btn-success flex-fill" @onclick="SubmitAllocate">Δέσμευση</button>
-            </div>
-        </div>
-    </div>
 }
 
 <!-- ================= ELSEWHERE / STEAL POPUP ================= -->
@@ -941,11 +978,119 @@
     private string quickAddPhone = "";
     private string quickAddCity = "";
 
-    // --- Allocate popup ---
-    private bool showAllocatePopup = false;
-    private DoctorOrderLineViewDto? allocateLine;
-    private int allocateQuantity = 1;
-    private string allocateMessage = "";
+    // --- Batch edit mode: pending changes ανά παραγγελία ---
+    private class PendingOrderChanges
+    {
+        public Dictionary<long, int> Allocations { get; set; } = new(); // lineId → qty
+        public HashSet<long> Cancellations { get; set; } = new();        // lineIds προς ακύρωση
+        public HashSet<long> Uncancellations { get; set; } = new();      // lineIds προς αναίρεση
+        public HashSet<long> Reversals { get; set; } = new();            // lineIds προς ανάκληση
+        public List<(string Code, int Qty)> AddLines { get; set; } = new();
+        public HashSet<long> RemoveLines { get; set; } = new();          // lineIds προς αφαίρεση
+        public string? Notes { get; set; }
+        public bool HasChanges => Allocations.Any() || Cancellations.Any() || Uncancellations.Any() ||
+                                  Reversals.Any() || AddLines.Any() || RemoveLines.Any() || Notes != null;
+        public int ChangeCount => Allocations.Count + Cancellations.Count + Uncancellations.Count +
+                                  Reversals.Count + AddLines.Count + RemoveLines.Count + (Notes != null ? 1 : 0);
+    }
+    private Dictionary<long, PendingOrderChanges> pendingChanges = new(); // key = OrderID
+    private Dictionary<string, string> allergenDescCache = new();
+
+    private PendingOrderChanges GetPending(long orderId)
+    {
+        if (!pendingChanges.TryGetValue(orderId, out var p))
+        {
+            p = new PendingOrderChanges();
+            pendingChanges[orderId] = p;
+        }
+        return p;
+    }
+
+    private string GetAllergenDesc(string code) =>
+        allergenDescCache.TryGetValue(code, out var d) ? d : code;
+
+    private int GetAllocateQty(DoctorOrderViewDto order, DoctorOrderLineViewDto line)
+    {
+        var p = GetPending(order.OrderID);
+        return p.Allocations.TryGetValue(line.OrderLineID, out var q) ? q : 0;
+    }
+
+    private void ChangeAllocateQty(DoctorOrderViewDto order, DoctorOrderLineViewDto line, int delta)
+    {
+        var p = GetPending(order.OrderID);
+        var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
+        var max = Math.Max(0, Math.Min(pending, line.AvailableStock));
+        var updated = Math.Clamp(GetAllocateQty(order, line) + delta, 0, max);
+        if (updated == 0) p.Allocations.Remove(line.OrderLineID);
+        else p.Allocations[line.OrderLineID] = updated;
+    }
+
+    private void ToggleCancelLine(DoctorOrderViewDto order, DoctorOrderLineViewDto line)
+    {
+        var p = GetPending(order.OrderID);
+        if (!p.Cancellations.Remove(line.OrderLineID))
+            p.Cancellations.Add(line.OrderLineID);
+    }
+
+    private void ToggleUncancelLine(DoctorOrderViewDto order, DoctorOrderLineViewDto line)
+    {
+        var p = GetPending(order.OrderID);
+        if (!p.Uncancellations.Remove(line.OrderLineID))
+            p.Uncancellations.Add(line.OrderLineID);
+    }
+
+    private void ToggleReverseLine(DoctorOrderViewDto order, DoctorOrderLineViewDto line)
+    {
+        var p = GetPending(order.OrderID);
+        if (!p.Reversals.Remove(line.OrderLineID))
+            p.Reversals.Add(line.OrderLineID);
+    }
+
+    private void ToggleRemoveLine(DoctorOrderViewDto order, DoctorOrderLineViewDto line)
+    {
+        var p = GetPending(order.OrderID);
+        if (!p.RemoveLines.Remove(line.OrderLineID))
+            p.RemoveLines.Add(line.OrderLineID);
+    }
+
+    private string GetNotesValue(DoctorOrderViewDto order) => GetPending(order.OrderID).Notes ?? order.Notes ?? "";
+    private void SetNotesValue(DoctorOrderViewDto order, string value) => GetPending(order.OrderID).Notes = value;
+
+    private void DiscardOrderChanges(DoctorOrderViewDto order) => pendingChanges.Remove(order.OrderID);
+
+    private async Task SaveOrderChanges(DoctorOrderViewDto order)
+    {
+        if (!pendingChanges.TryGetValue(order.OrderID, out var p) || !p.HasChanges) return;
+
+        var allocSvc = new PrickAllocationService(dataService);
+        var orderSvc = new PrickDoctorOrderService(dataService);
+        var userId = userManager.User?.IdUser;
+
+        foreach (var kv in p.Allocations)
+            await allocSvc.Allocate(new AllocateRequest { OrderLineID = kv.Key, Quantity = kv.Value, UserID = userId });
+
+        foreach (var lineId in p.Cancellations)
+            await orderSvc.CancelLine(new CancelLineRequest { OrderLineID = lineId, UserID = userId });
+
+        foreach (var lineId in p.Uncancellations)
+            await orderSvc.UncancelLine(new UncancelLineRequest { OrderLineID = lineId, UserID = userId });
+
+        foreach (var lineId in p.Reversals)
+            await orderSvc.ReverseLine(new ReverseLineRequest { OrderLineID = lineId, UserID = userId });
+
+        foreach (var add in p.AddLines)
+            await orderSvc.AddLine(new AddOrderLineRequest { OrderID = order.OrderID, CodePrick = add.Code, Quantity = add.Qty });
+
+        foreach (var lineId in p.RemoveLines)
+            await orderSvc.RemoveLine(new RemoveOrderLineRequest { OrderLineID = lineId });
+
+        if (p.Notes != null)
+            await orderSvc.UpdateNotes(new UpdateNotesRequest { OrderID = order.OrderID, Notes = p.Notes });
+
+        pendingChanges.Remove(order.OrderID);
+        topBannerMessage = $"✅ Αποθηκεύτηκαν οι αλλαγές της παραγγελίας {order.OrderCode}.";
+        await LoadData();
+    }
 
     // --- Elsewhere / Steal popup ---
     private bool showElsewherePopup = false;
@@ -1039,6 +1184,7 @@
             topBannerMessage = !string.IsNullOrEmpty(result.NewOrderCode)
                 ? $"✅ Η παραγγελία {order.OrderCode} πάει προς αποστολή. Το εκκρεμές υπόλοιπο δημιούργησε νέα παραγγελία {result.NewOrderCode}."
                 : "✅ Η παραγγελία πάει προς αποστολή.";
+            pendingChanges.Remove(order.OrderID);
             await LoadData();
         }
         else
@@ -1054,6 +1200,7 @@
         if (result != null && result.Success)
         {
             topBannerMessage = $"✅ Η παραγγελία {order.OrderCode} σημειώθηκε ως ολοκληρωμένη (διορθωτικό κλείσιμο).";
+            pendingChanges.Remove(order.OrderID);
             await LoadData();
         }
         else
@@ -1289,40 +1436,8 @@
         topBannerMessage = linesProcessed > 0
             ? $"✅ Δεσμεύτηκαν συνολικά {totalAllocated} τεμάχια σε {linesProcessed} γραμμές της παραγγελίας {order.OrderCode}."
             : "Δεν υπήρχε τίποτα διαθέσιμο για δέσμευση.";
+        pendingChanges.Remove(order.OrderID);
         await LoadData();
-    }
-
-    private void OpenAllocatePopup(DoctorOrderLineViewDto line)
-    {
-        allocateLine = line;
-        var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
-        allocateQuantity = Math.Min(pending, line.AvailableStock);
-        if (allocateQuantity < 1) allocateQuantity = 1;
-        allocateMessage = "";
-        showAllocatePopup = true;
-    }
-    private void CloseAllocatePopup() => showAllocatePopup = false;
-
-    private async Task SubmitAllocate()
-    {
-        if (allocateLine == null) return;
-        var pending = allocateLine.QuantityRequested - allocateLine.QuantityAllocated - allocateLine.QuantityCancelled;
-        if (allocateQuantity <= 0 || allocateQuantity > pending || allocateQuantity > allocateLine.AvailableStock)
-        {
-            allocateMessage = "Μη έγκυρη ποσότητα.";
-            return;
-        }
-        var req = new AllocateRequest { OrderLineID = allocateLine.OrderLineID, Quantity = allocateQuantity, UserID = userManager.User?.IdUser };
-        var result = await new PrickAllocationService(dataService).Allocate(req);
-        if (result != null)
-        {
-            showAllocatePopup = false;
-            await LoadData();
-        }
-        else
-        {
-            allocateMessage = "Κάτι πήγε στραβά - πιθανόν άλλαξε το διαθέσιμο stock. Δοκίμασε ξανά.";
-        }
     }
 
     // ===================== Elsewhere / Steal =====================
@@ -1363,27 +1478,6 @@
         }
     }
 
-    // ===================== Cancel / Remove line =====================
-    private async Task DoCancelLine(DoctorOrderLineViewDto line)
-    {
-        var req = new CancelLineRequest { OrderLineID = line.OrderLineID, UserID = userManager.User?.IdUser };
-        var ok = await new PrickDoctorOrderService(dataService).CancelLine(req);
-        if (ok)
-        {
-            //test
-            topBannerMessage = "✅ Το εκκρεμές υπόλοιπο της γραμμής ακυρώθηκε.";
-            await LoadData();
-        }
-    }
-
-    private async Task DoRemoveLine(DoctorOrderViewDto order, DoctorOrderLineViewDto line)
-    {
-        var req = new RemoveOrderLineRequest { OrderLineID = line.OrderLineID };
-        var ok = await new PrickDoctorOrderService(dataService).RemoveLine(req);
-        if (ok)
-            await LoadData();
-    }
-
     // ===================== Add allergen to existing order =====================
     private async Task OpenAddLineFor(DoctorOrderViewDto order)
     {
@@ -1394,6 +1488,8 @@
         addLineQuantity = 1;
         addLineMessage = "";
         addLineAllergenOptions = await new PrickProductionService(dataService).GetAllergens(order.Company);
+        foreach (var a in addLineAllergenOptions)
+            allergenDescCache[a.Code] = a.DescriptionGreek ?? a.Description ?? a.Code;
     }
 
     private void OnAddLineSearch(DoctorOrderViewDto order, string value)
@@ -1420,7 +1516,7 @@
         addLineSuggestions = new();
     }
 
-    private async Task SubmitAddLine(DoctorOrderViewDto order)
+    private void SubmitAddLine(DoctorOrderViewDto order)
     {
         if (string.IsNullOrEmpty(addLineSelectedCode) || addLineQuantity <= 0)
         {
@@ -1432,25 +1528,14 @@
             addLineMessage = "Αυτός ο κωδικός υπάρχει ήδη σε αυτή την παραγγελία.";
             return;
         }
-        var req = new AddOrderLineRequest { OrderID = order.OrderID, CodePrick = addLineSelectedCode, Quantity = addLineQuantity };
-        var ok = await new PrickDoctorOrderService(dataService).AddLine(req);
-        if (ok)
+        var p = GetPending(order.OrderID);
+        if (p.AddLines.Any(a => a.Code == addLineSelectedCode))
         {
-            showAddLineFor.Remove(order.OrderID);
-            await LoadData();
+            addLineMessage = "Αυτός ο κωδικός υπάρχει ήδη στις εκκρεμείς προσθήκες.";
+            return;
         }
-        else
-        {
-            addLineMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
-        }
-    }
-
-    // ===================== Notes =====================
-    private async Task SaveNotes(DoctorOrderViewDto order)
-    {
-        var req = new UpdateNotesRequest { OrderID = order.OrderID, Notes = order.Notes };
-        await new PrickDoctorOrderService(dataService).UpdateNotes(req);
-        topBannerMessage = "✅ Οι παρατηρήσεις αποθηκεύτηκαν.";
+        p.AddLines.Add((addLineSelectedCode, addLineQuantity));
+        showAddLineFor.Remove(order.OrderID);
     }
 
     // ===================== Attachments =====================
