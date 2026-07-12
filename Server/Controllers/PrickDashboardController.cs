@@ -98,6 +98,77 @@ namespace StallmedManager.Server.Controllers
             return Ok(dto);
         }
 
+        // ---- Live Stock: τρέχον stock ανά κωδικό+τύπο+εταιρεία ----
+        [HttpGet("live-stock")]
+        public async Task<ActionResult<List<LiveStockItemDto>>> GetLiveStock(
+            [FromQuery] string? company,
+            [FromQuery] string? productTypeCode,
+            [FromQuery] string? search)
+        {
+            var receiptsRaw = await (
+                from r in _context.StockReceipts
+                join pol in _context.ProductionOrderLines on r.ProductionOrderLineID equals pol.ProductionOrderLineID into polJoin
+                from pol in polJoin.DefaultIfEmpty()
+                join po in _context.ProductionOrders on pol.ProductionOrderID equals po.ProductionOrderID into poJoin
+                from po in poJoin.DefaultIfEmpty()
+                select new
+                {
+                    r.CodePrick,
+                    r.ProductTypeCode,
+                    r.QuantityReceived,
+                    r.QuantityRemaining,
+                    Company = po != null ? po.Company : null
+                }
+            ).ToListAsync();
+
+            var allergenLookup = await _context.AllergenCodes.ToDictionaryAsync(a => a.CodePrick);
+            var productLookup = await _context.ProductTypes.ToDictionaryAsync(p => p.ProductTypeCode);
+
+            var items = receiptsRaw
+                .GroupBy(r => new { r.CodePrick, r.ProductTypeCode, r.Company })
+                .Select(g =>
+                {
+                    allergenLookup.TryGetValue(g.Key.CodePrick, out var allergen);
+                    productLookup.TryGetValue(g.Key.ProductTypeCode, out var product);
+                    return new LiveStockItemDto
+                    {
+                        CodePrick = g.Key.CodePrick,
+                        AllergenDescription = allergen?.DescriptionGreek ?? allergen?.Description,
+                        ProductTypeCode = g.Key.ProductTypeCode,
+                        ProductDescription = product?.Description,
+                        Company = g.Key.Company,
+                        TotalReceived = g.Sum(x => x.QuantityReceived),
+                        TotalAllocated = g.Sum(x => x.QuantityReceived - x.QuantityRemaining),
+                        FreeStock = g.Sum(x => x.QuantityRemaining)
+                    };
+                })
+                .AsEnumerable();
+
+            if (!string.IsNullOrEmpty(company))
+                items = items.Where(x => x.Company == company);
+
+            if (!string.IsNullOrEmpty(productTypeCode))
+                items = items.Where(x => x.ProductTypeCode == productTypeCode);
+
+            if (!string.IsNullOrEmpty(search))
+                items = items.Where(x =>
+                    (x.CodePrick?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (x.AllergenDescription?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false));
+
+            return Ok(items.OrderBy(x => x.CodePrick).ToList());
+        }
+
+        // ---- Λίστα ενεργών τύπων προϊόντος (για το φίλτρο) ----
+        [HttpGet("product-types")]
+        public async Task<ActionResult<List<ProductType>>> GetProductTypes()
+        {
+            var types = await _context.ProductTypes
+                .Where(p => p.IsActive)
+                .OrderBy(p => p.ProductTypeCode)
+                .ToListAsync();
+            return Ok(types);
+        }
+
         // ---- Πρόταση Παραγγελίας Στοκ ----
         // Security stock = μέσος εβδομαδιαίος όγκος παραγγελιών (τελευταίοι 12 εβδομάδες) × 2
         // Πρόταση = max(0, PendingDemand + SecurityStock - CurrentStock)

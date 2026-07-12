@@ -58,21 +58,99 @@
 
 <h1 class="mb-3">Prick Test - Dashboard</h1>
 
+<!-- ===== ΦΙΛΤΡΑ LIVE STOCK ===== -->
 <div class="filters-panel">
     <div class="row g-2 align-items-end">
         <div class="col-6 col-md-3">
             <label class="form-label mb-1">Εταιρεία</label>
-            <select class="form-control" value="@selectedCompany" @onchange="e => selectedCompany = e.Value.ToString()">
+            <select class="form-control" value="@selectedCompany" @onchange="OnCompanyChanged">
                 <option value="">Όλες οι Εταιρείες</option>
                 <option value="SM">StallMedicals</option>
                 <option value="BM">BeltaMed</option>
             </select>
         </div>
         <div class="col-6 col-md-3">
-            <button class="btn btn-primary w-100" @onclick="LoadData">Ανανέωση</button>
+            <label class="form-label mb-1">Τύπος</label>
+            <select class="form-control" value="@selectedProductType" @onchange="OnProductTypeChanged">
+                <option value="">Όλοι οι Τύποι</option>
+                @foreach (var pt in productTypes)
+                {
+                    <option value="@pt.ProductTypeCode">@pt.ProductTypeCode @(!string.IsNullOrEmpty(pt.Description) ? $"- {pt.Description}" : "")</option>
+                }
+            </select>
+        </div>
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Αναζήτηση κωδικού</label>
+            <input class="form-control" placeholder="Κωδικός ή περιγραφή..." value="@searchText" @oninput="OnSearchChanged" />
+        </div>
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Ταξινόμηση</label>
+            <select class="form-control" value="@sortBy" @onchange="OnSortChanged">
+                <option value="code">Κωδικός</option>
+                <option value="qty">Ποσότητα</option>
+                <option value="type">Τύπος</option>
+            </select>
         </div>
     </div>
 </div>
+
+<!-- ===== ΠΙΝΑΚΑΣ LIVE STOCK ===== -->
+<h4 class="mb-2">📦 Live Stock</h4>
+@if (liveStockStatus == "loading")
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (liveStockStatus == "loaded")
+{
+    <div class="table-responsive mb-4">
+        <table class="table table-hover table-sm">
+            <thead>
+                <tr>
+                    <th>Κωδικός</th>
+                    <th>Περιγραφή</th>
+                    <th>Τύπος</th>
+                    @if (string.IsNullOrEmpty(selectedCompany))
+                    {
+                        <th>Εταιρεία</th>
+                    }
+                    <th>Διαθέσιμο</th>
+                    <th>Δεσμευμένο</th>
+                    <th>Ελεύθερο</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in SortedLiveStock)
+                {
+                    <tr>
+                        <td>@s.CodePrick</td>
+                        <td>@s.AllergenDescription</td>
+                        <td>@s.ProductTypeCode</td>
+                        @if (string.IsNullOrEmpty(selectedCompany))
+                        {
+                            <td>
+                                @if (!string.IsNullOrEmpty(s.Company))
+                                {
+                                    <span class="company-badge" style="background-color:@(s.Company == "SM" ? "#0d6efd" : "#6f42c1")">@s.Company</span>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+                        }
+                        <td>@s.TotalReceived</td>
+                        <td>@s.TotalAllocated</td>
+                        <td><strong>@s.FreeStock</strong></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (!liveStock.Any())
+        {
+            <p class="text-muted">Δεν βρέθηκαν αποτελέσματα.</p>
+        }
+    </div>
+}
 
 @if (status == "loading")
 {
@@ -204,40 +282,6 @@
         }
     }
 
-    <h4 class="mb-2">📦 Τρέχον Stock</h4>
-    <div class="table-responsive mb-4">
-        <table class="table table-hover table-sm">
-            <thead>
-                <tr>
-                    <th>Κωδικός</th>
-                    <th>Περιγραφή</th>
-                    <th>Τύπος</th>
-                    <th>Περιγραφή Τύπου</th>
-                    <th>Εταιρεία</th>
-                    <th>Διαθέσιμο</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var s in summary.StockLevels)
-                {
-                    <tr>
-                        <td>@s.CodePrick</td>
-                        <td>@s.AllergenDescription</td>
-                        <td>@s.ProductTypeCode</td>
-                        <td>@s.ProductDescription</td>
-                        <td>
-                            @if (!string.IsNullOrEmpty(s.Company))
-                            {
-                                <span class="company-badge" style="background-color:@(s.Company == "SM" ? "#0d6efd" : "#6f42c1")">@s.Company</span>
-                            }
-                        </td>
-                        <td><strong>@s.TotalRemaining</strong></td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-
     <h4 class="mb-2">⏳ Παλαιότερες Εκκρεμείς Γραμμές (Aging)</h4>
     <div class="table-responsive">
         <table class="table table-hover table-sm">
@@ -277,16 +321,71 @@
 
 @code {
     private string selectedCompany = "";
+    private string selectedProductType = "";
+    private string searchText = "";
+    private string sortBy = "code";
+
     private string status = "idle";
     private PrickDashboardSummaryDto summary;
+
+    private string liveStockStatus = "idle";
+    private List<LiveStockItemDto> liveStock = new();
+    private List<ProductType> productTypes = new();
 
     private string proposalStatus = "idle";
     private List<StockOrderProposalItemDto> proposal;
     private string proposalMessage = "";
 
+    private IEnumerable<LiveStockItemDto> SortedLiveStock => sortBy switch
+    {
+        "qty" => liveStock.OrderByDescending(x => x.FreeStock),
+        "type" => liveStock.OrderBy(x => x.ProductTypeCode).ThenBy(x => x.CodePrick),
+        _ => liveStock.OrderBy(x => x.CodePrick)
+    };
+
     protected override async Task OnInitializedAsync()
     {
+        productTypes = await new PrickDashboardService(dataService).GetProductTypes() ?? new();
+        await LoadLiveStock();
         await LoadData();
+    }
+
+    private async Task OnCompanyChanged(ChangeEventArgs e)
+    {
+        selectedCompany = e.Value?.ToString() ?? "";
+        await LoadLiveStock();
+        await LoadData();
+    }
+
+    private async Task OnProductTypeChanged(ChangeEventArgs e)
+    {
+        selectedProductType = e.Value?.ToString() ?? "";
+        await LoadLiveStock();
+    }
+
+    private async Task OnSearchChanged(ChangeEventArgs e)
+    {
+        searchText = e.Value?.ToString() ?? "";
+        await LoadLiveStock();
+    }
+
+    private void OnSortChanged(ChangeEventArgs e)
+    {
+        sortBy = e.Value?.ToString() ?? "code";
+    }
+
+    private async Task LoadLiveStock()
+    {
+        liveStockStatus = "loading";
+        StateHasChanged();
+
+        liveStock = await new PrickDashboardService(dataService).GetLiveStock(
+            string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany,
+            string.IsNullOrEmpty(selectedProductType) ? null : selectedProductType,
+            string.IsNullOrEmpty(searchText) ? null : searchText) ?? new();
+
+        liveStockStatus = "loaded";
+        StateHasChanged();
     }
 
     private async Task LoadData()

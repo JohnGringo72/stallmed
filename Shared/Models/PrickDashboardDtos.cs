@@ -32,6 +32,18 @@ namespace StallmedManager.Shared.Models
         public List<PrickAgingLineDto> AgingLines { get; set; } = new();
     }
 
+    public class LiveStockItemDto
+    {
+        public string CodePrick { get; set; }
+        public string? AllergenDescription { get; set; }
+        public string ProductTypeCode { get; set; }
+        public string? ProductDescription { get; set; }
+        public string? Company { get; set; }
+        public int TotalReceived { get; set; }
+        public int TotalAllocated { get; set; }
+        public int FreeStock { get; set; } // = QuantityRemaining (μη δεσμευμένο)
+    }
+
     public class StockOrderProposalItemDto
     {
         public string CodePrick { get; set; }
