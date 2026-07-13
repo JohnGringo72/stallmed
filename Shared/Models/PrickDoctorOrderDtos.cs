@@ -80,6 +80,7 @@ namespace StallmedManager.Shared.Models
     {
         public bool Success { get; set; }
         public string? NewOrderCode { get; set; }
+        public string? Message { get; set; }
     }
 
     public class QuickAddDoctorRequest

@@ -132,15 +132,32 @@ namespace StallmedManager.Client
             return true;
         }
 
-        public async Task<List<SalespersonOptionDto>> GetSalespeople()
+        public async Task<List<DeliveryPersonDto>> GetDeliveryPersons()
         {
-            return await dataService.Get<List<SalespersonOptionDto>>("api/prickdoctororder/salespeople");
+            return await dataService.Get<List<DeliveryPersonDto>>("api/prickdoctororder/delivery-persons") ?? new();
         }
 
-        public async Task<bool> SetShipment(SetShipmentRequest req)
+        public async Task<DeliveryPersonDto?> AddDeliveryPerson(string name)
         {
-            await dataService.Post<SetShipmentRequest, object>("api/prickdoctororder/set-shipment", req);
-            return true;
+            return await dataService.Post<AddDeliveryPersonRequest, DeliveryPersonDto>(
+                "api/prickdoctororder/delivery-persons", new AddDeliveryPersonRequest { Name = name });
+        }
+
+        public async Task<ShipResult> SetShipment(SetShipmentRequest req)
+        {
+            var result = await dataService.Post<SetShipmentRequest, ShipResult>("api/prickdoctororder/set-shipment", req);
+            return result ?? new ShipResult { Success = false, Message = "Κάτι πήγε στραβά, δοκίμασε ξανά." };
+        }
+
+        public async Task<List<ShippingCourierDto>> GetCouriers()
+        {
+            return await dataService.Get<List<ShippingCourierDto>>("api/prickdoctororder/couriers") ?? new();
+        }
+
+        public async Task<ShippingCourierDto?> AddCourier(string name)
+        {
+            return await dataService.Post<AddCourierRequest, ShippingCourierDto>(
+                "api/prickdoctororder/couriers", new AddCourierRequest { Name = name });
         }
     }
 }

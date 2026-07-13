@@ -19,7 +19,7 @@ namespace StallmedManager.Server.Controllers
         }
 
         [HttpGet]
-        [Authorize]
+        [Authorize(Policy = "NotWarehouse")]
         public IEnumerable<WebOrder> Get(
             [FromQuery] DateTime fromDate,
             [FromQuery] DateTime toDate,
@@ -54,7 +54,7 @@ namespace StallmedManager.Server.Controllers
         }
 
         [HttpGet("filter-options")]
-        [Authorize]
+        [Authorize(Policy = "NotWarehouse")]
         public ActionResult<OrderFilterOptions> GetFilterOptions()
         {
             var options = new OrderFilterOptions
@@ -88,7 +88,7 @@ namespace StallmedManager.Server.Controllers
         }
 
         [HttpGet("doctor-stats")]
-        [Authorize]
+        [Authorize(Policy = "NotWarehouse")]
         public ActionResult<DoctorStats> GetDoctorStats(
             [FromQuery] string doctor,
             [FromQuery] DateTime fromDate,
@@ -215,7 +215,7 @@ namespace StallmedManager.Server.Controllers
         }
 
         [HttpGet("company-stats")]
-        [Authorize]
+        [Authorize(Policy = "NotWarehouse")]
         public ActionResult<CompanyStats> GetCompanyStats(
             [FromQuery] string? company,
             [FromQuery] string? serverFilter,

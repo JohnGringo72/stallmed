@@ -74,18 +74,36 @@ namespace StallmedManager.Shared.Models
     }
 
     // ---- Αποστολές ----
-    public class SalespersonOptionDto
-    {
-        public int IdUser { get; set; }
-        public string FullName { get; set; }
-    }
-
     public class SetShipmentRequest
     {
         public long OrderID { get; set; }
         public string ShippingCarrier { get; set; }
-        public int? DeliveryUserID { get; set; }
+        public string? DeliveryPersonName { get; set; }
         public DateTime ShippedDate { get; set; }
         public int? UserID { get; set; }
+    }
+
+    // ---- Διαχειρίσιμη λίστα τρόπων αποστολής (courier) ----
+    public class ShippingCourierDto
+    {
+        public int CourierID { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class AddCourierRequest
+    {
+        public string Name { get; set; }
+    }
+
+    // ---- Διαχειρίσιμη λίστα ονομάτων για αποστολή "Ίδια Μέσα" ----
+    public class DeliveryPersonDto
+    {
+        public int PersonID { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class AddDeliveryPersonRequest
+    {
+        public string Name { get; set; }
     }
 }

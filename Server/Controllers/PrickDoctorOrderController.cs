@@ -13,10 +13,12 @@ namespace StallmedManager.Server.Controllers
     public class PrickDoctorOrderController : ControllerBase
     {
         private readonly StallmedContext _context;
+        private readonly ILogger<PrickDoctorOrderController> _logger;
 
-        public PrickDoctorOrderController(StallmedContext context)
+        public PrickDoctorOrderController(StallmedContext context, ILogger<PrickDoctorOrderController> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
         // ---- Λίστα Doctor Orders (με τις γραμμές τους) ----
@@ -24,6 +26,8 @@ namespace StallmedManager.Server.Controllers
         public async Task<ActionResult<List<DoctorOrderViewDto>>> GetOrders(
             [FromQuery] string? company, [FromQuery] int? doctorId, [FromQuery] string? status)
         {
+          try
+          {
             var query = _context.DoctorOrders.Include(o => o.Doctor).AsQueryable();
             if (!string.IsNullOrEmpty(company))
                 query = query.Where(o => o.Company == company);
@@ -120,6 +124,148 @@ namespace StallmedManager.Server.Controllers
             }).ToList();
 
             return Ok(result);
+          }
+          catch (Exception ex)
+          {
+              _logger.LogError(ex, "Σφάλμα στο GetOrders (company={Company}, doctorId={DoctorId}, status={Status})", company, doctorId, status);
+              return StatusCode(500, "Σφάλμα φόρτωσης παραγγελιών. Δοκίμασε ξανά.");
+          }
+        }
+
+        // ---- Διαχειρίσιμη λίστα ονομάτων για αποστολή "Ίδια Μέσα" -- ΔΕΝ συνδέεται με Users ----
+        [HttpGet("delivery-persons")]
+        public async Task<ActionResult<List<DeliveryPersonDto>>> GetDeliveryPersons()
+        {
+            try
+            {
+                var list = await _context.DeliveryPersons
+                    .Where(p => p.IsActive)
+                    .OrderBy(p => p.Name)
+                    .Select(p => new DeliveryPersonDto { PersonID = p.PersonID, Name = p.Name })
+                    .ToListAsync();
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                // Δεν είναι κρίσιμο -- η φόρμα αποστολής συνεχίζει με κενή λίστα ονομάτων.
+                _logger.LogError(ex, "Σφάλμα στο GetDeliveryPersons");
+                return Ok(new List<DeliveryPersonDto>());
+            }
+        }
+
+        [HttpPost("delivery-persons")]
+        public async Task<ActionResult<DeliveryPersonDto>> AddDeliveryPerson([FromBody] AddDeliveryPersonRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Name))
+                return BadRequest("Το όνομα είναι υποχρεωτικό.");
+
+            var trimmed = req.Name.Trim();
+            var existing = await _context.DeliveryPersons.FirstOrDefaultAsync(p => p.Name == trimmed);
+            if (existing != null)
+            {
+                if (!existing.IsActive)
+                {
+                    existing.IsActive = true;
+                    await _context.SaveChangesAsync();
+                }
+                return Ok(new DeliveryPersonDto { PersonID = existing.PersonID, Name = existing.Name });
+            }
+
+            var person = new DeliveryPerson { Name = trimmed, IsActive = true, CreatedAt = DateTime.Now };
+            _context.DeliveryPersons.Add(person);
+            await _context.SaveChangesAsync();
+            return Ok(new DeliveryPersonDto { PersonID = person.PersonID, Name = person.Name });
+        }
+
+        // ---- Κλείσιμο αποστολής: ReadyToShip -> Fulfilled + στοιχεία αποστολής ----
+        // Επιστρέφει πάντα 200 OK με ShipResult{Success,Message} -- ακόμα και για
+        // αναμενόμενα validation failures -- ώστε ο client (μέσω DataService.Post, που
+        // αγνοεί το body οποιασδήποτε μη-2xx απάντησης) να μπορεί πάντα να δει το
+        // πραγματικό μήνυμα αντί να το χάνει σιωπηλά.
+        [HttpPost("set-shipment")]
+        public async Task<ActionResult<ShipResult>> SetShipment([FromBody] SetShipmentRequest req)
+        {
+            try
+            {
+                var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+                if (order == null)
+                    return Ok(new ShipResult { Success = false, Message = "Η παραγγελία δεν βρέθηκε." });
+
+                if (order.OrderStatus != "ReadyToShip")
+                    return Ok(new ShipResult
+                    {
+                        Success = false,
+                        Message = $"Η παραγγελία είναι σε κατάσταση '{order.OrderStatus}', όχι 'Προς Αποστολή' -- δεν μπορεί να κλείσει ως απεσταλμένη."
+                    });
+
+                if (string.IsNullOrWhiteSpace(req.ShippingCarrier))
+                    return Ok(new ShipResult { Success = false, Message = "Λείπει ο τρόπος αποστολής." });
+
+                // Το DeliveryPersonName έχει νόημα μόνο για "Ίδια Μέσα" -- για ACS/Intralink/άλλο
+                // courier αγνοείται ό,τι στείλει ο client, ώστε να μη μείνει "ορφανό" σε λάθος carrier.
+                var deliveryPersonName = req.ShippingCarrier == "OwnMeans" ? req.DeliveryPersonName?.Trim() : null;
+                if (req.ShippingCarrier == "OwnMeans" && string.IsNullOrWhiteSpace(deliveryPersonName))
+                    return Ok(new ShipResult { Success = false, Message = "Επίλεξε όνομα για αποστολή τύπου Ίδια Μέσα." });
+
+                order.ShippingCarrier = req.ShippingCarrier;
+                order.DeliveryPersonName = deliveryPersonName;
+                order.OrderStatus = "Fulfilled";
+                order.ShippedAt = req.ShippedDate;
+                order.UpdatedAt = DateTime.Now;
+
+                await _context.SaveChangesAsync();
+                return Ok(new ShipResult { Success = true, Message = $"Η παραγγελία {order.OrderCode} απεστάλη." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Σφάλμα στο SetShipment για OrderID={OrderID}", req.OrderID);
+                return Ok(new ShipResult { Success = false, Message = "Κάτι πήγε στραβά κατά την καταχώρηση αποστολής. Δοκίμασε ξανά." });
+            }
+        }
+
+        // ---- Διαχειρίσιμη λίστα τρόπων αποστολής (courier) -- εκτός από το "Salesperson" ----
+        [HttpGet("couriers")]
+        public async Task<ActionResult<List<ShippingCourierDto>>> GetCouriers()
+        {
+            try
+            {
+                var list = await _context.ShippingCouriers
+                    .Where(c => c.IsActive)
+                    .OrderBy(c => c.Name)
+                    .Select(c => new ShippingCourierDto { CourierID = c.CourierID, Name = c.Name })
+                    .ToListAsync();
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                // Δεν είναι κρίσιμο -- η φόρμα αποστολής συνεχίζει με μόνο το "Πωλητής".
+                _logger.LogError(ex, "Σφάλμα στο GetCouriers");
+                return Ok(new List<ShippingCourierDto>());
+            }
+        }
+
+        [HttpPost("couriers")]
+        public async Task<ActionResult<ShippingCourierDto>> AddCourier([FromBody] AddCourierRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Name))
+                return BadRequest("Το όνομα είναι υποχρεωτικό.");
+
+            var trimmed = req.Name.Trim();
+            var existing = await _context.ShippingCouriers.FirstOrDefaultAsync(c => c.Name == trimmed);
+            if (existing != null)
+            {
+                if (!existing.IsActive)
+                {
+                    existing.IsActive = true;
+                    await _context.SaveChangesAsync();
+                }
+                return Ok(new ShippingCourierDto { CourierID = existing.CourierID, Name = existing.Name });
+            }
+
+            var courier = new ShippingCourier { Name = trimmed, IsActive = true, CreatedAt = DateTime.Now };
+            _context.ShippingCouriers.Add(courier);
+            await _context.SaveChangesAsync();
+            return Ok(new ShippingCourierDto { CourierID = courier.CourierID, Name = courier.Name });
         }
 
         // ---- Αναζήτηση γιατρών (για το dropdown/search στη φόρμα) ----

@@ -11,23 +11,26 @@
     <!-- Collapsible menu -->
     <div class="@MenuClass">
         <div class="navbar-nav me-auto">
-            <a class="nav-link" href="/" @onclick="CloseMenu">Home</a>
-            <a class="nav-link" href="/orders" @onclick="CloseMenu">Orders</a>
-            <a class="nav-link" href="/doctors" @onclick="CloseMenu">Doctors</a>
+            @if (!userManager.IsWarehouse)
+            {
+                <a class="nav-link" href="/" @onclick="CloseMenu">Home</a>
+                <a class="nav-link" href="/orders" @onclick="CloseMenu">Orders</a>
+                <a class="nav-link" href="/doctors" @onclick="CloseMenu">Doctors</a>
 
-            <div class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    Εργασίες
-                </a>
-                <ul class="dropdown-menu dropdown-menu-dark">
-                    <li><a class="dropdown-item" href="/mytasks" @onclick="CloseMenu">Οι Εργασίες μου</a></li>
-                    <li><a class="dropdown-item" href="/mytasks/new" @onclick="CloseMenu">Νέα Εργασία</a></li>
-                    <li><hr class="dropdown-divider" /></li>
-                    <li><a class="dropdown-item" href="/mytasks/history" @onclick="CloseMenu">Ιστορικό</a></li>
-                </ul>
-            </div>
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Εργασίες
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li><a class="dropdown-item" href="/mytasks" @onclick="CloseMenu">Οι Εργασίες μου</a></li>
+                        <li><a class="dropdown-item" href="/mytasks/new" @onclick="CloseMenu">Νέα Εργασία</a></li>
+                        <li><hr class="dropdown-divider" /></li>
+                        <li><a class="dropdown-item" href="/mytasks/history" @onclick="CloseMenu">Ιστορικό</a></li>
+                    </ul>
+                </div>
 
-            <a class="nav-link" href="/stock-search" @onclick="CloseMenu">Stock</a>
+                <a class="nav-link" href="/stock-search" @onclick="CloseMenu">Stock</a>
+            }
 
             <div class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -65,6 +68,24 @@
     protected override void OnInitialized()
     {
         userManager.StatusChanged += OnStatusChanged;
+    }
+
+    // Οι μόνες σελίδες που επιτρέπονται στο role "warehouse".
+    private static readonly string[] WarehouseAllowedPaths =
+        { "/prick-dashboard", "/prick-doctor-orders", "/prick-production", "/prick-receiving", "/prick-shipments" };
+
+    // Αυτό το layout instance επιβιώνει σε όλα τα navigations (μόνο το Body αλλάζει),
+    // οπότε το OnParametersSet τρέχει σε κάθε αλλαγή route -- ιδανικό hook για route guard
+    // χωρίς να χρειάζεται συνδρομή σε NavigationManager.LocationChanged.
+    protected override void OnParametersSet()
+    {
+        if (!userManager.IsWarehouse) return;
+
+        var path = "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?')[0].TrimEnd('/');
+        if (path.Equals("/login", StringComparison.OrdinalIgnoreCase)) return;
+
+        if (!WarehouseAllowedPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
+            Navigation.NavigateTo("/prick-dashboard");
     }
     private void OnStatusChanged(object sender, EventArgs e)
     {

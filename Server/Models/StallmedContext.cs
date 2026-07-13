@@ -21,6 +21,8 @@ namespace StallmedManager.Server.Models
         public virtual DbSet<OrderAllocation> OrderAllocations { get; set; }
         public virtual DbSet<ProductionReceiptAllocation> ProductionReceiptAllocations { get; set; }
         public virtual DbSet<DoctorOrderAttachment> DoctorOrderAttachments { get; set; }
+        public virtual DbSet<ShippingCourier> ShippingCouriers { get; set; }
+        public virtual DbSet<DeliveryPerson> DeliveryPersons { get; set; }
 
         public StallmedContext(DbContextOptions<StallmedContext> options) : base(options)
         {

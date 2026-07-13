@@ -21,6 +21,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
     };
 });
 
+builder.Services.AddAuthorization(options =>
+{
+    // Deny-list αντί για allow-list: αποκλείει μόνο το warehouse, χωρίς να χρειάζεται να ξέρει
+    // όλους τους υπόλοιπους ρόλους που υπάρχουν ήδη στο σύστημα.
+    options.AddPolicy("NotWarehouse", policy =>
+        policy.RequireAssertion(ctx =>
+            ctx.User.Identity?.IsAuthenticated == true && !ctx.User.IsInRole("warehouse")));
+});
+
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();

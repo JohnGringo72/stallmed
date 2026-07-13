@@ -76,6 +76,14 @@
     </div>
 }
 
+@if (!string.IsNullOrEmpty(loadError))
+{
+    <div class="alert alert-danger alert-dismissible">
+        @loadError
+        <button type="button" class="btn-close" @onclick="() => loadError = string.Empty"></button>
+    </div>
+}
+
 <div class="filters-panel">
     <div class="row g-2 align-items-end">
         <div class="col-6 col-md-3">
@@ -142,30 +150,50 @@
 
             <div class="mb-2">
                 <label class="form-label mb-1">Τρόπος Αποστολής</label>
-                <select class="form-control" @bind="shipCarrier">
-                    <option value="Salesperson">Πωλητής</option>
-                    <option value="ACS">ACS</option>
-                    <option value="Intralink">Intralink</option>
+                <select class="form-control" value="@shipCarrier" @onchange="OnCarrierChanged">
+                    <option value="OwnMeans">Ίδια Μέσα</option>
+                    @foreach (var c in couriers)
+                    {
+                        <option value="@c.Name">@c.Name</option>
+                    }
+                    <option value="__new__">➕ Νέο όνομα...</option>
                 </select>
+                @if (showAddCourier)
+                {
+                    <div class="d-flex gap-2 mt-1">
+                        <input class="form-control form-control-sm" placeholder="Όνομα courier..." @bind="newCourierName" />
+                        <button class="btn btn-sm btn-success" @onclick="SubmitNewCourier">Προσθήκη</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CancelAddCourier">Ακύρωση</button>
+                    </div>
+                }
             </div>
 
-            @if (shipCarrier == "Salesperson")
+            @if (shipCarrier == "OwnMeans")
             {
                 <div class="mb-2">
-                    <label class="form-label mb-1">Πωλητής</label>
-                    <select class="form-control" @bind="shipDeliveryUserId">
+                    <label class="form-label mb-1">Όνομα (Ίδια Μέσα)</label>
+                    <select class="form-control" value="@shipDeliveryPersonName" @onchange="OnDeliveryPersonChanged">
                         <option value="">-- Επίλεξε --</option>
-                        @foreach (var sp in salespeople)
+                        @foreach (var p in deliveryPersons)
                         {
-                            <option value="@sp.IdUser">@sp.FullName</option>
+                            <option value="@p.Name">@p.Name</option>
                         }
+                        <option value="__new__">➕ Νέο όνομα...</option>
                     </select>
+                    @if (showAddDeliveryPerson)
+                    {
+                        <div class="d-flex gap-2 mt-1">
+                            <input class="form-control form-control-sm" placeholder="Όνομα..." @bind="newDeliveryPersonName" />
+                            <button class="btn btn-sm btn-success" @onclick="SubmitNewDeliveryPerson">Προσθήκη</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelAddDeliveryPerson">Ακύρωση</button>
+                        </div>
+                    }
                 </div>
             }
             else
             {
                 <div class="alert alert-secondary py-2 small">
-                    📮 Φόρμα voucher ACS: θα προστεθεί αργότερα. Προς το παρόν απλά κλείνει με ημερομηνία.
+                    📮 Φόρμα voucher ACS/Intralink: θα προστεθεί αργότερα. Προς το παρόν απλά κλείνει με ημερομηνία.
                 </div>
             }
 
@@ -192,15 +220,21 @@
     private string searchQuery = "";
     private string status = "idle";
     private string topBannerMessage = "";
+    private string loadError = "";
     private List<DoctorOrderViewDto> orders = new();
-    private List<SalespersonOptionDto> salespeople = new();
+    private List<DeliveryPersonDto> deliveryPersons = new();
+    private List<ShippingCourierDto> couriers = new();
 
     private bool showShipPopup = false;
     private DoctorOrderViewDto? shipOrder;
-    private string shipCarrier = "Salesperson";
-    private string shipDeliveryUserId = "";
+    private string shipCarrier = "OwnMeans";
+    private string shipDeliveryPersonName = "";
     private DateTime shipDate = DateTime.Today;
     private string shipMessage = "";
+    private bool showAddCourier = false;
+    private string newCourierName = "";
+    private bool showAddDeliveryPerson = false;
+    private string newDeliveryPersonName = "";
 
     private string GetInvoiceBadgeClass(string? invoiceType) => invoiceType switch
     {
@@ -218,16 +252,116 @@
 
     protected override async Task OnInitializedAsync()
     {
-        salespeople = await new PrickDoctorOrderService(dataService).GetSalespeople();
+        try
+        {
+            deliveryPersons = await new PrickDoctorOrderService(dataService).GetDeliveryPersons();
+        }
+        catch (Exception ex)
+        {
+            // Δεν είναι κρίσιμο -- η φόρμα αποστολής συνεχίζει με κενή λίστα ονομάτων
+            // (π.χ. δεν χρειάζεται καν όνομα για ACS/Intralink).
+            deliveryPersons = new();
+            Console.WriteLine($"[Shipments] GetDeliveryPersons error: {ex.Message}");
+        }
+        try
+        {
+            couriers = await new PrickDoctorOrderService(dataService).GetCouriers();
+        }
+        catch (Exception ex)
+        {
+            // Δεν είναι κρίσιμο -- η φόρμα αποστολής συνεχίζει με μόνο το "Ίδια Μέσα".
+            couriers = new();
+            Console.WriteLine($"[Shipments] GetCouriers error: {ex.Message}");
+        }
         await LoadData();
     }
+
+    private void OnCarrierChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        if (val == "__new__")
+        {
+            showAddCourier = true;
+            newCourierName = "";
+            return;
+        }
+        showAddCourier = false;
+        shipCarrier = val;
+    }
+
+    private void OnDeliveryPersonChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        if (val == "__new__")
+        {
+            showAddDeliveryPerson = true;
+            newDeliveryPersonName = "";
+            return;
+        }
+        showAddDeliveryPerson = false;
+        shipDeliveryPersonName = val;
+    }
+
+    private async Task SubmitNewDeliveryPerson()
+    {
+        if (string.IsNullOrWhiteSpace(newDeliveryPersonName)) return;
+
+        var added = await new PrickDoctorOrderService(dataService).AddDeliveryPerson(newDeliveryPersonName.Trim());
+        if (added != null)
+        {
+            if (!deliveryPersons.Any(p => p.Name == added.Name))
+                deliveryPersons.Add(added);
+            deliveryPersons = deliveryPersons.OrderBy(p => p.Name).ToList();
+            shipDeliveryPersonName = added.Name;
+            showAddDeliveryPerson = false;
+        }
+        else
+        {
+            shipMessage = "Δεν ήταν δυνατή η προσθήκη νέου ονόματος. Δοκίμασε ξανά.";
+        }
+    }
+
+    private void CancelAddDeliveryPerson() => showAddDeliveryPerson = false;
+
+    private async Task SubmitNewCourier()
+    {
+        if (string.IsNullOrWhiteSpace(newCourierName)) return;
+
+        var added = await new PrickDoctorOrderService(dataService).AddCourier(newCourierName.Trim());
+        if (added != null)
+        {
+            if (!couriers.Any(c => c.Name == added.Name))
+                couriers.Add(added);
+            couriers = couriers.OrderBy(c => c.Name).ToList();
+            shipCarrier = added.Name;
+            showAddCourier = false;
+        }
+        else
+        {
+            shipMessage = "Δεν ήταν δυνατή η προσθήκη νέου ονόματος. Δοκίμασε ξανά.";
+        }
+    }
+
+    private void CancelAddCourier() => showAddCourier = false;
 
     private async Task LoadData()
     {
         status = "loading";
+        loadError = "";
         StateHasChanged();
-        orders = await new PrickDoctorOrderService(dataService).GetOrders(
-            string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany, null, "ReadyToShip");
+        try
+        {
+            var result = await new PrickDoctorOrderService(dataService).GetOrders(
+                string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany, null, "ReadyToShip");
+            orders = result ?? new();
+            if (result == null)
+                loadError = "Δεν ήταν δυνατή η φόρτωση των παραγγελιών προς αποστολή. Πάτα Ανανέωση για να ξαναδοκιμάσεις.";
+        }
+        catch (Exception ex)
+        {
+            orders = new();
+            loadError = $"Σφάλμα φόρτωσης παραγγελιών: {ex.Message}";
+        }
         status = "loaded";
         StateHasChanged();
     }
@@ -235,10 +369,14 @@
     private void OpenShipPopup(DoctorOrderViewDto order)
     {
         shipOrder = order;
-        shipCarrier = "Salesperson";
-        shipDeliveryUserId = "";
+        shipCarrier = "OwnMeans";
+        shipDeliveryPersonName = "";
         shipDate = DateTime.Today;
         shipMessage = "";
+        showAddCourier = false;
+        newCourierName = "";
+        showAddDeliveryPerson = false;
+        newDeliveryPersonName = "";
         showShipPopup = true;
     }
     private void CloseShipPopup() => showShipPopup = false;
@@ -246,9 +384,21 @@
     private async Task SubmitShip()
     {
         if (shipOrder == null) return;
-        if (shipCarrier == "Salesperson" && string.IsNullOrEmpty(shipDeliveryUserId))
+        shipMessage = "";
+
+        if (string.IsNullOrEmpty(shipCarrier))
         {
-            shipMessage = "Επίλεξε πωλητή.";
+            shipMessage = "Επίλεξε τρόπο αποστολής.";
+            return;
+        }
+        if (shipDate == default)
+        {
+            shipMessage = "Επίλεξε έγκυρη ημερομηνία.";
+            return;
+        }
+        if (shipCarrier == "OwnMeans" && string.IsNullOrWhiteSpace(shipDeliveryPersonName))
+        {
+            shipMessage = "Επίλεξε όνομα.";
             return;
         }
 
@@ -256,13 +406,13 @@
         {
             OrderID = shipOrder.OrderID,
             ShippingCarrier = shipCarrier,
-            DeliveryUserID = shipCarrier == "Salesperson" ? int.Parse(shipDeliveryUserId) : null,
+            DeliveryPersonName = shipCarrier == "OwnMeans" ? shipDeliveryPersonName : null,
             ShippedDate = shipDate,
             UserID = userManager.User?.IdUser
         };
 
-        var ok = await new PrickDoctorOrderService(dataService).SetShipment(req);
-        if (ok)
+        var result = await new PrickDoctorOrderService(dataService).SetShipment(req);
+        if (result.Success)
         {
             topBannerMessage = $"✅ Η παραγγελία {shipOrder.OrderCode} απεστάλη.";
             showShipPopup = false;
@@ -270,7 +420,7 @@
         }
         else
         {
-            shipMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
+            shipMessage = result.Message ?? "Κάτι πήγε στραβά, δοκίμασε ξανά.";
         }
     }
 }

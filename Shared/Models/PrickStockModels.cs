@@ -77,6 +77,7 @@ namespace StallmedManager.Shared.Models
         public string? CourierTrackingCode { get; set; }
         public string? ShippingCarrier { get; set; }
         public int? DeliveryUserID { get; set; }
+        public string? DeliveryPersonName { get; set; }
         public string? Notes { get; set; }
         public string? InvoiceType { get; set; } = "Κανονικό";
         public string? InvoiceNote { get; set; }
@@ -207,6 +208,31 @@ namespace StallmedManager.Shared.Models
         public string? ContentType { get; set; }
         public byte[] ImageData { get; set; }
         public int? UploadedBy { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    // Διαχειρίσιμη λίστα τρόπων αποστολής (courier), εκτός από το ειδικό "OwnMeans"
+    // (Ίδια Μέσα) που οδηγεί σε διαφορετική λογική (επιλογή ονόματος από τη
+    // λίστα DeliveryPersons αντί για voucher-φόρμα ACS/Intralink).
+    [Table("ShippingCouriers")]
+    public class ShippingCourier
+    {
+        [Key]
+        public int CourierID { get; set; }
+        public string Name { get; set; }
+        public bool IsActive { get; set; } = true;
+        public DateTime CreatedAt { get; set; }
+    }
+
+    // Διαχειρίσιμη λίστα ονομάτων για αποστολή "Ίδια Μέσα" -- απλά ονόματα,
+    // ΔΕΝ συνδέεται με τον πίνακα Users/λογαριασμούς σύνδεσης.
+    [Table("DeliveryPersons")]
+    public class DeliveryPerson
+    {
+        [Key]
+        public int PersonID { get; set; }
+        public string Name { get; set; }
+        public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; }
     }
 }

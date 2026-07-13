@@ -80,7 +80,8 @@
                 new Claim(ClaimTypes.Name, user.Email ?? ""),
                 new Claim(JwtRegisteredClaimNames.Sub, user.Email ?? ""),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email ?? ""),
-                new Claim(JwtRegisteredClaimNames.Jti, user.Email ?? "")
+                new Claim(JwtRegisteredClaimNames.Jti, user.Email ?? ""),
+                new Claim(ClaimTypes.Role, user.Role ?? "")
             };
             var token = new JwtSecurityToken(
                 issuer: "domain.com",
