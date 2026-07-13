@@ -32,16 +32,20 @@ namespace StallmedManager.Client
             return await dataService.Get<List<ProductType>>("api/prickdashboard/product-types");
         }
 
-        public async Task<List<StockOrderProposalItemDto>> GetStockOrderProposal(string? company)
+        public async Task<List<SmartStockProposalDto>> GetSmartStockProposal(string? company, string? productTypeCode)
         {
-            var query = string.IsNullOrEmpty(company) ? "" : $"?company={company}";
-            return await dataService.Get<List<StockOrderProposalItemDto>>($"api/prickdashboard/stock-order-proposal{query}");
+            var qs = new List<string>();
+            if (!string.IsNullOrEmpty(company)) qs.Add($"company={Uri.EscapeDataString(company)}");
+            if (!string.IsNullOrEmpty(productTypeCode)) qs.Add($"productTypeCode={Uri.EscapeDataString(productTypeCode)}");
+            var query = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
+            return await dataService.Get<List<SmartStockProposalDto>>($"api/prickdashboard/smart-stock-proposal{query}") ?? new();
         }
 
-        public async Task<byte[]> ExportProposalExcel(string company, List<StockOrderProposalItemDto> items)
+        public async Task<byte[]> ExportSmartStockProposalExcel(string company, string productTypeCode, List<SmartStockProposalDto> items)
         {
-            return await dataService.Post<List<StockOrderProposalItemDto>, byte[]>(
-                $"api/prickdashboard/stock-order-export?company={company}", items);
+            return await dataService.PostBytes(
+                $"api/prickdashboard/smart-stock-proposal-export?company={Uri.EscapeDataString(company)}&productTypeCode={Uri.EscapeDataString(productTypeCode)}",
+                items);
         }
     }
 }

@@ -169,30 +169,37 @@ namespace StallmedManager.Server.Controllers
             return Ok(types);
         }
 
-        // ---- Πρόταση Παραγγελίας Στοκ ----
-        // Security stock = μέσος εβδομαδιαίος όγκος παραγγελιών (τελευταίοι 12 εβδομάδες) × 2
-        // Πρόταση = max(0, PendingDemand + SecurityStock - CurrentStock)
-        [HttpGet("stock-order-proposal")]
-        public async Task<ActionResult<List<StockOrderProposalItemDto>>> GetStockOrderProposal(
-            [FromQuery] string? company)
+        // ---- Έξυπνη Πρόταση Παραγγελίας Στοκ ----
+        // WeeklyAvg   = SUM(QuantityRequested από DoctorOrderLines τελευταίους 90 ημέρες) / 13 εβδομάδες
+        // SecurityStock = WeeklyAvg × 12%
+        // AlreadyOrdered = SUM(QuantityOrdered από ProductionOrderLines Open/PartiallyReceived) -- προσοχή:
+        //   αθροίζει την ΠΛΗΡΗ παραγγελθείσα ποσότητα των γραμμών, όχι το εκκρεμές προς παραλαβή
+        //   (QuantityOrdered - QuantityReceived), όπως ζητήθηκε ρητά.
+        // PendingDemand = SUM(QuantityRequested - QuantityAllocated - QuantityCancelled) από Open DoctorOrderLines
+        // CurrentStock  = SUM(QuantityRemaining από StockReceipts IsDepleted=0)
+        // Proposed = MAX(0, PendingDemand + SecurityStock - CurrentStock - AlreadyOrdered)
+        [HttpGet("smart-stock-proposal")]
+        public async Task<ActionResult<List<SmartStockProposalDto>>> GetSmartStockProposal(
+            [FromQuery] string? company, [FromQuery] string? productTypeCode)
         {
             var allergenLookup = await _context.AllergenCodes.ToDictionaryAsync(a => a.CodePrick);
             var productLookup = await _context.ProductTypes.ToDictionaryAsync(p => p.ProductTypeCode);
 
-            // Τρέχον stock ανά κωδικό+τύπος
-            // (το stock δεν έχει άμεσο company πεδίο - εμφανίζουμε συνολικά)
-            var stockFiltered = await _context.StockReceipts
-                .Where(r => !r.IsDepleted && r.QuantityRemaining > 0)
+            // ΤρέχονStock: κοινό ανά κωδικό+τύπο (η φυσική αποθήκη δεν διαχωρίζεται ανά εταιρεία)
+            var currentStockRaw = await _context.StockReceipts
+                .Where(r => !r.IsDepleted)
                 .GroupBy(r => new { r.CodePrick, r.ProductTypeCode })
-                .Select(g => new { g.Key.CodePrick, g.Key.ProductTypeCode, Company = "", Total = g.Sum(x => x.QuantityRemaining) })
+                .Select(g => new { g.Key.CodePrick, g.Key.ProductTypeCode, Total = g.Sum(x => x.QuantityRemaining) })
                 .ToListAsync();
 
-            // Εκκρεμής ζήτηση (Open doctor order lines)
+            // ΕκκρεμέςΑπόΓιατρούς: Open (Pending/PartiallyAllocated) DoctorOrderLines, ανά εταιρεία
             var pendingQuery = _context.DoctorOrderLines
                 .Include(l => l.Order)
                 .Where(l => l.LineStatus == "Pending" || l.LineStatus == "PartiallyAllocated");
             if (!string.IsNullOrEmpty(company))
                 pendingQuery = pendingQuery.Where(l => l.Order.Company == company);
+            if (!string.IsNullOrEmpty(productTypeCode))
+                pendingQuery = pendingQuery.Where(l => l.ProductTypeCode == productTypeCode);
 
             var pending = await pendingQuery
                 .GroupBy(l => new { l.CodePrick, l.ProductTypeCode, l.Order.Company })
@@ -200,13 +207,30 @@ namespace StallmedManager.Server.Controllers
                     Total = g.Sum(l => l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled) })
                 .ToListAsync();
 
-            // Ιστορικός μέσος όρος παραγγελιών (τελευταίες 12 εβδομάδες)
-            var since = DateTime.Today.AddDays(-84);
+            // ΉδηΠαραγγελμένο: ProductionOrderLines σε Open/PartiallyReceived, ανά εταιρεία (μέσω ProductionOrder.Company)
+            var alreadyOrderedQuery = _context.ProductionOrderLines
+                .Include(l => l.ProductionOrder)
+                .Where(l => l.LineStatus == "Open" || l.LineStatus == "PartiallyReceived");
+            if (!string.IsNullOrEmpty(company))
+                alreadyOrderedQuery = alreadyOrderedQuery.Where(l => l.ProductionOrder.Company == company);
+            if (!string.IsNullOrEmpty(productTypeCode))
+                alreadyOrderedQuery = alreadyOrderedQuery.Where(l => l.ProductTypeCode == productTypeCode);
+
+            var alreadyOrdered = await alreadyOrderedQuery
+                .GroupBy(l => new { l.CodePrick, l.ProductTypeCode, l.ProductionOrder.Company })
+                .Select(g => new { g.Key.CodePrick, g.Key.ProductTypeCode, g.Key.Company,
+                    Total = g.Sum(l => l.QuantityOrdered) })
+                .ToListAsync();
+
+            // ΜέσοςΌρος: SUM(QuantityRequested) τελευταίους 90 ημέρες (όλα τα statuses), ανά εταιρεία
+            var since = DateTime.Today.AddDays(-90);
             var histQuery = _context.DoctorOrderLines
                 .Include(l => l.Order)
                 .Where(l => l.Order.OrderDate >= since);
             if (!string.IsNullOrEmpty(company))
                 histQuery = histQuery.Where(l => l.Order.Company == company);
+            if (!string.IsNullOrEmpty(productTypeCode))
+                histQuery = histQuery.Where(l => l.ProductTypeCode == productTypeCode);
 
             var history = await histQuery
                 .GroupBy(l => new { l.CodePrick, l.ProductTypeCode, l.Order.Company })
@@ -214,63 +238,64 @@ namespace StallmedManager.Server.Controllers
                     Total = g.Sum(l => l.QuantityRequested) })
                 .ToListAsync();
 
-            // Συνδυασμός — βάση είναι η ζήτηση (pending + history) ανά εταιρεία
+            // Ένωση κλειδιών (κωδικός+τύπος+εταιρεία) από όλες τις πηγές ζήτησης/παραγγελιοδοσίας
             var keys = pending.Select(x => (x.CodePrick, x.ProductTypeCode, x.Company))
+                .Union(alreadyOrdered.Select(x => (x.CodePrick, x.ProductTypeCode, x.Company)))
                 .Union(history.Select(x => (x.CodePrick, x.ProductTypeCode, x.Company)))
                 .Distinct().ToList();
 
-            var result = new List<StockOrderProposalItemDto>();
+            var result = new List<SmartStockProposalDto>();
             foreach (var key in keys)
             {
-                // Stock είναι κοινό (δεν ξεχωρίζει εταιρεία)
-                var currentStock = stockFiltered.FirstOrDefault(x => x.CodePrick == key.CodePrick && x.ProductTypeCode == key.ProductTypeCode)?.Total ?? 0;
+                var currentStock = currentStockRaw.FirstOrDefault(x => x.CodePrick == key.CodePrick && x.ProductTypeCode == key.ProductTypeCode)?.Total ?? 0;
                 var pendingDemand = pending.FirstOrDefault(x => x.CodePrick == key.CodePrick && x.ProductTypeCode == key.ProductTypeCode && x.Company == key.Company)?.Total ?? 0;
+                var alreadyOrderedQty = alreadyOrdered.FirstOrDefault(x => x.CodePrick == key.CodePrick && x.ProductTypeCode == key.ProductTypeCode && x.Company == key.Company)?.Total ?? 0;
                 var histTotal = history.FirstOrDefault(x => x.CodePrick == key.CodePrick && x.ProductTypeCode == key.ProductTypeCode && x.Company == key.Company)?.Total ?? 0;
-                var weeklyAvg = histTotal / 12.0;
-                var securityStock = (int)Math.Ceiling(weeklyAvg * 2);
-                var proposed = Math.Max(0, pendingDemand + securityStock - currentStock);
+                var weeklyAvg = histTotal / 13.0;
+                var securityStock = (int)Math.Ceiling(weeklyAvg * 0.12);
+                var proposed = Math.Max(0, pendingDemand + securityStock - currentStock - alreadyOrderedQty);
 
                 if (proposed == 0 && pendingDemand == 0) continue; // παράλειψη αν δεν χρειάζεται τίποτα
 
                 allergenLookup.TryGetValue(key.CodePrick, out var allergen);
                 productLookup.TryGetValue(key.ProductTypeCode, out var product);
 
-                result.Add(new StockOrderProposalItemDto
+                result.Add(new SmartStockProposalDto
                 {
                     CodePrick = key.CodePrick,
                     AllergenDescription = allergen?.DescriptionGreek ?? allergen?.Description,
                     ProductTypeCode = key.ProductTypeCode,
                     ProductDescription = product?.Description,
                     Company = key.Company,
-                    CurrentStock = currentStock,
-                    PendingDemand = pendingDemand,
+                    WeeklyAvg = (int)Math.Round(weeklyAvg),
                     SecurityStock = securityStock,
+                    CurrentStock = currentStock,
+                    AlreadyOrdered = alreadyOrderedQty,
+                    PendingDemand = pendingDemand,
                     Proposed = proposed,
                     OrderQuantity = proposed
                 });
             }
 
-            return Ok(result.OrderBy(x => x.Company).ThenBy(x => x.CodePrick).ToList());
+            return Ok(result.OrderBy(x => x.ProductTypeCode).ThenBy(x => x.CodePrick).ToList());
         }
-        // ---- Export πρότασης παραγγελίας σε Excel ----
-        [HttpPost("stock-order-export")]
-        public ActionResult ExportStockOrderExcel([FromQuery] string company, [FromBody] List<StockOrderProposalItemDto> items)
+
+        // ---- Export πρότασης παραγγελίας σε Excel (Κωδικός/Ποσότητα) ----
+        [HttpPost("smart-stock-proposal-export")]
+        public ActionResult ExportSmartStockProposalExcel(
+            [FromQuery] string company, [FromQuery] string productTypeCode, [FromBody] List<SmartStockProposalDto> items)
         {
             using var workbook = new ClosedXML.Excel.XLWorkbook();
-            var ws = workbook.Worksheets.Add($"StockOrder_{company}");
+            var ws = workbook.Worksheets.Add($"StockOrder_{company}_{productTypeCode}");
             ws.Cell(1, 1).Value = "Κωδικός";
-            ws.Cell(1, 2).Value = "Περιγραφή";
-            ws.Cell(1, 3).Value = "Τύπος";
-            ws.Cell(1, 4).Value = "Ποσότητα";
-            ws.Range(1, 1, 1, 4).Style.Font.SetBold();
+            ws.Cell(1, 2).Value = "Ποσότητα";
+            ws.Range(1, 1, 1, 2).Style.Font.SetBold();
 
             int row = 2;
             foreach (var item in items.Where(x => x.OrderQuantity > 0))
             {
                 ws.Cell(row, 1).Value = item.CodePrick;
-                ws.Cell(row, 2).Value = item.AllergenDescription;
-                ws.Cell(row, 3).Value = item.ProductTypeCode;
-                ws.Cell(row, 4).Value = item.OrderQuantity;
+                ws.Cell(row, 2).Value = item.OrderQuantity;
                 row++;
             }
             ws.Columns().AdjustToContents();
@@ -279,7 +304,7 @@ namespace StallmedManager.Server.Controllers
             workbook.SaveAs(stream);
             return File(stream.ToArray(),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                $"StockOrder_{company}_{DateTime.Today:yyyyMMdd}.xlsx");
+                $"StockOrder_{company}_{productTypeCode}_{DateTime.Today:yyyyMMdd}.xlsx");
         }
     }
 }

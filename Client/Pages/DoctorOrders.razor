@@ -470,13 +470,13 @@
                                     }
                                     @if (order.OrderStatus == "Open" && totalPending > 0 && totalPending < totalRequested)
                                     {
-                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => DoSplitPending(order)" @onclick:stopPropagation="true" title="Στείλε ό,τι είναι έτοιμο, το υπόλοιπο σε νέα παραγγελία">
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ConfirmSplitPending(order)" @onclick:stopPropagation="true" title="Στείλε ό,τι είναι έτοιμο, το υπόλοιπο σε νέα παραγγελία">
                                             🔀 Διαχωρισμός
                                         </button>
                                     }
                                     @if (order.OrderStatus != "Fulfilled")
                                     {
-                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => DoForceComplete(order)" @onclick:stopPropagation="true" title="Διορθωτικό κλείσιμο (π.χ. λόγω migration)">
+                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => ConfirmForceComplete(order)" @onclick:stopPropagation="true" title="Διορθωτικό κλείσιμο (π.χ. λόγω migration)">
                                             ⚠️
                                         </button>
                                     }
@@ -491,7 +491,7 @@
                                         <span>⏳ Έχεις εκκρεμείς αλλαγές σε αυτή την παραγγελία.</span>
                                         <div class="d-flex gap-2">
                                             <button class="btn btn-sm btn-outline-secondary" @onclick="() => DiscardOrderChanges(order)">↩ Αναίρεση</button>
-                                            <button class="btn btn-sm btn-primary" @onclick="() => SaveOrderChanges(order)">💾 Αποθήκευση (@pendingForOrder.ChangeCount αλλαγές)</button>
+                                            <button class="btn btn-sm btn-primary" @onclick="() => ConfirmSaveOrderChanges(order, pendingForOrder.ChangeCount)">💾 Αποθήκευση (@pendingForOrder.ChangeCount αλλαγές)</button>
                                         </div>
                                     </div>
                                 }
@@ -540,7 +540,7 @@
                                                                 <span class="qty-value">@GetAllocateQty(order, line)</span>
                                                                 <button class="btn btn-sm btn-outline-success" disabled="@(GetAllocateQty(order, line) >= allocateMax)" @onclick="() => ChangeAllocateQty(order, line, 1)">+</button>
                                                             </div>
-                                                            <button class="btn btn-sm @(markedCancel ? "btn-danger" : "btn-outline-danger")" @onclick="() => ToggleCancelLine(order, line)">Ακύρωση</button>
+                                                            <button class="btn btn-sm @(markedCancel ? "btn-danger" : "btn-outline-danger")" @onclick="() => ConfirmCancelLine(order, line, pending)">Ακύρωση</button>
                                                         }
                                                         @if (line.LineStatus == "Cancelled")
                                                         {
@@ -552,7 +552,7 @@
                                                         }
                                                         @if (line.QuantityAllocated == 0)
                                                         {
-                                                            <button class="btn btn-sm @(markedRemove ? "btn-secondary" : "btn-outline-secondary")" title="Αφαίρεση" @onclick="() => ToggleRemoveLine(order, line)">✕</button>
+                                                            <button class="btn btn-sm @(markedRemove ? "btn-secondary" : "btn-outline-secondary")" title="Αφαίρεση" @onclick="() => ConfirmRemoveLine(order, line)">✕</button>
                                                         }
                                                     </div>
                                                 </td>
@@ -988,6 +988,20 @@
     </div>
 }
 
+<!-- ================= CONFIRMATION POPUP (μη-αναστρέψιμες ενέργειες) ================= -->
+@if (showConfirm)
+{
+    <div class="popup-overlay" @onclick="CloseConfirm">
+        <div class="popup-box" style="max-width:420px;" @onclick:stopPropagation="true">
+            <p class="mb-3">@confirmMessage</p>
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary flex-fill" @onclick="CloseConfirm">Ακύρωση</button>
+                <button class="btn btn-danger flex-fill" @onclick="RunConfirmedAction">Ναι, συνέχεια</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private string selectedCompany = "";
     private string selectedStatus = "Open";
@@ -999,6 +1013,56 @@
     private string? expandedOrder = null;
 
     private string doctorSortBy = "date";
+
+    // --- Confirmation popup (μη-αναστρέψιμες ενέργειες πάνω σε παραγγελία) ---
+    private bool showConfirm = false;
+    private string confirmMessage = "";
+    private Func<Task>? confirmAction;
+
+    private void ShowConfirm(string message, Func<Task> action)
+    {
+        confirmMessage = message;
+        confirmAction = action;
+        showConfirm = true;
+    }
+
+    private void CloseConfirm()
+    {
+        showConfirm = false;
+        confirmAction = null;
+    }
+
+    private async Task RunConfirmedAction()
+    {
+        var action = confirmAction;
+        showConfirm = false;
+        confirmAction = null;
+        if (action != null)
+            await action();
+    }
+
+    private void ConfirmSaveOrderChanges(DoctorOrderViewDto order, int changeCount) =>
+        ShowConfirm($"Θέλεις να αποθηκεύσεις {changeCount} αλλαγές στην παραγγελία {order.OrderCode};", () => SaveOrderChanges(order));
+
+    private void ConfirmForceComplete(DoctorOrderViewDto order) =>
+        ShowConfirm($"Θέλεις να κλείσεις οριστικά την παραγγελία {order.OrderCode} ως ολοκληρωμένη; Αυτή η ενέργεια δεν αναιρείται.", () => DoForceComplete(order));
+
+    private void ConfirmSplitPending(DoctorOrderViewDto order) =>
+        ShowConfirm($"Θέλεις να διαχωρίσεις την παραγγελία {order.OrderCode}; Θα δημιουργηθεί νέα παραγγελία για το εκκρεμές υπόλοιπο.", () => DoSplitPending(order));
+
+    private void ConfirmCancelLine(DoctorOrderViewDto order, DoctorOrderLineViewDto line, int pending) =>
+        ShowConfirm($"Θέλεις να ακυρώσεις το εκκρεμές υπόλοιπο του {line.CodePrick} ({pending} τεμ.);", () =>
+        {
+            ToggleCancelLine(order, line);
+            return Task.CompletedTask;
+        });
+
+    private void ConfirmRemoveLine(DoctorOrderViewDto order, DoctorOrderLineViewDto line) =>
+        ShowConfirm($"Θέλεις να αφαιρέσεις το {line.CodePrick} από την παραγγελία;", () =>
+        {
+            ToggleRemoveLine(order, line);
+            return Task.CompletedTask;
+        });
 
     private List<SimpleCodeOptionDto> allergenOptions = new();
     private List<SimpleCodeOptionDto> productTypeOptions = new();

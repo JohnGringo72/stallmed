@@ -44,17 +44,19 @@ namespace StallmedManager.Shared.Models
         public int FreeStock { get; set; } // = QuantityRemaining (μη δεσμευμένο)
     }
 
-    public class StockOrderProposalItemDto
+    public class SmartStockProposalDto
     {
         public string CodePrick { get; set; }
         public string? AllergenDescription { get; set; }
         public string ProductTypeCode { get; set; }
         public string? ProductDescription { get; set; }
         public string Company { get; set; }
-        public int CurrentStock { get; set; }
-        public int PendingDemand { get; set; }
-        public int SecurityStock { get; set; }
-        public int Proposed { get; set; }
-        public int OrderQuantity { get; set; } // editable by user
+        public int WeeklyAvg { get; set; }        // μέσος εβδομαδιαίος όγκος (90 ημέρες / 13 εβδ.)
+        public int SecurityStock { get; set; }     // 12% του μέσου όρου
+        public int CurrentStock { get; set; }      // ελεύθερο stock
+        public int AlreadyOrdered { get; set; }    // ήδη σε παραγγελία στοκ (Open/PartiallyReceived)
+        public int PendingDemand { get; set; }     // εκκρεμές από γιατρούς
+        public int Proposed { get; set; }          // τελική πρόταση
+        public int OrderQuantity { get; set; }     // editable by user
     }
 }

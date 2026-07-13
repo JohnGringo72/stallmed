@@ -186,43 +186,55 @@ else if (liveStockStatus == "loaded")
         </div>
     </div>
 
-    <!-- ===== ΠΡΟΤΑΣΗ ΠΑΡΑΓΓΕΛΙΑΣ ΣΤΟΚ ===== -->
-    <div class="d-flex align-items-center gap-3 mt-2 mb-2">
-        <h4 class="mb-0">🛒 Πρόταση Παραγγελίας Στοκ</h4>
-        <button class="btn btn-outline-primary btn-sm" @onclick="LoadProposal">
-            @(proposalStatus == "loading" ? "Φορτώνω..." : "🔄 Υπολογισμός")
+    <!-- ===== 🧠 ΕΞΥΠΝΗ ΠΡΟΤΑΣΗ ΠΑΡΑΓΓΕΛΙΑΣ ===== -->
+    <div class="d-flex align-items-center gap-2 mt-2 mb-2 flex-wrap">
+        <h4 class="mb-0">🧠 Έξυπνη Πρόταση Παραγγελίας</h4>
+        <select class="form-control form-control-sm" style="width:auto;" @bind="proposalCompany">
+            <option value="">Όλες οι Εταιρείες</option>
+            <option value="SM">StallMedicals</option>
+            <option value="BM">BeltaMed</option>
+        </select>
+        <select class="form-control form-control-sm" style="width:auto;" @bind="proposalProductType">
+            <option value="">Όλοι οι Τύποι</option>
+            @foreach (var pt in productTypes)
+            {
+                <option value="@pt.ProductTypeCode">@pt.ProductTypeCode @(!string.IsNullOrEmpty(pt.Description) ? $"- {pt.Description}" : "")</option>
+            }
+        </select>
+        <button class="btn btn-outline-primary btn-sm" @onclick="LoadSmartProposal">
+            @(smartProposalStatus == "loading" ? "Φορτώνω..." : "🔄 Υπολογισμός")
         </button>
     </div>
 
-    @if (proposalStatus == "loaded" && proposal != null)
+    @if (smartProposalStatus == "loaded" && smartProposal != null)
     {
-        @if (!proposal.Any())
+        @if (!smartProposal.Any())
         {
             <div class="alert alert-success mb-3">✅ Δεν χρειάζεται παραγγελία αυτή τη στιγμή!</div>
         }
         else
         {
-            @foreach (var grp in proposal.GroupBy(x => new { x.ProductTypeCode, x.ProductDescription }).OrderBy(g => g.Key.ProductTypeCode))
+            @foreach (var grp in smartProposal.GroupBy(x => new { x.ProductTypeCode, x.ProductDescription }).OrderBy(g => g.Key.ProductTypeCode))
             {
                 <div class="card mb-3">
-                    <div class="card-header d-flex justify-content-between align-items-center py-2">
+                    <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
                         <strong>@grp.Key.ProductTypeCode — @grp.Key.ProductDescription</strong>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 flex-wrap">
                             @if (grp.Any(x => x.Company == "BM" && x.OrderQuantity > 0))
                             {
-                                <button class="btn btn-sm btn-success" @onclick='() => CreateStockOrderByType("BM", grp.Key.ProductTypeCode)'>
+                                <button class="btn btn-sm btn-success" @onclick='() => CreateSmartStockOrder("BM", grp.Key.ProductTypeCode)'>
                                     🛒 Παραγγελία BM
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportProposalExcelByType("BM", grp.Key.ProductTypeCode)'>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportSmartProposalExcel("BM", grp.Key.ProductTypeCode)'>
                                     📊 Excel BM
                                 </button>
                             }
                             @if (grp.Any(x => x.Company == "SM" && x.OrderQuantity > 0))
                             {
-                                <button class="btn btn-sm btn-success" @onclick='() => CreateStockOrderByType("SM", grp.Key.ProductTypeCode)'>
+                                <button class="btn btn-sm btn-success" @onclick='() => CreateSmartStockOrder("SM", grp.Key.ProductTypeCode)'>
                                     🛒 Παραγγελία SM
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportProposalExcelByType("SM", grp.Key.ProductTypeCode)'>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportSmartProposalExcel("SM", grp.Key.ProductTypeCode)'>
                                     📊 Excel SM
                                 </button>
                             }
@@ -236,17 +248,19 @@ else if (liveStockStatus == "loaded")
                                         <th>Κωδικός</th>
                                         <th>Περιγραφή</th>
                                         <th>Εταιρεία</th>
+                                        <th title="Μέσος εβδομαδιαίος όγκος (90 ημέρες / 13 εβδ.)">Εβδ. Μέσος</th>
+                                        <th title="12% του μέσου όρου">Security</th>
                                         <th title="Τρέχον διαθέσιμο stock">Stock</th>
-                                        <th title="Εκκρεμής ζήτηση">Εκκρεμές</th>
-                                        <th title="Μέσος εβδ. × 2">Security</th>
-                                        <th>Παραγγελία</th>
+                                        <th title="Ήδη σε παραγγελία παραγωγής (Open/PartiallyReceived)">Παραγγελμένο</th>
+                                        <th title="Εκκρεμής ζήτηση από γιατρούς">Εκκρεμές</th>
+                                        <th>Πρόταση</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach (var item in grp.OrderBy(x => x.CodePrick))
                                     {
-                                        var rowClass = item.CurrentStock == 0 ? "proposal-row-danger"
-                                                     : item.CurrentStock < item.PendingDemand ? "proposal-row-warn"
+                                        var rowClass = item.CurrentStock == 0 && item.PendingDemand > 0 ? "proposal-row-danger"
+                                                     : item.Proposed > 0 ? "proposal-row-warn"
                                                      : "proposal-row-ok";
                                         <tr class="@rowClass">
                                             <td><strong>@item.CodePrick</strong></td>
@@ -254,16 +268,18 @@ else if (liveStockStatus == "loaded")
                                             <td>
                                                 <span class="company-badge" style="background-color:@(item.Company == "SM" ? "#0d6efd" : "#6f42c1")">@item.Company</span>
                                             </td>
-                                            <td>@item.CurrentStock</td>
-                                            <td>@item.PendingDemand</td>
+                                            <td>@item.WeeklyAvg</td>
                                             <td>@item.SecurityStock</td>
+                                            <td>@item.CurrentStock</td>
+                                            <td>@item.AlreadyOrdered</td>
+                                            <td>@item.PendingDemand</td>
                                             <td>
                                                 <div class="qty-stepper">
                                                     <button class="btn btn-sm btn-outline-secondary py-0 px-1"
-                                                            @onclick="() => ChangeProposalQty(item, -1)">−</button>
+                                                            @onclick="() => ChangeSmartProposalQty(item, -1)">−</button>
                                                     <span class="qty-value">@item.OrderQuantity</span>
                                                     <button class="btn btn-sm btn-outline-secondary py-0 px-1"
-                                                            @onclick="() => ChangeProposalQty(item, 1)">+</button>
+                                                            @onclick="() => ChangeSmartProposalQty(item, 1)">+</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -275,9 +291,9 @@ else if (liveStockStatus == "loaded")
                 </div>
             }
 
-            @if (!string.IsNullOrEmpty(proposalMessage))
+            @if (!string.IsNullOrEmpty(smartProposalMessage))
             {
-                <div class="alert alert-info mb-3">@proposalMessage</div>
+                <div class="alert alert-info mb-3">@smartProposalMessage</div>
             }
         }
     }
@@ -332,9 +348,11 @@ else if (liveStockStatus == "loaded")
     private List<LiveStockItemDto> liveStock = new();
     private List<ProductType> productTypes = new();
 
-    private string proposalStatus = "idle";
-    private List<StockOrderProposalItemDto> proposal;
-    private string proposalMessage = "";
+    private string proposalCompany = "";
+    private string proposalProductType = "";
+    private string smartProposalStatus = "idle";
+    private List<SmartStockProposalDto> smartProposal;
+    private string smartProposalMessage = "";
 
     private IEnumerable<LiveStockItemDto> SortedLiveStock => sortBy switch
     {
@@ -400,29 +418,30 @@ else if (liveStockStatus == "loaded")
         StateHasChanged();
     }
 
-    private async Task LoadProposal()
+    private async Task LoadSmartProposal()
     {
-        proposalStatus = "loading";
-        proposalMessage = "";
+        smartProposalStatus = "loading";
+        smartProposalMessage = "";
         StateHasChanged();
 
-        proposal = await new PrickDashboardService(dataService).GetStockOrderProposal(
-            string.IsNullOrEmpty(selectedCompany) ? null : selectedCompany);
+        smartProposal = await new PrickDashboardService(dataService).GetSmartStockProposal(
+            string.IsNullOrEmpty(proposalCompany) ? null : proposalCompany,
+            string.IsNullOrEmpty(proposalProductType) ? null : proposalProductType);
 
-        proposalStatus = "loaded";
+        smartProposalStatus = "loaded";
         StateHasChanged();
     }
 
-    private void ChangeProposalQty(StockOrderProposalItemDto item, int delta)
+    private void ChangeSmartProposalQty(SmartStockProposalDto item, int delta)
     {
         var updated = item.OrderQuantity + delta;
         if (updated >= 0) item.OrderQuantity = updated;
     }
 
-    private async Task CreateStockOrderByType(string company, string productTypeCode)
+    private async Task CreateSmartStockOrder(string company, string productTypeCode)
     {
-        if (proposal == null) return;
-        var lines = proposal.Where(x => x.Company == company && x.ProductTypeCode == productTypeCode && x.OrderQuantity > 0).ToList();
+        if (smartProposal == null) return;
+        var lines = smartProposal.Where(x => x.Company == company && x.ProductTypeCode == productTypeCode && x.OrderQuantity > 0).ToList();
         if (!lines.Any()) return;
 
         var req = new CreateProductionOrderRequest
@@ -438,17 +457,17 @@ else if (liveStockStatus == "loaded")
             }).ToList()
         };
         await new PrickProductionService(dataService).CreateOrder(req);
-        proposalMessage = $"✅ Παραγγελία στοκ {company} / {productTypeCode} δημιουργήθηκε. Δες τη στη σελίδα Stock Orders.";
+        smartProposalMessage = $"✅ Παραγγελία στοκ {company} / {productTypeCode} δημιουργήθηκε. Δες τη στη σελίδα Stock Orders.";
         StateHasChanged();
     }
 
-    private async Task ExportProposalExcelByType(string company, string productTypeCode)
+    private async Task ExportSmartProposalExcel(string company, string productTypeCode)
     {
-        if (proposal == null) return;
-        var lines = proposal.Where(x => x.Company == company && x.ProductTypeCode == productTypeCode && x.OrderQuantity > 0).ToList();
+        if (smartProposal == null) return;
+        var lines = smartProposal.Where(x => x.Company == company && x.ProductTypeCode == productTypeCode && x.OrderQuantity > 0).ToList();
         if (!lines.Any()) return;
 
-        var bytes = await new PrickDashboardService(dataService).ExportProposalExcel(company, lines);
+        var bytes = await new PrickDashboardService(dataService).ExportSmartStockProposalExcel(company, productTypeCode, lines);
         if (bytes != null)
             await JS.InvokeVoidAsync("downloadFileFromBytes", $"StockOrder_{company}_{productTypeCode}_{DateTime.Today:yyyyMMdd}.xlsx", bytes);
     }

@@ -87,6 +87,31 @@ namespace StallmedManager.Client
             }
         }
 
+        public async Task<byte[]> PostBytes<TRequest>(string path, TRequest body)
+        {
+            if (userManager?.User == null)
+                return null;
+            var request = new HttpRequestMessage(HttpMethod.Post, path);
+            request.Headers.Add("Authorization", "Bearer " + userManager.User.Token);
+            request.Content = JsonContent.Create(body);
+            var response = await http.SendAsync(request);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                await userManager.Logout();
+                return null;
+            }
+            if (!response.IsSuccessStatusCode)
+                return null;
+            try
+            {
+                return await response.Content.ReadAsByteArrayAsync();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public async Task<TResponse> PostFile<TResponse>(string path, byte[] fileBytes, string fileName)
         {
             if (userManager?.User == null)
