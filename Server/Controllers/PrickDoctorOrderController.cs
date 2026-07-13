@@ -201,10 +201,15 @@ namespace StallmedManager.Server.Controllers
                 if (string.IsNullOrWhiteSpace(req.ShippingCarrier))
                     return Ok(new ShipResult { Success = false, Message = "Λείπει ο τρόπος αποστολής." });
 
+                // Το "Ίδια Μέσα" είναι πλέον απλή εγγραφή στο ShippingCouriers (όχι hardcoded
+                // string) -- το ξεχωρίζουμε από ACS/Intralink/άλλο courier μέσω του IsOwnMeans flag.
+                var isOwnMeans = await _context.ShippingCouriers
+                    .AnyAsync(c => c.Name == req.ShippingCarrier && c.IsOwnMeans);
+
                 // Το DeliveryPersonName έχει νόημα μόνο για "Ίδια Μέσα" -- για ACS/Intralink/άλλο
                 // courier αγνοείται ό,τι στείλει ο client, ώστε να μη μείνει "ορφανό" σε λάθος carrier.
-                var deliveryPersonName = req.ShippingCarrier == "OwnMeans" ? req.DeliveryPersonName?.Trim() : null;
-                if (req.ShippingCarrier == "OwnMeans" && string.IsNullOrWhiteSpace(deliveryPersonName))
+                var deliveryPersonName = isOwnMeans ? req.DeliveryPersonName?.Trim() : null;
+                if (isOwnMeans && string.IsNullOrWhiteSpace(deliveryPersonName))
                     return Ok(new ShipResult { Success = false, Message = "Επίλεξε όνομα για αποστολή τύπου Ίδια Μέσα." });
 
                 order.ShippingCarrier = req.ShippingCarrier;
@@ -231,8 +236,9 @@ namespace StallmedManager.Server.Controllers
             {
                 var list = await _context.ShippingCouriers
                     .Where(c => c.IsActive)
-                    .OrderBy(c => c.Name)
-                    .Select(c => new ShippingCourierDto { CourierID = c.CourierID, Name = c.Name })
+                    .OrderByDescending(c => c.IsOwnMeans)
+                    .ThenBy(c => c.Name)
+                    .Select(c => new ShippingCourierDto { CourierID = c.CourierID, Name = c.Name, IsOwnMeans = c.IsOwnMeans })
                     .ToListAsync();
                 return Ok(list);
             }
@@ -259,13 +265,13 @@ namespace StallmedManager.Server.Controllers
                     existing.IsActive = true;
                     await _context.SaveChangesAsync();
                 }
-                return Ok(new ShippingCourierDto { CourierID = existing.CourierID, Name = existing.Name });
+                return Ok(new ShippingCourierDto { CourierID = existing.CourierID, Name = existing.Name, IsOwnMeans = existing.IsOwnMeans });
             }
 
-            var courier = new ShippingCourier { Name = trimmed, IsActive = true, CreatedAt = DateTime.Now };
+            var courier = new ShippingCourier { Name = trimmed, IsActive = true, IsOwnMeans = false, CreatedAt = DateTime.Now };
             _context.ShippingCouriers.Add(courier);
             await _context.SaveChangesAsync();
-            return Ok(new ShippingCourierDto { CourierID = courier.CourierID, Name = courier.Name });
+            return Ok(new ShippingCourierDto { CourierID = courier.CourierID, Name = courier.Name, IsOwnMeans = false });
         }
 
         // ---- Αναζήτηση γιατρών (για το dropdown/search στη φόρμα) ----

@@ -151,7 +151,6 @@
             <div class="mb-2">
                 <label class="form-label mb-1">Τρόπος Αποστολής</label>
                 <select class="form-control" value="@shipCarrier" @onchange="OnCarrierChanged">
-                    <option value="OwnMeans">Ίδια Μέσα</option>
                     @foreach (var c in couriers)
                     {
                         <option value="@c.Name">@c.Name</option>
@@ -168,7 +167,7 @@
                 }
             </div>
 
-            @if (shipCarrier == "OwnMeans")
+            @if (IsOwnMeansSelected)
             {
                 <div class="mb-2">
                     <label class="form-label mb-1">Όνομα (Ίδια Μέσα)</label>
@@ -227,7 +226,7 @@
 
     private bool showShipPopup = false;
     private DoctorOrderViewDto? shipOrder;
-    private string shipCarrier = "OwnMeans";
+    private string shipCarrier = "";
     private string shipDeliveryPersonName = "";
     private DateTime shipDate = DateTime.Today;
     private string shipMessage = "";
@@ -242,6 +241,11 @@
         "Έκπτωση" => "bg-warning text-dark",
         _ => "bg-success"
     };
+
+    // "Ίδια Μέσα" είναι πλέον απλά η εγγραφή στο couriers που έχει IsOwnMeans=true
+    // (φτιάχνεται στη DB, όχι hardcoded string εδώ).
+    private string OwnMeansCourierName => couriers.FirstOrDefault(c => c.IsOwnMeans)?.Name ?? "";
+    private bool IsOwnMeansSelected => couriers.Any(c => c.Name == shipCarrier && c.IsOwnMeans);
 
     private List<DoctorOrderViewDto> FilteredOrders =>
         orders.Where(o => string.IsNullOrEmpty(searchQuery) ||
@@ -369,7 +373,7 @@
     private void OpenShipPopup(DoctorOrderViewDto order)
     {
         shipOrder = order;
-        shipCarrier = "OwnMeans";
+        shipCarrier = OwnMeansCourierName;
         shipDeliveryPersonName = "";
         shipDate = DateTime.Today;
         shipMessage = "";
@@ -396,7 +400,7 @@
             shipMessage = "Επίλεξε έγκυρη ημερομηνία.";
             return;
         }
-        if (shipCarrier == "OwnMeans" && string.IsNullOrWhiteSpace(shipDeliveryPersonName))
+        if (IsOwnMeansSelected && string.IsNullOrWhiteSpace(shipDeliveryPersonName))
         {
             shipMessage = "Επίλεξε όνομα.";
             return;
@@ -406,7 +410,7 @@
         {
             OrderID = shipOrder.OrderID,
             ShippingCarrier = shipCarrier,
-            DeliveryPersonName = shipCarrier == "OwnMeans" ? shipDeliveryPersonName : null,
+            DeliveryPersonName = IsOwnMeansSelected ? shipDeliveryPersonName : null,
             ShippedDate = shipDate,
             UserID = userManager.User?.IdUser
         };

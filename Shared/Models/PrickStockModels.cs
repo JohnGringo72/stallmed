@@ -221,6 +221,9 @@ namespace StallmedManager.Shared.Models
         public int CourierID { get; set; }
         public string Name { get; set; }
         public bool IsActive { get; set; } = true;
+        // true μόνο για την ειδική γραμμή "Ίδια Μέσα" -- οδηγεί σε επιλογή ονόματος
+        // από τη λίστα DeliveryPersons αντί για τη φόρμα voucher ACS/Intralink.
+        public bool IsOwnMeans { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 

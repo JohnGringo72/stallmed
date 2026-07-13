@@ -88,6 +88,7 @@ namespace StallmedManager.Shared.Models
     {
         public int CourierID { get; set; }
         public string Name { get; set; }
+        public bool IsOwnMeans { get; set; }
     }
 
     public class AddCourierRequest
