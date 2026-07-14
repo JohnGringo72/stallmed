@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject UserManager userManager
 @inject NavigationManager Navigation
+@inject UiPreferencesService uiPrefs
 @implements IDisposable
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3">
     <a class="navbar-brand" href="/">StallmedManager</a>
@@ -48,15 +49,21 @@
         @if (userManager.IsLoggedIn)
         {
             <div class="d-flex align-items-center gap-3 ms-auto mt-2 mt-lg-0">
+                <label class="form-check-label text-white d-flex align-items-center gap-1" style="cursor:pointer;" title="Εμφανίζει επεξηγηματικές υποδείξεις (tooltips) πάνω από τα κουμπιά">
+                    <input type="checkbox" class="form-check-input" checked="@uiPrefs.ShowHints" @onchange="OnShowHintsChanged" />
+                    💡 Υποδείξεις
+                </label>
                 <span class="text-white">@userManager.User.Username</span>
                 <span class="badge bg-success">@userManager.User.Role</span>
-                <button class="btn btn-outline-light btn-sm" @onclick="Logout">Logout</button>
+                <button class="btn btn-outline-light btn-sm" @onclick="Logout" title="Αποσύνδεση από τον λογαριασμό">Logout</button>
             </div>
         }
     </div>
 </nav>
 <div class="container-fluid mt-3">
-    @Body
+    <CascadingValue Value="uiPrefs">
+        @Body
+    </CascadingValue>
 </div>
 @code {
     private bool menuOpen = false;
@@ -65,9 +72,16 @@
         : "collapse navbar-collapse";
     private void ToggleMenu() => menuOpen = !menuOpen;
     private void CloseMenu() => menuOpen = false;
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         userManager.StatusChanged += OnStatusChanged;
+        await uiPrefs.Initialize();
+    }
+
+    private async Task OnShowHintsChanged(ChangeEventArgs e)
+    {
+        await uiPrefs.SetShowHints((bool)(e.Value ?? true));
+        StateHasChanged();
     }
 
     // Οι μόνες σελίδες που επιτρέπονται στο role "warehouse".

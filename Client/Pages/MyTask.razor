@@ -9,7 +9,7 @@
     <div>
         <strong>Ενεργές Εργασίες</strong>
     </div>
-    <button class="btn btn-primary" @onclick="OpenNewTaskPopup">+ Νέα Εργασία</button>
+    <button class="btn btn-primary" @onclick="OpenNewTaskPopup" title="@Hint("Δημιουργία νέας εργασίας")">+ Νέα Εργασία</button>
 </div>
 
 @if (showPopup)
@@ -19,7 +19,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Νέα Εργασία</h5>
-                    <button type="button" class="btn-close" @onclick="CloseNewTaskPopup"></button>
+                    <button type="button" class="btn-close" @onclick="CloseNewTaskPopup" title="@Hint("Κλείσιμο χωρίς αποθήκευση")"></button>
                 </div>
 
                 <div class="modal-body">
@@ -62,8 +62,8 @@
                 </div>
 
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="CloseNewTaskPopup">Ακύρωση</button>
-                    <button class="btn btn-primary" @onclick="SaveTask">Δημιουργία</button>
+                    <button class="btn btn-secondary" @onclick="CloseNewTaskPopup" title="@Hint("Κλείσιμο χωρίς αποθήκευση")">Ακύρωση</button>
+                    <button class="btn btn-primary" @onclick="SaveTask" title="@Hint("Αποθήκευση της νέας εργασίας")">Δημιουργία</button>
                 </div>
             </div>
         </div>
@@ -123,13 +123,16 @@ else
             <p><strong>Αρχείο:</strong> @selectedTask.FileName</p>
         }
 
-        <button class="btn btn-sm btn-secondary mt-2" @onclick="CloseTask">
+        <button class="btn btn-sm btn-secondary mt-2" @onclick="CloseTask" title="@Hint("Κλείσιμο προβολής εργασίας")">
             Κλείσιμο
         </button>
     </div>
 }
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private bool showPopup = false;
 
     private string newTaskTitle = "";

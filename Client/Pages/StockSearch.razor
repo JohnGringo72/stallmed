@@ -40,15 +40,15 @@
             <div class="filter-group">
                 <label class="flabel">Εταιρεία</label>
                 <div class="ctoggle">
-                    <button class="@CmpClass("")"  @onclick='() => SetCompany("")'>Όλες</button>
-                    <button class="@CmpClass("1")" @onclick='() => SetCompany("1")'>SM</button>
-                    <button class="@CmpClass("2")" @onclick='() => SetCompany("2")'>BM</button>
+                    <button class="@CmpClass("")"  @onclick='() => SetCompany("")' title="@Hint("Δείχνει αποτελέσματα και από τις δύο εταιρείες")">Όλες</button>
+                    <button class="@CmpClass("1")" @onclick='() => SetCompany("1")' title="@Hint("Φιλτράρει μόνο για StallMedicals")">SM</button>
+                    <button class="@CmpClass("2")" @onclick='() => SetCompany("2")' title="@Hint("Φιλτράρει μόνο για BeltaMed")">BM</button>
                 </div>
             </div>
 
             <div class="filter-group fg-end">
                 <label class="flabel">&nbsp;</label>
-                <button class="btn btn-outline-secondary sbtn" @onclick="ResetFilters">
+                <button class="btn btn-outline-secondary sbtn" @onclick="ResetFilters" title="@Hint("Καθαρίζει όλα τα φίλτρα αναζήτησης")">
                     <i class="bi bi-x-circle me-1"></i> Reset
                 </button>
             </div>
@@ -219,6 +219,9 @@
 </style>
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private string SelectedTreatment { get; set; } = "";
     private string SelectedAllergen  { get; set; } = "";
     private string SelectedCompany   { get; set; } = "";

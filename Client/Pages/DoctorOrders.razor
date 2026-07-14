@@ -302,7 +302,7 @@
 {
     <div class="alert alert-success alert-dismissible">
         @topBannerMessage
-        <button type="button" class="btn-close" @onclick="() => topBannerMessage = string.Empty"></button>
+        <button type="button" class="btn-close" @onclick="() => topBannerMessage = string.Empty" title="@Hint("Κλείσιμο μηνύματος")"></button>
     </div>
 }
 
@@ -373,9 +373,9 @@
         </div>
         <div class="col-6 col-md-3">
             <div class="d-flex gap-2">
-                <button class="btn btn-success flex-fill" @onclick="OpenNewOrderPopup">➕ Νέα</button>
-                <button class="btn btn-outline-primary flex-fill" @onclick="OpenImportPopup">📊 Excel</button>
-                <button class="btn btn-outline-secondary flex-fill" @onclick="LoadData">↻</button>
+                <button class="btn btn-success flex-fill" @onclick="OpenNewOrderPopup" title="@Hint("Χειροκίνητη δημιουργία νέας παραγγελίας γιατρού")">➕ Νέα</button>
+                <button class="btn btn-outline-primary flex-fill" @onclick="OpenImportPopup" title="@Hint("Μαζική εισαγωγή παραγγελιών από αρχείο Excel")">📊 Excel</button>
+                <button class="btn btn-outline-secondary flex-fill" @onclick="LoadData" title="@Hint("Επαναφόρτωση της λίστας παραγγελιών")">↻</button>
             </div>
         </div>
     </div>
@@ -464,19 +464,19 @@
                                 <div class="d-flex gap-1">
                                     @if (totalFulfillable > 0)
                                     {
-                                        <button class="btn btn-sm btn-success" @onclick="() => DoBulkAllocate(order)" @onclick:stopPropagation="true" title="Δέσμευση ό,τι είναι διαθέσιμο σε όλες τις γραμμές">
+                                        <button class="btn btn-sm btn-success" @onclick="() => DoBulkAllocate(order)" @onclick:stopPropagation="true" title="@Hint("Δέσμευση ό,τι είναι διαθέσιμο σε όλες τις γραμμές")">
                                             ⚡ Allocate Όλα
                                         </button>
                                     }
                                     @if (order.OrderStatus == "Open" && totalPending > 0 && totalPending < totalRequested)
                                     {
-                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ConfirmSplitPending(order)" @onclick:stopPropagation="true" title="Στείλε ό,τι είναι έτοιμο, το υπόλοιπο σε νέα παραγγελία">
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ConfirmSplitPending(order)" @onclick:stopPropagation="true" title="@Hint("Στείλε ό,τι είναι έτοιμο, το υπόλοιπο σε νέα παραγγελία")">
                                             🔀 Διαχωρισμός
                                         </button>
                                     }
                                     @if (order.OrderStatus != "Fulfilled")
                                     {
-                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => ConfirmForceComplete(order)" @onclick:stopPropagation="true" title="Διορθωτικό κλείσιμο (π.χ. λόγω migration)">
+                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => ConfirmForceComplete(order)" @onclick:stopPropagation="true" title="@Hint("Διορθωτικό κλείσιμο (π.χ. λόγω migration)")">
                                             ⚠️
                                         </button>
                                     }
@@ -490,8 +490,8 @@
                                     <div class="batch-save-bar">
                                         <span>⏳ Έχεις εκκρεμείς αλλαγές σε αυτή την παραγγελία.</span>
                                         <div class="d-flex gap-2">
-                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => DiscardOrderChanges(order)">↩ Αναίρεση</button>
-                                            <button class="btn btn-sm btn-primary" @onclick="() => ConfirmSaveOrderChanges(order, pendingForOrder.ChangeCount)">💾 Αποθήκευση (@pendingForOrder.ChangeCount αλλαγές)</button>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => DiscardOrderChanges(order)" title="@Hint("Απόρριψη μη αποθηκευμένων αλλαγών σε αυτή την παραγγελία")">↩ Αναίρεση</button>
+                                            <button class="btn btn-sm btn-primary" @onclick="() => ConfirmSaveOrderChanges(order, pendingForOrder.ChangeCount)" title="@Hint("Αποθήκευση όλων των εκκρεμών αλλαγών στην παραγγελία")">💾 Αποθήκευση (@pendingForOrder.ChangeCount αλλαγές)</button>
                                         </div>
                                     </div>
                                 }
@@ -523,7 +523,7 @@
                                                 <td>
                                                     @if (line.ElsewhereQuantity > 0)
                                                     {
-                                                        <button class="btn btn-sm btn-link p-0" @onclick="() => OpenElsewherePopup(line)">@line.ElsewhereQuantity 🔍</button>
+                                                        <button class="btn btn-sm btn-link p-0" @onclick="() => OpenElsewherePopup(line)" title="@Hint("Δες πού αλλού βρίσκεται δεσμευμένη αυτή η ποσότητα")">@line.ElsewhereQuantity 🔍</button>
                                                     }
                                                     else
                                                     {
@@ -536,23 +536,23 @@
                                                         @if (pending > 0 && !markedRemove)
                                                         {
                                                             <div class="qty-stepper">
-                                                                <button class="btn btn-sm btn-outline-secondary" disabled="@(GetAllocateQty(order, line) <= 0)" @onclick="() => ChangeAllocateQty(order, line, -1)">−</button>
+                                                                <button class="btn btn-sm btn-outline-secondary" disabled="@(GetAllocateQty(order, line) <= 0)" @onclick="() => ChangeAllocateQty(order, line, -1)" title="@Hint("Μείωση ποσότητας προς δέσμευση")">−</button>
                                                                 <span class="qty-value">@GetAllocateQty(order, line)</span>
-                                                                <button class="btn btn-sm btn-outline-success" disabled="@(GetAllocateQty(order, line) >= allocateMax)" @onclick="() => ChangeAllocateQty(order, line, 1)">+</button>
+                                                                <button class="btn btn-sm btn-outline-success" disabled="@(GetAllocateQty(order, line) >= allocateMax)" @onclick="() => ChangeAllocateQty(order, line, 1)" title="@Hint("Αύξηση ποσότητας προς δέσμευση")">+</button>
                                                             </div>
-                                                            <button class="btn btn-sm @(markedCancel ? "btn-danger" : "btn-outline-danger")" @onclick="() => ConfirmCancelLine(order, line, pending)">Ακύρωση</button>
+                                                            <button class="btn btn-sm @(markedCancel ? "btn-danger" : "btn-outline-danger")" @onclick="() => ConfirmCancelLine(order, line, pending)" title="@Hint("Ακύρωση της εκκρεμούς ποσότητας αυτής της γραμμής")">Ακύρωση</button>
                                                         }
                                                         @if (line.LineStatus == "Cancelled")
                                                         {
-                                                            <button class="btn btn-sm @(markedUncancel ? "btn-secondary" : "btn-outline-secondary")" title="Αναίρεση ακύρωσης" @onclick="() => ToggleUncancelLine(order, line)">↺</button>
+                                                            <button class="btn btn-sm @(markedUncancel ? "btn-secondary" : "btn-outline-secondary")" title="@Hint("Αναίρεση ακύρωσης")" @onclick="() => ToggleUncancelLine(order, line)">↺</button>
                                                         }
                                                         @if (line.QuantityAllocated > 0 && !markedRemove)
                                                         {
-                                                            <button class="btn btn-sm @(markedReverse ? "btn-warning" : "btn-outline-warning")" title="Ανάκληση δέσμευσης" @onclick="() => ToggleReverseLine(order, line)">↩️</button>
+                                                            <button class="btn btn-sm @(markedReverse ? "btn-warning" : "btn-outline-warning")" title="@Hint("Ανάκληση δέσμευσης")" @onclick="() => ToggleReverseLine(order, line)">↩️</button>
                                                         }
                                                         @if (line.QuantityAllocated == 0)
                                                         {
-                                                            <button class="btn btn-sm @(markedRemove ? "btn-secondary" : "btn-outline-secondary")" title="Αφαίρεση" @onclick="() => ConfirmRemoveLine(order, line)">✕</button>
+                                                            <button class="btn btn-sm @(markedRemove ? "btn-secondary" : "btn-outline-secondary")" title="@Hint("Αφαίρεση")" @onclick="() => ConfirmRemoveLine(order, line)">✕</button>
                                                         }
                                                     </div>
                                                 </td>
@@ -564,7 +564,7 @@
                                                 <td><strong>@add.Code</strong> <small class="text-muted">@GetAllergenDesc(add.Code)</small></td>
                                                 <td colspan="4"><span class="text-success">➕ νέα γραμμή, ποσότητα @add.Qty</span></td>
                                                 <td colspan="4"></td>
-                                                <td><button class="btn btn-sm btn-outline-secondary" @onclick="() => pendingForOrder.AddLines.Remove(add)">✕</button></td>
+                                                <td><button class="btn btn-sm btn-outline-secondary" @onclick="() => pendingForOrder.AddLines.Remove(add)" title="@Hint("Αφαίρεση αυτής της νέας γραμμής πριν αποθηκευτεί")">✕</button></td>
                                             </tr>
                                         }
                                     </tbody>
@@ -573,7 +573,7 @@
                                 <div class="d-flex align-items-center gap-2 mb-2">
                                     @if (!showAddLineFor.Contains(order.OrderID))
                                     {
-                                        <button class="btn btn-sm btn-outline-success" @onclick="() => OpenAddLineFor(order)">➕ Προσθήκη αλλεργιογόνου</button>
+                                        <button class="btn btn-sm btn-outline-success" @onclick="() => OpenAddLineFor(order)" title="@Hint("Προσθήκη νέου κωδικού αλλεργιογόνου σε αυτή την παραγγελία")">➕ Προσθήκη αλλεργιογόνου</button>
                                     }
                                     else
                                     {
@@ -593,8 +593,8 @@
                                             }
                                         </div>
                                         <input type="number" min="1" class="form-control form-control-sm" style="width:80px;" @bind="addLineQuantity" />
-                                        <button class="btn btn-sm btn-success" @onclick="() => SubmitAddLine(order)">Προσθήκη</button>
-                                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => showAddLineFor.Remove(order.OrderID)">Ακύρωση</button>
+                                        <button class="btn btn-sm btn-success" @onclick="() => SubmitAddLine(order)" title="@Hint("Προσθήκη της νέας γραμμής στην παραγγελία")">Προσθήκη</button>
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => showAddLineFor.Remove(order.OrderID)" title="@Hint("Ακύρωση προσθήκης νέας γραμμής")">Ακύρωση</button>
                                     }
                                 </div>
                                 @if (!string.IsNullOrEmpty(addLineMessage))
@@ -616,7 +616,7 @@
                                         @if (!editingInvoiceFor.Contains(order.OrderID))
                                         {
                                             <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
-                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenInvoiceEdit(order)">✏️ Επεξεργασία</button>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenInvoiceEdit(order)" title="@Hint("Επεξεργασία τύπου τιμολόγησης της παραγγελίας")">✏️ Επεξεργασία</button>
                                         }
                                         else
                                         {
@@ -626,8 +626,8 @@
                                                 <option value="Έκπτωση">Έκπτωση %</option>
                                             </select>
                                             <input class="form-control form-control-sm" style="max-width:220px;" placeholder="π.χ. 20%, νοσοκομείο, προσφορά..." @bind="invoiceEditNote" />
-                                            <button class="btn btn-sm btn-success" @onclick="() => SaveInvoice(order)">Αποθήκευση</button>
-                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => CloseInvoiceEdit(order.OrderID)">Ακύρωση</button>
+                                            <button class="btn btn-sm btn-success" @onclick="() => SaveInvoice(order)" title="@Hint("Αποθήκευση τύπου τιμολόγησης")">Αποθήκευση</button>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => CloseInvoiceEdit(order.OrderID)" title="@Hint("Ακύρωση επεξεργασίας τιμολόγησης")">Ακύρωση</button>
                                         }
                                     </div>
                                 </div>
@@ -643,7 +643,7 @@
                                                     <a href="@GetAttachmentUrl(att.AttachmentID)" target="_blank">
                                                         <img src="@GetAttachmentUrl(att.AttachmentID)" alt="@att.FileName" />
                                                     </a>
-                                                    <button class="btn btn-sm btn-outline-danger attachment-delete" @onclick="() => DeleteAttachment(order, att)">✕</button>
+                                                    <button class="btn btn-sm btn-outline-danger attachment-delete" @onclick="() => DeleteAttachment(order, att)" title="@Hint("Διαγραφή συνημμένου")">✕</button>
                                                 </div>
                                             }
                                         }
@@ -695,8 +695,8 @@
             }
 
             <div class="d-flex gap-2 mt-3">
-                <button class="btn btn-secondary flex-fill" @onclick="CloseElsewherePopup">Κλείσιμο</button>
-                <button class="btn btn-primary flex-fill" @onclick="SubmitSteal" disabled="@(selectedElsewhere == null)">Μετακίνηση εδώ</button>
+                <button class="btn btn-secondary flex-fill" @onclick="CloseElsewherePopup" title="@Hint("Κλείσιμο χωρίς μετακίνηση")">Κλείσιμο</button>
+                <button class="btn btn-primary flex-fill" @onclick="SubmitSteal" disabled="@(selectedElsewhere == null)" title="@Hint("Μετακινεί την επιλεγμένη ποσότητα σε αυτή την παραγγελία")">Μετακίνηση εδώ</button>
             </div>
         </div>
     </div>
@@ -712,7 +712,7 @@
                 <div class="text-center py-4">
                     <div style="font-size:3rem;">✅</div>
                     <h5 class="mt-2">@successMessage</h5>
-                    <button class="btn btn-primary mt-3" @onclick="CloseNewOrderPopup">Κλείσιμο</button>
+                    <button class="btn btn-primary mt-3" @onclick="CloseNewOrderPopup" title="@Hint("Κλείσιμο του παραθύρου")">Κλείσιμο</button>
                 </div>
             }
             else
@@ -750,7 +750,7 @@
             {
                 <div class="d-flex align-items-center gap-2 mb-2">
                     <span class="badge bg-primary">@selectedDoctor.FullName</span>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDoctor">Αλλαγή</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ClearSelectedDoctor" title="@Hint("Αλλαγή επιλεγμένου γιατρού")">Αλλαγή</button>
                 </div>
             }
             else
@@ -765,7 +765,7 @@
                 </div>
                 @if (!showQuickAddDoctor)
                 {
-                    <button class="btn btn-sm btn-outline-success mt-1" @onclick="() => showQuickAddDoctor = true">
+                    <button class="btn btn-sm btn-outline-success mt-1" @onclick="() => showQuickAddDoctor = true" title="@Hint("Άνοιγμα φόρμας γρήγορης καταχώρησης νέου γιατρού")">
                         ➕ Δεν βρίσκω τον γιατρό - Νέος Γιατρός
                     </button>
                 }
@@ -776,8 +776,8 @@
                         <input class="form-control form-control-sm mb-1" placeholder="Τηλέφωνο (προαιρετικό)" @bind="quickAddPhone" />
                         <input class="form-control form-control-sm mb-1" placeholder="Πόλη (προαιρετικό)" @bind="quickAddCity" />
                         <div class="d-flex gap-2">
-                            <button class="btn btn-sm btn-secondary flex-fill" @onclick="() => showQuickAddDoctor = false">Ακύρωση</button>
-                            <button class="btn btn-sm btn-success flex-fill" @onclick="SubmitQuickAddDoctor">Προσθήκη</button>
+                            <button class="btn btn-sm btn-secondary flex-fill" @onclick="() => showQuickAddDoctor = false" title="@Hint("Ακύρωση προσθήκης νέου γιατρού")">Ακύρωση</button>
+                            <button class="btn btn-sm btn-success flex-fill" @onclick="SubmitQuickAddDoctor" title="@Hint("Καταχώρηση νέου γιατρού στη βάση")">Προσθήκη</button>
                         </div>
                     </div>
                 }
@@ -814,10 +814,10 @@
                                         <div class="d-flex align-items-center justify-content-center gap-1">
                                             <button class="btn btn-sm btn-outline-secondary py-0 px-1"
                                                     @onclick="() => ChangeNewOrderQty(a.Code, -1)"
-                                                    disabled="@(qty == 0)">−</button>
+                                                    disabled="@(qty == 0)" title="@Hint("Μείωση ποσότητας")">−</button>
                                             <span style="min-width:20px; text-align:center; @(qty > 0 ? "font-weight:700;" : "color:#aaa;")">@qty</span>
                                             <button class="btn btn-sm btn-outline-secondary py-0 px-1"
-                                                    @onclick="() => ChangeNewOrderQty(a.Code, 1)">+</button>
+                                                    @onclick="() => ChangeNewOrderQty(a.Code, 1)" title="@Hint("Αύξηση ποσότητας")">+</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -882,8 +882,8 @@
             }
 
             <div class="d-flex gap-2">
-                <button class="btn btn-secondary flex-fill" @onclick="TryCloseNewOrderPopup">Ακύρωση</button>
-                <button class="btn btn-success flex-fill" @onclick="SubmitNewOrder">Δημιουργία Παραγγελίας</button>
+                <button class="btn btn-secondary flex-fill" @onclick="TryCloseNewOrderPopup" title="@Hint("Κλείσιμο χωρίς δημιουργία παραγγελίας")">Ακύρωση</button>
+                <button class="btn btn-success flex-fill" @onclick="SubmitNewOrder" title="@Hint("Αποθήκευση της νέας παραγγελίας γιατρού")">Δημιουργία Παραγγελίας</button>
             </div>
             }
         </div>
@@ -903,7 +903,7 @@
                     Κατέβασε πρώτα το πρότυπο, συμπλήρωσέ το (μία γραμμή ανά αλλεργιογόνο - γραμμές με ίδια
                     Εταιρεία/Γιατρό/Τύπο/Ημερομηνία μπαίνουν αυτόματα στην ίδια παραγγελία), και ανέβασέ το.
                 </p>
-                <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="DownloadTemplate">⬇️ Λήψη Προτύπου Excel</button>
+                <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="DownloadTemplate" title="@Hint("Κατεβάζει το πρότυπο αρχείο Excel για συμπλήρωση")">⬇️ Λήψη Προτύπου Excel</button>
 
                 <div class="mb-3">
                     <InputFile OnChange="OnFileSelected" accept=".xlsx" class="form-control" />
@@ -968,9 +968,9 @@
                     </div>
 
                     <div class="d-flex gap-2 mt-3">
-                        <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup">Ακύρωση</button>
+                        <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup" title="@Hint("Κλείσιμο χωρίς εισαγωγή")">Ακύρωση</button>
                         <button class="btn btn-success flex-fill" @onclick="SubmitImportCommit"
-                                disabled="@(!importPreview.Groups.Any(g => !g.HasErrors))">
+                                disabled="@(!importPreview.Groups.Any(g => !g.HasErrors))" title="@Hint("Δημιουργεί πραγματικά τις έγκυρες παραγγελίες από το αρχείο")">
                             Επιβεβαίωση Εισαγωγής (@importPreview.Groups.Count(g => !g.HasErrors) παραγγελίες)
                         </button>
                     </div>
@@ -981,7 +981,7 @@
                 <div class="text-center py-4">
                     <div style="font-size:3rem;">✅</div>
                     <h5 class="mt-2">Δημιουργήθηκαν @importCommitResult παραγγελίες!</h5>
-                    <button class="btn btn-primary mt-3" @onclick="CloseImportPopup">Κλείσιμο</button>
+                    <button class="btn btn-primary mt-3" @onclick="CloseImportPopup" title="@Hint("Κλείσιμο του παραθύρου εισαγωγής")">Κλείσιμο</button>
                 </div>
             }
         </div>
@@ -995,14 +995,17 @@
         <div class="popup-box" style="max-width:420px;" @onclick:stopPropagation="true">
             <p class="mb-3">@confirmMessage</p>
             <div class="d-flex gap-2">
-                <button class="btn btn-secondary flex-fill" @onclick="CloseConfirm">Ακύρωση</button>
-                <button class="btn btn-danger flex-fill" @onclick="RunConfirmedAction">Ναι, συνέχεια</button>
+                <button class="btn btn-secondary flex-fill" @onclick="CloseConfirm" title="@Hint("Ακύρωση ενέργειας")">Ακύρωση</button>
+                <button class="btn btn-danger flex-fill" @onclick="RunConfirmedAction" title="@Hint("Επιβεβαίωση και εκτέλεση της ενέργειας")">Ναι, συνέχεια</button>
             </div>
         </div>
     </div>
 }
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private string selectedCompany = "";
     private string selectedStatus = "Open";
     private string searchOrderCode = "";

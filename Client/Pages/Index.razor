@@ -135,15 +135,15 @@
         </div>
         <div class="col-12 col-md-4 server-toggle d-flex gap-2">
             <button class="btn w-100 @(serverFilter == "" ? "btn-dark" : "btn-outline-dark")"
-                    @onclick='() => SetServerFilter("")'>
+                    @onclick='() => SetServerFilter("")' title="@Hint("Δείχνει στατιστικά και για τις δύο εταιρείες μαζί")">
                 Όλα
             </button>
             <button class="btn w-100 @(serverFilter == "SM" ? "btn-primary" : "btn-outline-primary")"
-                    @onclick='() => SetServerFilter("SM")'>
+                    @onclick='() => SetServerFilter("SM")' title="@Hint("Φιλτράρει τα στατιστικά μόνο για StallMedicals")">
                 SM
             </button>
             <button class="btn w-100 @(serverFilter == "BM" ? "btn-success" : "btn-outline-success")"
-                    @onclick='() => SetServerFilter("BM")'>
+                    @onclick='() => SetServerFilter("BM")' title="@Hint("Φιλτράρει τα στατιστικά μόνο για BeltaMed")">
                 BM
             </button>
         </div>
@@ -289,6 +289,9 @@
 }
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private string status = "idle";
     private string serverFilter = "";
     private DateTime fromDate = DateTime.Today.AddMonths(-12);

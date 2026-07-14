@@ -141,7 +141,7 @@
             </datalist>
         </div>
         <div class="col-4 col-md-2">
-            <button class="btn btn-primary w-100" @onclick="LoadStats">Search</button>
+            <button class="btn btn-primary w-100" @onclick="LoadStats" title="@Hint("Αναζήτηση στατιστικών για τον επιλεγμένο γιατρό στο διάστημα ημερομηνιών")">Search</button>
         </div>
     </div>
 </div>
@@ -243,6 +243,9 @@
 }
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private string status = "idle";
     private string selectedDoctor = "";
     private DateTime fromDate = DateTime.Today.AddMonths(-12);

@@ -201,7 +201,7 @@ else if (liveStockStatus == "loaded")
                 <option value="@pt.ProductTypeCode">@pt.ProductTypeCode @(!string.IsNullOrEmpty(pt.Description) ? $"- {pt.Description}" : "")</option>
             }
         </select>
-        <button class="btn btn-outline-primary btn-sm" @onclick="LoadSmartProposal">
+        <button class="btn btn-outline-primary btn-sm" @onclick="LoadSmartProposal" title="@Hint("Υπολογίζει ξανά την πρόταση παραγγελίας βάσει τρέχοντος stock και ζήτησης")">
             @(smartProposalStatus == "loading" ? "Φορτώνω..." : "🔄 Υπολογισμός")
         </button>
     </div>
@@ -222,19 +222,19 @@ else if (liveStockStatus == "loaded")
                         <div class="d-flex gap-2 flex-wrap">
                             @if (grp.Any(x => x.Company == "BM" && x.OrderQuantity > 0))
                             {
-                                <button class="btn btn-sm btn-success" @onclick='() => CreateSmartStockOrder("BM", grp.Key.ProductTypeCode)'>
+                                <button class="btn btn-sm btn-success" @onclick='() => CreateSmartStockOrder("BM", grp.Key.ProductTypeCode)' title="@Hint("Δημιουργεί παραγγελία παραγωγής BM με τις ποσότητες της πρότασης")">
                                     🛒 Παραγγελία BM
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportSmartProposalExcel("BM", grp.Key.ProductTypeCode)'>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportSmartProposalExcel("BM", grp.Key.ProductTypeCode)' title="@Hint("Κατεβάζει την πρόταση BM σε αρχείο Excel")">
                                     📊 Excel BM
                                 </button>
                             }
                             @if (grp.Any(x => x.Company == "SM" && x.OrderQuantity > 0))
                             {
-                                <button class="btn btn-sm btn-success" @onclick='() => CreateSmartStockOrder("SM", grp.Key.ProductTypeCode)'>
+                                <button class="btn btn-sm btn-success" @onclick='() => CreateSmartStockOrder("SM", grp.Key.ProductTypeCode)' title="@Hint("Δημιουργεί παραγγελία παραγωγής SM με τις ποσότητες της πρότασης")">
                                     🛒 Παραγγελία SM
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportSmartProposalExcel("SM", grp.Key.ProductTypeCode)'>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportSmartProposalExcel("SM", grp.Key.ProductTypeCode)' title="@Hint("Κατεβάζει την πρόταση SM σε αρχείο Excel")">
                                     📊 Excel SM
                                 </button>
                             }
@@ -276,10 +276,10 @@ else if (liveStockStatus == "loaded")
                                             <td>
                                                 <div class="qty-stepper">
                                                     <button class="btn btn-sm btn-outline-secondary py-0 px-1"
-                                                            @onclick="() => ChangeSmartProposalQty(item, -1)">−</button>
+                                                            @onclick="() => ChangeSmartProposalQty(item, -1)" title="@Hint("Μειώνει την προτεινόμενη ποσότητα παραγγελίας κατά 1")">−</button>
                                                     <span class="qty-value">@item.OrderQuantity</span>
                                                     <button class="btn btn-sm btn-outline-secondary py-0 px-1"
-                                                            @onclick="() => ChangeSmartProposalQty(item, 1)">+</button>
+                                                            @onclick="() => ChangeSmartProposalQty(item, 1)" title="@Hint("Αυξάνει την προτεινόμενη ποσότητα παραγγελίας κατά 1")">+</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -336,6 +336,9 @@ else if (liveStockStatus == "loaded")
 }
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private string selectedCompany = "";
     private string selectedProductType = "";
     private string searchText = "";

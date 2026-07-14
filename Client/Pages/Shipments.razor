@@ -97,7 +97,7 @@
 {
     <div class="alert alert-success alert-dismissible">
         @topBannerMessage
-        <button type="button" class="btn-close" @onclick="() => topBannerMessage = string.Empty"></button>
+        <button type="button" class="btn-close" @onclick="() => topBannerMessage = string.Empty" title="@Hint("Κλείσιμο μηνύματος")"></button>
     </div>
 }
 
@@ -105,7 +105,7 @@
 {
     <div class="alert alert-danger alert-dismissible">
         @loadError
-        <button type="button" class="btn-close" @onclick="() => loadError = string.Empty"></button>
+        <button type="button" class="btn-close" @onclick="() => loadError = string.Empty" title="@Hint("Κλείσιμο μηνύματος σφάλματος")"></button>
     </div>
 }
 
@@ -124,7 +124,7 @@
             <input class="form-control" placeholder="π.χ. Παπαδόπουλος ή SM2607..." @bind="searchQuery" @bind:event="oninput" />
         </div>
         <div class="col-6 col-md-3">
-            <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
+            <button class="btn btn-outline-secondary w-100" @onclick="LoadData" title="@Hint("Επαναφόρτωση της λίστας παραγγελιών προς αποστολή")">Ανανέωση</button>
         </div>
     </div>
 </div>
@@ -159,7 +159,7 @@
                         <span class="summary-pill">📎 @order.AttachmentCount</span>
                     }
                 </div>
-                <button class="btn btn-primary" @onclick="() => OpenShipPopup(order)" @onclick:stopPropagation="true">📦 Αποστολή</button>
+                <button class="btn btn-primary" @onclick="() => OpenShipPopup(order)" @onclick:stopPropagation="true" title="@Hint("Καταχώρηση στοιχείων αποστολής και κλείσιμο της παραγγελίας")">📦 Αποστολή</button>
             </div>
             @if (isOpen)
             {
@@ -243,8 +243,8 @@
                 {
                     <div class="d-flex gap-2 mt-1">
                         <input class="form-control form-control-sm" placeholder="Όνομα courier..." @bind="newCourierName" />
-                        <button class="btn btn-sm btn-success" @onclick="SubmitNewCourier">Προσθήκη</button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="CancelAddCourier">Ακύρωση</button>
+                        <button class="btn btn-sm btn-success" @onclick="SubmitNewCourier" title="@Hint("Προσθήκη νέας εταιρείας courier στη λίστα")">Προσθήκη</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CancelAddCourier" title="@Hint("Ακύρωση προσθήκης νέου courier")">Ακύρωση</button>
                     </div>
                 }
             </div>
@@ -265,8 +265,8 @@
                     {
                         <div class="d-flex gap-2 mt-1">
                             <input class="form-control form-control-sm" placeholder="Όνομα..." @bind="newDeliveryPersonName" />
-                            <button class="btn btn-sm btn-success" @onclick="SubmitNewDeliveryPerson">Προσθήκη</button>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelAddDeliveryPerson">Ακύρωση</button>
+                            <button class="btn btn-sm btn-success" @onclick="SubmitNewDeliveryPerson" title="@Hint("Προσθήκη νέου ονόματος διανομέα στη λίστα")">Προσθήκη</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelAddDeliveryPerson" title="@Hint("Ακύρωση προσθήκης νέου ονόματος")">Ακύρωση</button>
                         </div>
                     }
                 </div>
@@ -289,14 +289,17 @@
             }
 
             <div class="d-flex gap-2">
-                <button class="btn btn-secondary flex-fill" @onclick="CloseShipPopup">Ακύρωση</button>
-                <button class="btn btn-success flex-fill" @onclick="SubmitShip">✅ Κλείσιμο Αποστολής</button>
+                <button class="btn btn-secondary flex-fill" @onclick="CloseShipPopup" title="@Hint("Κλείσιμο χωρίς καταχώρηση αποστολής")">Ακύρωση</button>
+                <button class="btn btn-success flex-fill" @onclick="SubmitShip" title="@Hint("Καταχώρηση της αποστολής και κλείσιμο της παραγγελίας")">✅ Κλείσιμο Αποστολής</button>
             </div>
         </div>
     </div>
 }
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private string selectedCompany = "";
     private string searchQuery = "";
     private string status = "idle";

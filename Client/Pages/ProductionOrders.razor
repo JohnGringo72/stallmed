@@ -182,13 +182,13 @@
             <input class="form-control" placeholder="π.χ. B2607..." @bind="searchOrderCode" @bind:event="oninput" />
         </div>
         <div class="col-6 col-md-2">
-            <button class="btn btn-success w-100" @onclick="OpenNewOrderPopup">➕ Νέα Παραγγελία</button>
+            <button class="btn btn-success w-100" @onclick="OpenNewOrderPopup" title="@Hint("Χειροκίνητη δημιουργία νέας παραγγελίας παραγωγής")">➕ Νέα Παραγγελία</button>
         </div>
         <div class="col-6 col-md-2">
-            <button class="btn btn-outline-primary w-100" @onclick="OpenImportPopup">📊 Excel</button>
+            <button class="btn btn-outline-primary w-100" @onclick="OpenImportPopup" title="@Hint("Μαζική εισαγωγή παραγγελιών παραγωγής από αρχείο Excel")">📊 Excel</button>
         </div>
         <div class="col-6 col-md-2">
-            <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
+            <button class="btn btn-outline-secondary w-100" @onclick="LoadData" title="@Hint("Επαναφόρτωση της λίστας παραγγελιών παραγωγής")">Ανανέωση</button>
         </div>
     </div>
 </div>
@@ -299,10 +299,10 @@
                         }
                     </select>
                     <input type="number" min="1" class="form-control form-control-sm" @bind="newOrderLines[idx].QuantityOrdered" />
-                    <button class="btn btn-sm btn-outline-danger" @onclick="() => newOrderLines.RemoveAt(idx)">✕</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => newOrderLines.RemoveAt(idx)" title="@Hint("Αφαίρεση αυτής της γραμμής")">✕</button>
                 </div>
             }
-            <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="() => newOrderLines.Add(new CreateProductionOrderLineRequest())">
+            <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="() => newOrderLines.Add(new CreateProductionOrderLineRequest())" title="@Hint("Προσθήκη νέας κενής γραμμής στην παραγγελία")">
                 ➕ Προσθήκη γραμμής
             </button>
 
@@ -312,8 +312,8 @@
             }
 
             <div class="d-flex gap-2">
-                <button class="btn btn-secondary flex-fill" @onclick="CloseNewOrderPopup">Ακύρωση</button>
-                <button class="btn btn-success flex-fill" @onclick="SubmitNewOrder">Δημιουργία</button>
+                <button class="btn btn-secondary flex-fill" @onclick="CloseNewOrderPopup" title="@Hint("Κλείσιμο χωρίς δημιουργία παραγγελίας")">Ακύρωση</button>
+                <button class="btn btn-success flex-fill" @onclick="SubmitNewOrder" title="@Hint("Αποθήκευση της νέας παραγγελίας παραγωγής")">Δημιουργία</button>
             </div>
         </div>
     </div>
@@ -332,7 +332,7 @@
                     Κατέβασε πρώτα το πρότυπο, συμπλήρωσέ το (μία γραμμή ανά αλλεργιογόνο - γραμμές με ίδια
                     Εταιρεία/Τύπο/Ημερομηνία μπαίνουν αυτόματα στην ίδια παραγγελία), και ανέβασέ το.
                 </p>
-                <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="DownloadImportTemplate">⬇️ Λήψη Προτύπου Excel</button>
+                <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="DownloadImportTemplate" title="@Hint("Κατεβάζει το πρότυπο αρχείο Excel για συμπλήρωση")">⬇️ Λήψη Προτύπου Excel</button>
 
                 <div class="mb-3">
                     <InputFile OnChange="OnImportFileSelected" accept=".xlsx" class="form-control" />
@@ -392,9 +392,9 @@
                     </div>
 
                     <div class="d-flex gap-2 mt-3">
-                        <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup">Ακύρωση</button>
+                        <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup" title="@Hint("Κλείσιμο χωρίς εισαγωγή")">Ακύρωση</button>
                         <button class="btn btn-success flex-fill" @onclick="SubmitImportCommit"
-                                disabled="@(!importPreview.Groups.Any(g => !g.HasErrors))">
+                                disabled="@(!importPreview.Groups.Any(g => !g.HasErrors))" title="@Hint("Δημιουργεί πραγματικά τις έγκυρες παραγγελίες από το αρχείο")">
                             Επιβεβαίωση Εισαγωγής (@importPreview.Groups.Count(g => !g.HasErrors) παραγγελίες)
                         </button>
                     </div>
@@ -405,7 +405,7 @@
                 <div class="text-center py-4">
                     <div style="font-size:3rem;">✅</div>
                     <h5 class="mt-2">Δημιουργήθηκαν @importCommitResult παραγγελίες!</h5>
-                    <button class="btn btn-primary mt-3" @onclick="CloseImportPopup">Κλείσιμο</button>
+                    <button class="btn btn-primary mt-3" @onclick="CloseImportPopup" title="@Hint("Κλείσιμο του παραθύρου εισαγωγής")">Κλείσιμο</button>
                 </div>
             }
         </div>
@@ -413,6 +413,9 @@
 }
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private string selectedCompany = "";
     private string selectedStatus = "";
     private string searchOrderCode = "";

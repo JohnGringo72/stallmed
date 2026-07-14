@@ -21,7 +21,7 @@
 			<InputText type="password" class="form-control" @bind-Value="loginRequest.Password" placeholder="Δώστε συνθηματικό"></InputText>
 		</div>
 		<div class="mb-2 text-right">
-			<button class="btn btn-secondary" disabled="@loginButtonDisabled">Σύνδεση</button>
+			<button class="btn btn-secondary" disabled="@loginButtonDisabled" title="@Hint("Σύνδεση με τα παραπάνω στοιχεία")">Σύνδεση</button>
 		</div>
 		<div class="mb-2">
 			<p>@message</p>
@@ -35,13 +35,16 @@
 	<p>Ήδη συνδεδεμένος ως: @username</p>
 	<EditForm OnValidSubmit="Logout" style="max-width:500px;">
 		<div class="mb-2 text-right">
-			<button class="btn btn-secondary" disabled="@loginButtonDisabled">login</button>
+			<button class="btn btn-secondary" disabled="@loginButtonDisabled" title="@Hint("Αποσύνδεση από τον τρέχοντα λογαριασμό")">login</button>
 		</div>
 	</EditForm>
 }
 
 
 @code {
+	[CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+	private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
 	private LoginRequest loginRequest = new LoginRequest();
 	private bool isLoggedIn = false;
 	private string message = "";

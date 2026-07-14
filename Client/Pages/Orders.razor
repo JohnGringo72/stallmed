@@ -210,7 +210,7 @@
         </div>
 
         <div class="col-6">
-            <button class="btn btn-primary w-100" @onclick="LoadData">Search</button>
+            <button class="btn btn-primary w-100" @onclick="LoadData" title="@Hint("Αναζήτηση παραγγελιών με τα επιλεγμένα φίλτρα")">Search</button>
         </div>
         <div class="col-6">
             <select class="form-control" value="@selectedCompany" @onchange="e => selectedCompany = e.Value.ToString()">
@@ -256,13 +256,13 @@
                     <option value="@t">@t</option>
                 }
             </select>
-            <button class="btn @(showPendingView ? "btn-secondary" : "btn-warning")" @onclick="TogglePendingView" title="Εμβόλια που έχουν έρθει αλλά δεν έχουν πάει ακόμα στα φαρμακεία">
+            <button class="btn @(showPendingView ? "btn-secondary" : "btn-warning")" @onclick="TogglePendingView" title="@Hint("Εμβόλια που έχουν έρθει αλλά δεν έχουν πάει ακόμα στα φαρμακεία")">
                 @(showPendingView ? "🔙 Πίσω σε Λίστα" : "⏳ Εκκρεμή προς Φαρμακεία")
             </button>
-            <button class="btn btn-success" @onclick="ExportToExcel" title="Εξαγωγή σε Excel">
+            <button class="btn btn-success" @onclick="ExportToExcel" title="@Hint("Εξαγωγή της τρέχουσας λίστας σε αρχείο Excel")">
                 📥 Excel
             </button>
-            <button class="btn btn-danger" @onclick="ExportToPdf" title="Εξαγωγή σε PDF"
+            <button class="btn btn-danger" @onclick="ExportToPdf" title="@Hint("Εξαγωγή σε PDF (απαιτείται επιλεγμένος γιατρός)")"
                     disabled="@(string.IsNullOrEmpty(selectedDoctor))">
                 📄 PDF
             </button>
@@ -445,14 +445,17 @@
             <p><strong>Ημ. Παραγγελίας:</strong> @(selectedOrder.Ordered.HasValue? selectedOrder.Ordered.Value.ToString("dd/MM/yyyy") : "-")</p>
             <p><strong>Ημ. Παραλαβής:</strong> @(selectedOrder.TakingDDate.HasValue? selectedOrder.TakingDDate.Value.ToString("dd/MM/yyyy") : "-")</p>
             <p><strong>Ημ. Αποστολής:</strong> @(selectedOrder.SendDateClient.HasValue? selectedOrder.SendDateClient.Value.ToString("dd/MM/yyyy") : "-")</p>
-            <button class="btn btn-secondary mt-2 w-100" @onclick="ClosePopup">Κλείσιμο</button>
+            <button class="btn btn-secondary mt-2 w-100" @onclick="ClosePopup" title="@Hint("Κλείσιμο προβολής παραγγελίας")">Κλείσιμο</button>
         </div>
     </div>
 }
 
-<button class="scroll-to-top" onclick="document.documentElement.scrollTop=0;document.body.scrollTop=0;" title="Top">↑</button>
+<button class="scroll-to-top" onclick="document.documentElement.scrollTop=0;document.body.scrollTop=0;" title="@Hint("Επιστροφή στην κορυφή της σελίδας")">↑</button>
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private WebOrder[] people = Array.Empty<WebOrder>();
     private string status = "idle";
     private WebOrder selectedOrder = null;

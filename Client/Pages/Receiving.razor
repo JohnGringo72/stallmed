@@ -72,7 +72,7 @@
 {
     <div class="alert alert-success alert-dismissible">
         @topBannerMessage
-        <button type="button" class="btn-close" @onclick="() => topBannerMessage = string.Empty"></button>
+        <button type="button" class="btn-close" @onclick="() => topBannerMessage = string.Empty" title="@Hint("Κλείσιμο μηνύματος")"></button>
     </div>
 }
 
@@ -140,10 +140,10 @@
             </select>
         </div>
         <div class="col-6 col-md-3">
-            <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
+            <button class="btn btn-outline-secondary w-100" @onclick="LoadData" title="@Hint("Επαναφόρτωση της λίστας εκκρεμών παραλαβών")">Ανανέωση</button>
         </div>
         <div class="col-6 col-md-2">
-            <button class="btn btn-outline-primary w-100" @onclick="OpenImportPopup">📊 Import Excel</button>
+            <button class="btn btn-outline-primary w-100" @onclick="OpenImportPopup" title="@Hint("Μαζική καταχώρηση παραλαβών από αρχείο Excel")">📊 Import Excel</button>
         </div>
     </div>
 </div>
@@ -181,7 +181,7 @@
                     <input type="date" class="form-control form-control-sm" @bind="receiveInputs[Key(item)].Date" />
                 </div>
                 <div class="col-12 col-md-2">
-                    <button class="btn btn-primary w-100" @onclick="() => SubmitReceive(item)">📥 Καταχώρηση</button>
+                    <button class="btn btn-primary w-100" @onclick="() => SubmitReceive(item)" title="@Hint("Καταχωρεί την παραλαβή και ενημερώνει το διαθέσιμο stock")">📥 Καταχώρηση</button>
                 </div>
             </div>
             @if (receiveInputs[Key(item)].Message is { Length: > 0 } msg)
@@ -241,22 +241,25 @@
                     <div class="alert alert-info py-2">@importMessage</div>
                 }
                 <div class="d-flex gap-2">
-                    <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup">Ακύρωση</button>
+                    <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup" title="@Hint("Κλείσιμο χωρίς καταχώρηση")">Ακύρωση</button>
                     <button class="btn btn-success flex-fill" @onclick="SubmitImport"
-                            disabled="@(!importPreviewRows.Any(r => r.Valid))">
+                            disabled="@(!importPreviewRows.Any(r => r.Valid))" title="@Hint("Καταχωρεί όλες τις έγκυρες παραλαβές από το αρχείο")">
                         📥 Καταχώρηση (@importPreviewRows.Count(r => r.Valid) γραμμές)
                     </button>
                 </div>
             }
             else if (!importLoading)
             {
-                <button class="btn btn-secondary" @onclick="CloseImportPopup">Κλείσιμο</button>
+                <button class="btn btn-secondary" @onclick="CloseImportPopup" title="@Hint("Κλείσιμο του παραθύρου")">Κλείσιμο</button>
             }
         </div>
     </div>
 }
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private string selectedCompany = "";
     private string selectedProductType = "";
     private string searchCode = "";

@@ -27,5 +27,10 @@
         <input type="date" class="form-control" />
     </div>
 
-    <button class="btn btn-primary">Δημιουργία</button>
+    <button class="btn btn-primary" title="@Hint("Δημιουργία νέας εργασίας")">Δημιουργία</button>
 </div>
+
+@code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+}
