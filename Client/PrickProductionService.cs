@@ -58,5 +58,20 @@ namespace StallmedManager.Client
         {
             return await dataService.Post<ReceiveStockRequest, ReceiveStockResult>("api/prickproduction/receive", req);
         }
+
+        public async Task<byte[]> DownloadOrderImportTemplate()
+        {
+            return await dataService.GetBytes("api/prickproduction/import/template");
+        }
+
+        public async Task<ImportProductionPreviewResult> ImportOrderPreview(byte[] fileBytes, string fileName)
+        {
+            return await dataService.PostFile<ImportProductionPreviewResult>("api/prickproduction/import/preview", fileBytes, fileName);
+        }
+
+        public async Task<int> ImportOrderCommit(CommitProductionImportRequest req)
+        {
+            return await dataService.Post<CommitProductionImportRequest, int>("api/prickproduction/import/commit", req);
+        }
     }
 }

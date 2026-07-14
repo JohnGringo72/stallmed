@@ -319,6 +319,160 @@ namespace StallmedManager.Server.Controllers
             return Ok(result);
         }
 
+        // ---- Λήψη προτύπου Excel για import νέας παραγγελίας παραγωγής ----
+        [HttpGet("import/template")]
+        public ActionResult DownloadOrderImportTemplate()
+        {
+            using var workbook = new ClosedXML.Excel.XLWorkbook();
+            var ws = workbook.Worksheets.Add("Παραγγελίες Παραγωγής");
+            ws.Cell(1, 1).Value = "Εταιρεία (SM/BM)";
+            ws.Cell(1, 2).Value = "Τύπος (κωδικός)";
+            ws.Cell(1, 3).Value = "Ημερομηνία (ΗΗ/ΜΜ/ΕΕΕΕ)";
+            ws.Cell(1, 4).Value = "Κωδικός Αλλεργιογόνου";
+            ws.Cell(1, 5).Value = "Ποσότητα";
+            ws.Range(1, 1, 1, 5).Style.Font.SetBold();
+
+            ws.Cell(2, 1).Value = "BM";
+            ws.Cell(2, 2).Value = "91";
+            ws.Cell(2, 3).Value = DateTime.Today;
+            ws.Cell(2, 4).Value = "A-001";
+            ws.Cell(2, 5).Value = 20;
+            ws.Cell(3, 1).Value = "BM";
+            ws.Cell(3, 2).Value = "91";
+            ws.Cell(3, 3).Value = DateTime.Today;
+            ws.Cell(3, 4).Value = "F-042";
+            ws.Cell(3, 5).Value = 10;
+
+            ws.Columns().AdjustToContents();
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            return File(stream.ToArray(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "Πρότυπο_Εισαγωγής_Παραγγελιών_Παραγωγής.xlsx");
+        }
+
+        // ---- Προεπισκόπηση import νέας παραγγελίας παραγωγής (χωρίς καταχώρηση) ----
+        [HttpPost("import/preview")]
+        public async Task<ActionResult<ImportProductionPreviewResult>> ImportOrderPreview(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("Δεν στάλθηκε αρχείο.");
+
+            using var stream = new MemoryStream();
+            await file.CopyToAsync(stream);
+            stream.Position = 0;
+
+            using var workbook = new ClosedXML.Excel.XLWorkbook(stream);
+            var ws = workbook.Worksheets.First();
+            var rows = ws.RangeUsed().RowsUsed().Skip(1);
+
+            var allergens = await _context.AllergenCodes.ToListAsync();
+            var productTypes = await _context.ProductTypes.ToListAsync();
+
+            var groupsDict = new Dictionary<string, ImportProductionOrderGroupPreview>();
+            int totalRows = 0, errorRows = 0;
+
+            foreach (var row in rows)
+            {
+                if (row.IsEmpty()) continue;
+                totalRows++;
+
+                var company = row.Cell(1).GetString().Trim().ToUpper();
+                var productType = row.Cell(2).GetString().Trim();
+                DateTime orderDate;
+                try { orderDate = row.Cell(3).GetDateTime(); }
+                catch { orderDate = DateTime.Today; }
+                var code = row.Cell(4).GetString().Trim().ToUpper();
+                int.TryParse(row.Cell(5).GetString().Trim(), out int quantity);
+
+                var key = $"{company}|{productType}|{orderDate:yyyyMMdd}";
+                if (!groupsDict.TryGetValue(key, out var group))
+                {
+                    var matchedType = productTypes.FirstOrDefault(p => p.ProductTypeCode == productType);
+
+                    group = new ImportProductionOrderGroupPreview
+                    {
+                        Company = company,
+                        ProductTypeCode = productType,
+                        ProductTypeValid = matchedType != null,
+                        OrderDate = orderDate
+                    };
+                    if (!group.ProductTypeValid)
+                        group.Warnings.Add("Άγνωστος τύπος προϊόντος");
+
+                    groupsDict[key] = group;
+                }
+
+                var matchedAllergen = allergens.FirstOrDefault(a => a.CodePrick.Equals(code, StringComparison.OrdinalIgnoreCase))
+                    ?? allergens.FirstOrDefault(a => (a.DescriptionGreek ?? "").Equals(code, StringComparison.OrdinalIgnoreCase));
+
+                var lineValid = matchedAllergen != null && quantity > 0;
+                if (!lineValid) errorRows++;
+
+                group.Lines.Add(new ImportProductionOrderLinePreview
+                {
+                    CodePrick = matchedAllergen?.CodePrick ?? code,
+                    AllergenDescription = matchedAllergen?.DescriptionGreek ?? matchedAllergen?.Description ?? "⚠ Άγνωστος κωδικός",
+                    Quantity = quantity,
+                    CodeValid = lineValid
+                });
+            }
+
+            foreach (var g in groupsDict.Values)
+                g.HasErrors = !g.ProductTypeValid || !g.Lines.Any(l => l.CodeValid);
+
+            return Ok(new ImportProductionPreviewResult
+            {
+                Groups = groupsDict.Values.ToList(),
+                TotalRows = totalRows,
+                ErrorRows = errorRows
+            });
+        }
+
+        // ---- Επιβεβαίωση import (πραγματική δημιουργία Production Orders) ----
+        [HttpPost("import/commit")]
+        public async Task<ActionResult<int>> ImportOrderCommit([FromBody] CommitProductionImportRequest req)
+        {
+            int created = 0;
+
+            foreach (var g in req.Groups.Where(g => !g.HasErrors))
+            {
+                var orderCode = await GenerateProductionOrderCode(g.Company, g.OrderDate);
+                var order = new ProductionOrder
+                {
+                    ProductionOrderCode = orderCode,
+                    Company = g.Company,
+                    OrderDate = g.OrderDate,
+                    Status = "Open",
+                    CreatedBy = req.CreatedBy,
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now
+                };
+                _context.ProductionOrders.Add(order);
+                await _context.SaveChangesAsync();
+
+                foreach (var l in g.Lines.Where(l => l.CodeValid))
+                {
+                    _context.ProductionOrderLines.Add(new ProductionOrderLine
+                    {
+                        ProductionOrderID = order.ProductionOrderID,
+                        CodePrick = l.CodePrick,
+                        ProductTypeCode = g.ProductTypeCode,
+                        QuantityOrdered = l.Quantity,
+                        QuantityReceived = 0,
+                        LineStatus = "Open",
+                        CreatedAt = DateTime.Now,
+                        UpdatedAt = DateTime.Now
+                    });
+                }
+                await _context.SaveChangesAsync();
+                created++;
+            }
+
+            return Ok(created);
+        }
+
         // ---- Καταχώρηση παραλαβής (καλεί sp_ReceiveProduction) ----
         [HttpPost("receive")]
         public async Task<ActionResult<ReceiveStockResult>> ReceiveStock([FromBody] ReceiveStockRequest req)

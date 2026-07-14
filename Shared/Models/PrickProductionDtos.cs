@@ -96,4 +96,36 @@ namespace StallmedManager.Shared.Models
         public bool Valid { get; set; }
         public string? Error { get; set; }
     }
+
+    public class ImportProductionOrderLinePreview
+    {
+        public string CodePrick { get; set; }
+        public string? AllergenDescription { get; set; }
+        public int Quantity { get; set; }
+        public bool CodeValid { get; set; }
+    }
+
+    public class ImportProductionOrderGroupPreview
+    {
+        public string Company { get; set; }
+        public string ProductTypeCode { get; set; }
+        public bool ProductTypeValid { get; set; }
+        public DateTime OrderDate { get; set; }
+        public List<ImportProductionOrderLinePreview> Lines { get; set; } = new();
+        public List<string> Warnings { get; set; } = new();
+        public bool HasErrors { get; set; }
+    }
+
+    public class ImportProductionPreviewResult
+    {
+        public List<ImportProductionOrderGroupPreview> Groups { get; set; } = new();
+        public int TotalRows { get; set; }
+        public int ErrorRows { get; set; }
+    }
+
+    public class CommitProductionImportRequest
+    {
+        public List<ImportProductionOrderGroupPreview> Groups { get; set; } = new();
+        public int? CreatedBy { get; set; }
+    }
 }

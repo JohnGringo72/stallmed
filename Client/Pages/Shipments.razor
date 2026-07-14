@@ -17,15 +17,40 @@
         background: white;
         border: 1px solid #dee2e6;
         border-radius: 8px;
-        padding: 14px;
         margin-bottom: 10px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .ship-card-header {
+        padding: 14px;
+        cursor: pointer;
         display: flex;
         justify-content: space-between;
         align-items: center;
         flex-wrap: wrap;
         gap: 10px;
     }
+
+        .ship-card-header:hover {
+            background: #f8f9fa;
+        }
+
+    .ship-card-body {
+        border-top: 1px solid #eee;
+        padding: 12px 14px;
+        background: #fcfcfc;
+    }
+
+    .expand-arrow {
+        transition: transform 0.15s;
+        display: inline-block;
+        width: 16px;
+        text-align: center;
+    }
+
+        .expand-arrow.open {
+            transform: rotate(90deg);
+        }
 
     .company-badge {
         display: inline-block;
@@ -118,20 +143,62 @@
     @foreach (var order in FilteredOrders)
     {
         var totalQty = order.Lines.Sum(l => l.QuantityRequested);
+        var isOpen = expandedOrderCode == order.OrderCode;
         <div class="ship-card">
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-                <strong>@order.OrderCode</strong>
-                <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
-                <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
-                <span>👨‍⚕️ @order.DoctorName</span>
-                <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
-                <span class="summary-pill">📦 @totalQty τεμ. - @order.Lines.Count κωδικοί</span>
-                @if (order.AttachmentCount > 0)
-                {
-                    <span class="summary-pill">📎 @order.AttachmentCount</span>
-                }
+            <div class="ship-card-header" @onclick="() => ToggleExpand(order.OrderCode)">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="expand-arrow @(isOpen ? "open" : "")">▶</span>
+                    <strong>@order.OrderCode</strong>
+                    <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
+                    <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
+                    <span>👨‍⚕️ @order.DoctorName</span>
+                    <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
+                    <span class="summary-pill">📦 @totalQty τεμ. - @order.Lines.Count κωδικοί</span>
+                    @if (order.AttachmentCount > 0)
+                    {
+                        <span class="summary-pill">📎 @order.AttachmentCount</span>
+                    }
+                </div>
+                <button class="btn btn-primary" @onclick="() => OpenShipPopup(order)" @onclick:stopPropagation="true">📦 Αποστολή</button>
             </div>
-            <button class="btn btn-primary" @onclick="() => OpenShipPopup(order)">📦 Αποστολή</button>
+            @if (isOpen)
+            {
+                <div class="ship-card-body">
+                    <div class="mb-2">
+                        <strong>Παραλήπτης:</strong> @(string.IsNullOrWhiteSpace(order.RecipientName) ? "— δεν έχει καταχωρηθεί —" : order.RecipientName)<br />
+                        <strong>Διεύθυνση:</strong>
+                        @if (string.IsNullOrWhiteSpace(order.ShippingAddress) && string.IsNullOrWhiteSpace(order.ShippingCity) && string.IsNullOrWhiteSpace(order.ShippingPostalCode))
+                        {
+                            @:— δεν έχει καταχωρηθεί —
+                        }
+                        else
+                        {
+                            @($"{order.ShippingAddress} {order.ShippingCity} {order.ShippingPostalCode}".Trim())
+                        }
+                        <br />
+                        <strong>Τηλέφωνο:</strong> @(string.IsNullOrWhiteSpace(order.ShippingPhone) ? "— δεν έχει καταχωρηθεί —" : order.ShippingPhone)
+                    </div>
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Κωδικός</th><th>Αλλεργιογόνο</th><th>Τύπος</th><th>Ζητ.</th><th>Δεσμ.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var line in order.Lines)
+                            {
+                                <tr>
+                                    <td>@line.CodePrick</td>
+                                    <td>@line.AllergenDescription</td>
+                                    <td>@line.ProductTypeCode</td>
+                                    <td>@line.QuantityRequested</td>
+                                    <td>@line.QuantityAllocated</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </div>
     }
 }
@@ -143,6 +210,21 @@
             <h5>📦 Αποστολή Παραγγελίας</h5>
             <hr />
             <p><strong>@shipOrder.OrderCode</strong> - @shipOrder.DoctorName</p>
+
+            @if (string.IsNullOrWhiteSpace(shipOrder.RecipientName) && string.IsNullOrWhiteSpace(shipOrder.ShippingAddress) && string.IsNullOrWhiteSpace(shipOrder.ShippingCity) && string.IsNullOrWhiteSpace(shipOrder.ShippingPhone))
+            {
+                <div class="mb-2 small text-danger">⚠️ Δεν έχει καταχωρηθεί διεύθυνση αποστολής</div>
+            }
+            else
+            {
+                <div class="mb-2 small text-muted">
+                    📍 @shipOrder.RecipientName · @shipOrder.ShippingAddress, @shipOrder.ShippingCity @shipOrder.ShippingPostalCode
+                    @if (!string.IsNullOrWhiteSpace(shipOrder.ShippingPhone))
+                    {
+                        <span> · ☎️ @shipOrder.ShippingPhone</span>
+                    }
+                </div>
+            }
 
             <div class="alert @(shipOrder.InvoiceType == "Δωρεάν" ? "alert-danger" : shipOrder.InvoiceType == "Έκπτωση" ? "alert-warning" : "alert-success") py-2">
                 💰 Τιμολόγιο: <strong>@InvoiceDisplay.Label(shipOrder.InvoiceType, shipOrder.InvoiceNote)</strong>
@@ -234,6 +316,12 @@
     private string newCourierName = "";
     private bool showAddDeliveryPerson = false;
     private string newDeliveryPersonName = "";
+    private string? expandedOrderCode = null;
+
+    private void ToggleExpand(string orderCode)
+    {
+        expandedOrderCode = expandedOrderCode == orderCode ? null : orderCode;
+    }
 
     private string GetInvoiceBadgeClass(string? invoiceType) => invoiceType switch
     {

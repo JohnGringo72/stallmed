@@ -2,6 +2,7 @@
 @using StallmedManager.Shared.Models
 @inject DataService dataService
 @inject UserManager userManager
+@inject IJSRuntime JS
 
 <PageTitle>Prick Test - Production Orders</PageTitle>
 
@@ -184,6 +185,9 @@
             <button class="btn btn-success w-100" @onclick="OpenNewOrderPopup">➕ Νέα Παραγγελία</button>
         </div>
         <div class="col-6 col-md-2">
+            <button class="btn btn-outline-primary w-100" @onclick="OpenImportPopup">📊 Excel</button>
+        </div>
+        <div class="col-6 col-md-2">
             <button class="btn btn-outline-secondary w-100" @onclick="LoadData">Ανανέωση</button>
         </div>
     </div>
@@ -315,6 +319,99 @@
     </div>
 }
 
+@if (showImportPopup)
+{
+    <div class="popup-overlay" @onclick="CloseImportPopup">
+        <div class="popup-box" style="max-width:800px;" @onclick:stopPropagation="true">
+            <h5>📊 Εισαγωγή Παραγγελιών Παραγωγής από Excel</h5>
+            <hr />
+
+            @if (importCommitResult == null)
+            {
+                <p class="text-muted">
+                    Κατέβασε πρώτα το πρότυπο, συμπλήρωσέ το (μία γραμμή ανά αλλεργιογόνο - γραμμές με ίδια
+                    Εταιρεία/Τύπο/Ημερομηνία μπαίνουν αυτόματα στην ίδια παραγγελία), και ανέβασέ το.
+                </p>
+                <button class="btn btn-sm btn-outline-secondary mb-3" @onclick="DownloadImportTemplate">⬇️ Λήψη Προτύπου Excel</button>
+
+                <div class="mb-3">
+                    <InputFile OnChange="OnImportFileSelected" accept=".xlsx" class="form-control" />
+                </div>
+
+                @if (importLoading)
+                {
+                    <p><em>Επεξεργασία αρχείου...</em></p>
+                }
+
+                @if (importPreview != null)
+                {
+                    <div class="alert @(importPreview.ErrorRows > 0 ? "alert-warning" : "alert-success") py-2">
+                        Βρέθηκαν <strong>@importPreview.Groups.Count</strong> παραγγελίες
+                        (@importPreview.TotalRows γραμμές συνολικά).
+                        @if (importPreview.ErrorRows > 0)
+                        {
+                            <span>⚠️ @importPreview.ErrorRows γραμμές έχουν πρόβλημα (θα παραλειφθούν οι αντίστοιχες παραγγελίες).</span>
+                        }
+                    </div>
+
+                    <div style="max-height:350px; overflow-y:auto;">
+                        @foreach (var g in importPreview.Groups)
+                        {
+                            <div class="order-card @(g.HasErrors ? "border-danger" : "border-success")">
+                                <div class="order-card-header" style="cursor:default;">
+                                    <div>
+                                        <span class="company-badge" style="background-color:@(g.Company == "SM" ? "#0d6efd" : "#6f42c1")">@g.Company</span>
+                                        <span class="ms-2">Τύπος: @g.ProductTypeCode</span>
+                                        @if (!g.ProductTypeValid)
+                                        {
+                                            <span class="badge bg-danger ms-1">Άγνωστος τύπος</span>
+                                        }
+                                    </div>
+                                    <div>
+                                        <span class="summary-pill">📅 @g.OrderDate.ToString("dd/MM/yyyy")</span>
+                                        @if (g.HasErrors)
+                                        {
+                                            <span class="badge bg-danger">Θα παραλειφθεί</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-success">Έτοιμη</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="order-card-body">
+                                    @foreach (var l in g.Lines)
+                                    {
+                                        <div class="@(l.CodeValid ? "" : "text-danger")">
+                                            @(l.CodeValid ? "✓" : "✗") @l.CodePrick - @l.AllergenDescription (x@l.Quantity)
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="d-flex gap-2 mt-3">
+                        <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup">Ακύρωση</button>
+                        <button class="btn btn-success flex-fill" @onclick="SubmitImportCommit"
+                                disabled="@(!importPreview.Groups.Any(g => !g.HasErrors))">
+                            Επιβεβαίωση Εισαγωγής (@importPreview.Groups.Count(g => !g.HasErrors) παραγγελίες)
+                        </button>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="text-center py-4">
+                    <div style="font-size:3rem;">✅</div>
+                    <h5 class="mt-2">Δημιουργήθηκαν @importCommitResult παραγγελίες!</h5>
+                    <button class="btn btn-primary mt-3" @onclick="CloseImportPopup">Κλείσιμο</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 @code {
     private string selectedCompany = "";
     private string selectedStatus = "";
@@ -336,6 +433,12 @@
     private DateTime newOrderDate = DateTime.Today;
     private List<CreateProductionOrderLineRequest> newOrderLines = new();
     private string newOrderMessage = "";
+
+    // --- Excel Import ---
+    private bool showImportPopup = false;
+    private bool importLoading = false;
+    private ImportProductionPreviewResult? importPreview;
+    private int? importCommitResult;
 
     private List<ProductionOrderDto> FilteredOrders =>
         orders.Where(o => string.IsNullOrEmpty(searchOrderCode) ||
@@ -438,5 +541,55 @@
         {
             newOrderMessage = "Κάτι πήγε στραβά, δοκίμασε ξανά.";
         }
+    }
+
+    private void OpenImportPopup()
+    {
+        showImportPopup = true;
+        importPreview = null;
+        importCommitResult = null;
+        importLoading = false;
+    }
+    private void CloseImportPopup()
+    {
+        showImportPopup = false;
+        LoadData();
+    }
+
+    private async Task DownloadImportTemplate()
+    {
+        var bytes = await new PrickProductionService(dataService).DownloadOrderImportTemplate();
+        if (bytes != null)
+        {
+            await JS.InvokeVoidAsync("downloadFileFromBytes", "Πρότυπο_Εισαγωγής_Παραγγελιών_Παραγωγής.xlsx", bytes);
+        }
+    }
+
+    private async Task OnImportFileSelected(InputFileChangeEventArgs e)
+    {
+        importLoading = true;
+        importPreview = null;
+        StateHasChanged();
+
+        var file = e.File;
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(ms);
+        var bytes = ms.ToArray();
+
+        importPreview = await new PrickProductionService(dataService).ImportOrderPreview(bytes, file.Name);
+        importLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task SubmitImportCommit()
+    {
+        if (importPreview == null) return;
+        var req = new CommitProductionImportRequest
+        {
+            Groups = importPreview.Groups.Where(g => !g.HasErrors).ToList(),
+            CreatedBy = userManager.User?.IdUser
+        };
+        importCommitResult = await new PrickProductionService(dataService).ImportOrderCommit(req);
+        StateHasChanged();
     }
 }
