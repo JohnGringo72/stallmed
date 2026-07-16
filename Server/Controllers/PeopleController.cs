@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using StallmedManager.Server.Models;
+using StallmedManager.Server.Services;
 using StallmedManager.Shared.Models;
 
 namespace StallmedManager.Server.Controllers
@@ -212,6 +213,56 @@ namespace StallmedManager.Server.Controllers
             };
 
             return Ok(stats);
+        }
+
+        // ---- Κατάταξη γιατρών βάσει εμβολίων (BELTA/STALORAL) στην περίοδο ----
+        [HttpGet("doctor-summary")]
+        [Authorize(Policy = "NotWarehouse")]
+        public ActionResult<List<DoctorSummaryRow>> GetDoctorSummary(
+            [FromQuery] DateTime fromDate,
+            [FromQuery] DateTime toDate)
+        {
+            // CompanyID στα WebOrders: "1" = SM, "2" = BM (βλ. WebOrder.CompanyLabel)
+            var baseRows = context.WebOrders
+                .Where(x => x.Ordered >= fromDate && x.Ordered <= toDate &&
+                            x.Doctor != null && x.Doctor != "" &&
+                            x.TreatmentDescription != null &&
+                            (x.TreatmentDescription.StartsWith("BELTA") ||
+                             x.TreatmentDescription.StartsWith("STALORAL")))
+                .GroupBy(x => x.Doctor)
+                .Select(g => new DoctorSummaryRow
+                {
+                    Doctor = g.Key!,
+                    TotalOrders = g.Count(),
+                    QtySM = g.Where(x => x.CompanyID == "1").Sum(x => x.QNT ?? 0),
+                    QtyBM = g.Where(x => x.CompanyID == "2").Sum(x => x.QNT ?? 0),
+                    QtyTotal = g.Sum(x => x.QNT ?? 0)
+                })
+                .OrderByDescending(x => x.QtyTotal)
+                .ToList();
+
+            // Σύνολα πρικ ανά όνομα γιατρού από το άλλο σύστημα (DoctorOrders).
+            // Best-effort ταύτιση με όνομα -- ΔΕΝ φιλτράρει τη λίστα, μόνο εμπλουτίζει.
+            var prickPerName = context.DoctorOrders
+                .Where(o => o.OrderDate >= fromDate && o.OrderDate <= toDate && o.DoctorID != null)
+                .Join(context.Doctors, o => o.DoctorID, d => d.DoctorID,
+                      (o, d) => new { o.OrderID, d.FullName })
+                .Join(context.DoctorOrderLines.Where(l => l.LineStatus != "Cancelled"),
+                      x => x.OrderID, l => l.OrderID,
+                      (x, l) => new { x.FullName, Qty = l.QuantityRequested - l.QuantityCancelled })
+                .GroupBy(x => x.FullName)
+                .Select(g => new { FullName = g.Key, Total = g.Sum(x => x.Qty) })
+                .AsEnumerable()
+                .GroupBy(x => DoctorNameKey.Normalize(x.FullName))
+                .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
+
+            foreach (var row in baseRows)
+            {
+                row.PrickQtyTotal = prickPerName.TryGetValue(DoctorNameKey.Normalize(row.Doctor), out var q)
+                    ? q : (int?)null;
+            }
+
+            return Ok(baseRows);
         }
 
         [HttpGet("company-stats")]

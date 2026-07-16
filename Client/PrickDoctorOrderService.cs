@@ -21,6 +21,13 @@ namespace StallmedManager.Client
             return await dataService.Get<List<DoctorOrderViewDto>>($"api/prickdoctororder/orders{query}");
         }
 
+        public async Task<List<PrickDoctorSummaryRow>> GetSummaryByDoctor(DateTime fromDate, DateTime toDate)
+        {
+            var url = $"api/prickdoctororder/summary-by-doctor?fromDate={fromDate:yyyy-MM-dd}" +
+                      $"&toDate={toDate:yyyy-MM-dd}";
+            return await dataService.Get<List<PrickDoctorSummaryRow>>(url) ?? new();
+        }
+
         public async Task<List<DoctorOptionDto>> SearchDoctors(string? search)
         {
             var query = string.IsNullOrEmpty(search) ? "" : $"?search={Uri.EscapeDataString(search)}";

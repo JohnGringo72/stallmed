@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using StallmedManager.Server.Models;
+using StallmedManager.Server.Services;
 using StallmedManager.Shared.Models;
 
 namespace StallmedManager.Server.Controllers
@@ -130,6 +131,54 @@ namespace StallmedManager.Server.Controllers
               _logger.LogError(ex, "Σφάλμα στο GetOrders (company={Company}, doctorId={DoctorId}, status={Status})", company, doctorId, status);
               return StatusCode(500, "Σφάλμα φόρτωσης παραγγελιών. Δοκίμασε ξανά.");
           }
+        }
+
+        // ---- Κατάταξη γιατρών βάσει ποσοτήτων πρικ στην περίοδο ----
+        [HttpGet("summary-by-doctor")]
+        [Authorize(Policy = "NotWarehouse")]
+        public async Task<ActionResult<List<PrickDoctorSummaryRow>>> GetSummaryByDoctor(
+            [FromQuery] DateTime fromDate, [FromQuery] DateTime toDate)
+        {
+            var baseRows = await _context.DoctorOrders
+                .Where(o => o.OrderDate >= fromDate && o.OrderDate <= toDate && o.DoctorID != null)
+                .Join(_context.Doctors, o => o.DoctorID, d => d.DoctorID,
+                      (o, d) => new { d.DoctorID, d.FullName, o.Company, o.OrderID })
+                .Join(_context.DoctorOrderLines.Where(l => l.LineStatus != "Cancelled"),
+                      x => x.OrderID, l => l.OrderID,
+                      (x, l) => new { x.DoctorID, x.FullName, x.Company, Qty = l.QuantityRequested - l.QuantityCancelled })
+                .GroupBy(x => new { x.DoctorID, x.FullName })
+                .Select(g => new PrickDoctorSummaryRow
+                {
+                    DoctorID = g.Key.DoctorID,
+                    DoctorName = g.Key.FullName,
+                    QtySM = g.Where(x => x.Company == "SM").Sum(x => x.Qty),
+                    QtyBM = g.Where(x => x.Company == "BM").Sum(x => x.Qty),
+                    QtyTotal = g.Sum(x => x.Qty)
+                })
+                .OrderByDescending(x => x.QtyTotal)
+                .ToListAsync();
+
+            // Σύνολα εμβολίων ανά όνομα γιατρού από το άλλο σύστημα (WebOrders).
+            // Best-effort ταύτιση με όνομα -- ΔΕΝ φιλτράρει τη λίστα, μόνο εμπλουτίζει.
+            var vaccinePerName = _context.WebOrders
+                .Where(x => x.Ordered >= fromDate && x.Ordered <= toDate &&
+                            x.Doctor != null && x.Doctor != "" &&
+                            x.TreatmentDescription != null &&
+                            (x.TreatmentDescription.StartsWith("BELTA") ||
+                             x.TreatmentDescription.StartsWith("STALORAL")))
+                .GroupBy(x => x.Doctor)
+                .Select(g => new { Doctor = g.Key!, Total = g.Sum(x => x.QNT ?? 0) })
+                .AsEnumerable()
+                .GroupBy(x => DoctorNameKey.Normalize(x.Doctor))
+                .ToDictionary(g => g.Key, g => g.Sum(x => x.Total));
+
+            foreach (var row in baseRows)
+            {
+                row.VaccineQtyTotal = vaccinePerName.TryGetValue(DoctorNameKey.Normalize(row.DoctorName), out var q)
+                    ? q : (int?)null;
+            }
+
+            return Ok(baseRows);
         }
 
         // ---- Διαχειρίσιμη λίστα ονομάτων για αποστολή "Ίδια Μέσα" -- ΔΕΝ συνδέεται με Users ----

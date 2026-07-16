@@ -1458,8 +1458,20 @@
             await LoadAttachments(order.OrderID);
     }
 
+    // Προ-φιλτράρισμα σε συγκεκριμένο γιατρό όταν ερχόμαστε από τη σελίδα
+    // κατάταξης /prick-doctors (π.χ. /prick-doctor-orders?doctor=Παπαδόπουλος)
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "doctor")]
+    public string? DoctorFromQuery { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
+        if (!string.IsNullOrWhiteSpace(DoctorFromQuery))
+        {
+            searchOrderCode = DoctorFromQuery;
+            expandedDoctor = DoctorFromQuery;
+            selectedStatus = "All";
+        }
         await LoadData();
     }
 

@@ -1,0 +1,130 @@
+@page "/prick-doctors"
+@using StallmedManager.Shared.Models
+@using System
+@inject DataService dataService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Prick - Γιατροί</PageTitle>
+
+<style>
+    .filters-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+
+    .chart-box {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+</style>
+
+<h1 class="mb-3">Γιατροί (Πρικ)</h1>
+
+<div class="filters-panel">
+    <div class="row g-2">
+        <div class="col-6">
+            <input id="fromDatePickerPrickDoc" class="form-control" placeholder="Από..." />
+        </div>
+        <div class="col-6">
+            <input id="toDatePickerPrickDoc" class="form-control" placeholder="Έως..." />
+        </div>
+    </div>
+</div>
+
+@if (status == "loading")
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (summary.Any())
+{
+    <div class="chart-box mb-4">
+        <h6 class="mb-3">Κατάταξη γιατρών (Πρικ στην περίοδο)</h6>
+        <table class="table table-hover table-sm">
+            <thead>
+                <tr><th>#</th><th>Γιατρός</th><th class="text-end">SM</th><th class="text-end">BM</th><th class="text-end">Total</th><th class="text-end">Εμβόλια</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var (row, idx) in summary.Select((r, i) => (r, i)))
+                {
+                    <tr style="cursor:pointer" @onclick="() => GoToDoctorOrders(row.DoctorName)">
+                        <td>@(idx + 1)</td>
+                        <td>@row.DoctorName</td>
+                        <td class="text-end">@row.QtySM</td>
+                        <td class="text-end">@row.QtyBM</td>
+                        <td class="text-end fw-bold">@row.QtyTotal</td>
+                        <td class="text-end">
+                            @if (row.VaccineQtyTotal.HasValue)
+                            {
+                                <span class="badge bg-info text-dark">@row.VaccineQtyTotal</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else if (status == "loaded")
+{
+    <div class="alert alert-info">Δεν υπάρχουν παραγγελίες πρικ στην περίοδο.</div>
+}
+
+@code {
+    private string status = "idle";
+    private DateTime fromDate = DateTime.Today.AddMonths(-12);
+    private DateTime toDate = DateTime.Today;
+    private List<PrickDoctorSummaryRow> summary = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSummary();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("initDatePicker", "fromDatePickerPrickDoc", dotNetRef, fromDate.ToString("dd/MM/yyyy"));
+            await JS.InvokeVoidAsync("initDatePicker", "toDatePickerPrickDoc", dotNetRef, toDate.ToString("dd/MM/yyyy"));
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task SetDate(string elementId, string dateStr)
+    {
+        if (DateTime.TryParseExact(dateStr, "d/M/yyyy",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var date))
+        {
+            if (elementId == "fromDatePickerPrickDoc") fromDate = date;
+            if (elementId == "toDatePickerPrickDoc") toDate = date;
+            await LoadSummary();
+        }
+    }
+
+    private async Task LoadSummary()
+    {
+        status = "loading";
+        StateHasChanged();
+        summary = await new PrickDoctorOrderService(dataService).GetSummaryByDoctor(fromDate, toDate);
+        status = "loaded";
+        StateHasChanged();
+    }
+
+    private void GoToDoctorOrders(string doctorName)
+    {
+        Navigation.NavigateTo($"/prick-doctor-orders?doctor={Uri.EscapeDataString(doctorName)}");
+    }
+}

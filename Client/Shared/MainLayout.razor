@@ -14,37 +14,50 @@
         <div class="navbar-nav me-auto">
             @if (!userManager.IsWarehouse)
             {
-                <a class="nav-link" href="/" @onclick="CloseMenu">Home</a>
-                <a class="nav-link" href="/orders" @onclick="CloseMenu">Orders</a>
-                <a class="nav-link" href="/doctors" @onclick="CloseMenu">Doctors</a>
+                <a class="nav-link" href="/" @onclick="CloseMenu">HOME</a>
 
                 <div class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        Εργασίες
+                        VACCINES
                     </a>
                     <ul class="dropdown-menu dropdown-menu-dark">
-                        <li><a class="dropdown-item" href="/mytasks" @onclick="CloseMenu">Οι Εργασίες μου</a></li>
-                        <li><a class="dropdown-item" href="/mytasks/new" @onclick="CloseMenu">Νέα Εργασία</a></li>
-                        <li><hr class="dropdown-divider" /></li>
-                        <li><a class="dropdown-item" href="/mytasks/history" @onclick="CloseMenu">Ιστορικό</a></li>
+                        <li><a class="dropdown-item" href="/orders" @onclick="CloseMenu">Orders</a></li>
+                        <li><a class="dropdown-item" href="/doctors" @onclick="CloseMenu">Doctors</a></li>
+                        <li><a class="dropdown-item" href="/stock-search" @onclick="CloseMenu">Stock</a></li>
                     </ul>
                 </div>
-
-                <a class="nav-link" href="/stock-search" @onclick="CloseMenu">Stock</a>
             }
 
             <div class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    Prick Test
+                    PRICK
                 </a>
                 <ul class="dropdown-menu dropdown-menu-dark">
                     <li><a class="dropdown-item" href="/prick-dashboard" @onclick="CloseMenu">Dashboard</a></li>
-                    <li><a class="dropdown-item" href="/prick-doctor-orders" @onclick="CloseMenu">Doctor Orders</a></li>
-                    <li><a class="dropdown-item" href="/prick-production" @onclick="CloseMenu">Stock Orders</a></li>
-                    <li><a class="dropdown-item" href="/prick-receiving" @onclick="CloseMenu">Παραλαβή</a></li>
-                    <li><a class="dropdown-item" href="/prick-shipments" @onclick="CloseMenu">Αποστολές</a></li>
+                    @if (!userManager.IsWarehouse)
+                    {
+                        <li><a class="dropdown-item" href="/prick-doctors" @onclick="CloseMenu">Doctors</a></li>
+                    }
+                    <li><a class="dropdown-item" href="/prick-doctor-orders" @onclick="CloseMenu">Orders</a></li>
+                    <li><a class="dropdown-item" href="/prick-production" @onclick="CloseMenu">Stock</a></li>
+                    <li><a class="dropdown-item" href="/prick-receiving" @onclick="CloseMenu">Receiving</a></li>
+                    <li><a class="dropdown-item" href="/prick-shipments" @onclick="CloseMenu">Deliveries</a></li>
                 </ul>
             </div>
+
+            @if (!userManager.IsWarehouse)
+            {
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        TASKS
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li><a class="dropdown-item" href="/mytasks" @onclick="CloseMenu">Todo</a></li>
+                        @* Η σελίδα Issues δεν έχει φτιαχτεί ακόμα -- placeholder μέχρι να υπάρξει *@
+                        <li><a class="dropdown-item disabled" href="#" tabindex="-1" aria-disabled="true">Issues</a></li>
+                    </ul>
+                </div>
+            }
         </div>
         @if (userManager.IsLoggedIn)
         {

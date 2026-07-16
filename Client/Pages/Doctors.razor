@@ -146,6 +146,40 @@
     </div>
 </div>
 
+@if (status != "loaded" && summary.Any())
+{
+    <div class="chart-box mb-4">
+        <h6 class="mb-3">Κατάταξη γιατρών (Εμβόλια στην περίοδο)</h6>
+        <table class="table table-hover table-sm">
+            <thead>
+                <tr><th>#</th><th>Γιατρός</th><th class="text-end">SM</th><th class="text-end">BM</th><th class="text-end">Total</th><th class="text-end">Πρικ</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var (row, idx) in summary.Select((r, i) => (r, i)))
+                {
+                    <tr style="cursor:pointer" @onclick="() => SelectFromSummary(row.Doctor)">
+                        <td>@(idx + 1)</td>
+                        <td>@row.Doctor</td>
+                        <td class="text-end">@row.QtySM</td>
+                        <td class="text-end">@row.QtyBM</td>
+                        <td class="text-end fw-bold">@row.QtyTotal</td>
+                        <td class="text-end">
+                            @if (row.PrickQtyTotal.HasValue)
+                            {
+                                <span class="badge bg-info text-dark">@row.PrickQtyTotal</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
 @if (status == "loading")
 {
     <p><em>Φορτώνω...</em></p>
@@ -252,11 +286,25 @@
     private DateTime toDate = DateTime.Today;
     private List<string> doctorOptions = new();
     private DoctorStats? stats = null;
+    private List<DoctorSummaryRow> summary = new();
 
     protected override async Task OnInitializedAsync()
     {
         var options = await new OrdersService(dataService).GetFilterOptions();
         doctorOptions = options.Doctors;
+        await LoadSummary();
+    }
+
+    private async Task LoadSummary()
+    {
+        summary = await new OrdersService(dataService).GetDoctorSummary(fromDate, toDate);
+        StateHasChanged();
+    }
+
+    private async Task SelectFromSummary(string doctor)
+    {
+        selectedDoctor = doctor;
+        await LoadStats();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -290,6 +338,7 @@
             if (elementId == "fromDatePickerDoc") fromDate = date;
             if (elementId == "toDatePickerDoc") toDate = date;
             StateHasChanged();
+            await LoadSummary();
         }
     }
 
@@ -297,7 +346,15 @@
     {
         selectedDoctor = e.Value?.ToString() ?? "";
         if (doctorOptions.Contains(selectedDoctor))
+        {
             await LoadStats();
+        }
+        else if (string.IsNullOrEmpty(selectedDoctor))
+        {
+            // Άδειασμα πεδίου γιατρού -> επιστροφή στην κατάταξη
+            stats = null;
+            status = "idle";
+        }
     }
 
     private async Task LoadStats()

@@ -107,4 +107,17 @@ namespace StallmedManager.Shared.Models
     {
         public string Name { get; set; }
     }
+
+    // ---- Κατάταξη γιατρών βάσει ποσοτήτων πρικ (DoctorOrders) ----
+    public class PrickDoctorSummaryRow
+    {
+        public int DoctorID { get; set; }
+        public string DoctorName { get; set; }
+        public int QtySM { get; set; }
+        public int QtyBM { get; set; }
+        public int QtyTotal { get; set; }
+        // Σύνολο εμβολίων από το άλλο σύστημα (WebOrders), best-effort ταύτιση
+        // με όνομα -- null αν δεν βρέθηκε αντιστοιχία.
+        public int? VaccineQtyTotal { get; set; }
+    }
 }

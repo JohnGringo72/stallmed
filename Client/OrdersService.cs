@@ -44,6 +44,12 @@ namespace StallmedManager.Client
                       $"&toDate={toDate:yyyy-MM-dd}";
             return await dataService.Get<DoctorStats>(url);
         }
+        public async Task<List<DoctorSummaryRow>> GetDoctorSummary(DateTime fromDate, DateTime toDate)
+        {
+            var url = $"/people/doctor-summary?fromDate={fromDate:yyyy-MM-dd}" +
+                      $"&toDate={toDate:yyyy-MM-dd}";
+            return await dataService.Get<List<DoctorSummaryRow>>(url) ?? new();
+        }
         public async Task<CompanyStats?> GetCompanyStats(string company, string serverFilter, DateTime fromDate, DateTime toDate)
         {
             var url = $"/people/company-stats?company={Uri.EscapeDataString(company)}" +
