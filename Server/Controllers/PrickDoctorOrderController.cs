@@ -158,6 +158,20 @@ namespace StallmedManager.Server.Controllers
                 .OrderByDescending(x => x.QtyTotal)
                 .ToListAsync();
 
+            // Σύνολα ίδιας περιόδου προηγούμενου έτους, για ένδειξη τάσης
+            // (ίδια σύμβαση με το doctor-stats των εμβολίων)
+            var prevFromDate = fromDate.AddYears(-1);
+            var prevToDate = toDate.AddYears(-1);
+            var prevTotals = (await _context.DoctorOrders
+                .Where(o => o.OrderDate >= prevFromDate && o.OrderDate <= prevToDate && o.DoctorID != null)
+                .Join(_context.DoctorOrderLines.Where(l => l.LineStatus != "Cancelled"),
+                      o => o.OrderID, l => l.OrderID,
+                      (o, l) => new { o.DoctorID, Qty = l.QuantityRequested - l.QuantityCancelled })
+                .GroupBy(x => x.DoctorID)
+                .Select(g => new { DoctorID = g.Key!.Value, Total = g.Sum(x => x.Qty) })
+                .ToListAsync())
+                .ToDictionary(x => x.DoctorID, x => x.Total);
+
             // Σύνολα εμβολίων ανά όνομα γιατρού από το άλλο σύστημα (WebOrders).
             // Best-effort ταύτιση με όνομα -- ΔΕΝ φιλτράρει τη λίστα, μόνο εμπλουτίζει.
             var vaccinePerName = _context.WebOrders
@@ -174,6 +188,7 @@ namespace StallmedManager.Server.Controllers
 
             foreach (var row in baseRows)
             {
+                row.PrevQtyTotal = prevTotals.TryGetValue(row.DoctorID, out var p) ? p : 0;
                 row.VaccineQtyTotal = vaccinePerName.TryGetValue(DoctorNameKey.Normalize(row.DoctorName), out var q)
                     ? q : (int?)null;
             }

@@ -47,10 +47,18 @@ else if (summary.Any())
         <h6 class="mb-3">Κατάταξη γιατρών (Πρικ στην περίοδο)</h6>
         <table class="table table-hover table-sm">
             <thead>
-                <tr><th>#</th><th>Γιατρός</th><th class="text-end">SM</th><th class="text-end">BM</th><th class="text-end">Total</th><th class="text-end">Εμβόλια</th></tr>
+                <tr>
+                    <th>#</th>
+                    <th>Γιατρός</th>
+                    <th class="text-end" style="cursor:pointer" @onclick='() => summarySortBy = "sm"'>SM @(summarySortBy == "sm" ? "▼" : "")</th>
+                    <th class="text-end" style="cursor:pointer" @onclick='() => summarySortBy = "bm"'>BM @(summarySortBy == "bm" ? "▼" : "")</th>
+                    <th class="text-end" style="cursor:pointer" @onclick='() => summarySortBy = "total"'>Total @(summarySortBy == "total" ? "▼" : "")</th>
+                    <th class="text-end">Τάση</th>
+                    <th class="text-end">Εμβόλια</th>
+                </tr>
             </thead>
             <tbody>
-                @foreach (var (row, idx) in summary.Select((r, i) => (r, i)))
+                @foreach (var (row, idx) in SortedSummary.Select((r, i) => (r, i)))
                 {
                     <tr style="cursor:pointer" @onclick="() => GoToDoctorOrders(row.DoctorName)">
                         <td>@(idx + 1)</td>
@@ -58,6 +66,21 @@ else if (summary.Any())
                         <td class="text-end">@row.QtySM</td>
                         <td class="text-end">@row.QtyBM</td>
                         <td class="text-end fw-bold">@row.QtyTotal</td>
+                        <td class="text-end">
+                            @if (row.PrevQtyTotal > 0)
+                            {
+                                var pct = Math.Round((double)(row.QtyTotal - row.PrevQtyTotal) / row.PrevQtyTotal * 100, 0);
+                                var pctLabel = pct > 999 ? ">999%" : $"{Math.Abs(pct)}%";
+                                <span style="color:@(pct >= 0 ? "#198754" : "#dc3545");white-space:nowrap;"
+                                      title="Ίδια περίοδος πέρυσι: @row.PrevQtyTotal τεμ.">
+                                    @pctLabel @(pct >= 0 ? "▲" : "▼")
+                                </span>
+                            }
+                            else if (row.QtyTotal > 0)
+                            {
+                                <span style="color:#198754;" title="Χωρίς ποσότητα την ίδια περίοδο πέρυσι">νέο ▲</span>
+                            }
+                        </td>
                         <td class="text-end">
                             @if (row.VaccineQtyTotal.HasValue)
                             {
@@ -84,6 +107,14 @@ else if (status == "loaded")
     private DateTime fromDate = DateTime.Today.AddMonths(-12);
     private DateTime toDate = DateTime.Today;
     private List<PrickDoctorSummaryRow> summary = new();
+    private string summarySortBy = "total";
+
+    private IEnumerable<PrickDoctorSummaryRow> SortedSummary => summarySortBy switch
+    {
+        "sm" => summary.OrderByDescending(r => r.QtySM),
+        "bm" => summary.OrderByDescending(r => r.QtyBM),
+        _ => summary.OrderByDescending(r => r.QtyTotal)
+    };
 
     protected override async Task OnInitializedAsync()
     {

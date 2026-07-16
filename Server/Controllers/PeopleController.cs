@@ -241,6 +241,21 @@ namespace StallmedManager.Server.Controllers
                 .OrderByDescending(x => x.QtyTotal)
                 .ToList();
 
+            // Σύνολα ίδιας περιόδου προηγούμενου έτους, για ένδειξη τάσης
+            // (ίδια σύμβαση με το doctor-stats)
+            var prevFromDate = fromDate.AddYears(-1);
+            var prevToDate = toDate.AddYears(-1);
+            var prevTotals = context.WebOrders
+                .Where(x => x.Ordered >= prevFromDate && x.Ordered <= prevToDate &&
+                            x.Doctor != null && x.Doctor != "" &&
+                            x.TreatmentDescription != null &&
+                            (x.TreatmentDescription.StartsWith("BELTA") ||
+                             x.TreatmentDescription.StartsWith("STALORAL")))
+                .GroupBy(x => x.Doctor)
+                .Select(g => new { Doctor = g.Key!, Total = g.Sum(x => x.QNT ?? 0) })
+                .ToList()
+                .ToDictionary(x => x.Doctor, x => x.Total);
+
             // Σύνολα πρικ ανά όνομα γιατρού από το άλλο σύστημα (DoctorOrders).
             // Best-effort ταύτιση με όνομα -- ΔΕΝ φιλτράρει τη λίστα, μόνο εμπλουτίζει.
             var prickPerName = context.DoctorOrders
@@ -258,6 +273,7 @@ namespace StallmedManager.Server.Controllers
 
             foreach (var row in baseRows)
             {
+                row.PrevQtyTotal = prevTotals.TryGetValue(row.Doctor, out var p) ? p : 0;
                 row.PrickQtyTotal = prickPerName.TryGetValue(DoctorNameKey.Normalize(row.Doctor), out var q)
                     ? q : (int?)null;
             }
