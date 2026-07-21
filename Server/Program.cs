@@ -39,6 +39,7 @@ builder.Services.AddScoped<StockSearchService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AiContextService>();
+builder.Services.AddScoped<ChatBotService>();
 
 var app = builder.Build();
 
