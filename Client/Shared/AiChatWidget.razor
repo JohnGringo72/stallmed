@@ -11,9 +11,12 @@
         {
             <div class="ai-panel">
                 <div class="ai-header">
-                    <div class="ai-header-info">
-                        <span class="ai-title">SBT Suite AI</span>
-                        <span class="ai-subtitle"><span class="ai-online-dot"></span> Online · Powered by Claude</span>
+                    <div class="ai-header-brand">
+                        <img src="images/sbt-suite-logo.svg" alt="" class="sbt-chat-icon" />
+                        <div class="ai-header-info">
+                            <span class="ai-title">SBT Suite AI</span>
+                            <span class="ai-subtitle"><span class="ai-online-dot"></span> Online · Powered by Claude</span>
+                        </div>
                     </div>
                     <button class="ai-close" title="Κλείσιμο" @onclick="Toggle">✕</button>
                 </div>
@@ -64,7 +67,7 @@
             }
             else
             {
-                <span class="ai-fab-icon">💬</span>
+                <img src="images/sbt-suite-logo.svg" alt="AI Βοηθός" class="sbt-chat-icon" />
             }
         </button>
     </div>

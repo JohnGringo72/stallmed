@@ -63,6 +63,12 @@
     flex-shrink: 0;
 }
 
+.ai-header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .ai-header-info {
     display: flex;
     flex-direction: column;

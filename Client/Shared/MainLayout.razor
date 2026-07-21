@@ -4,7 +4,13 @@
 @inject UiPreferencesService uiPrefs
 @implements IDisposable
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3">
-    <a class="navbar-brand" href="/">StallmedManager</a>
+    <a class="navbar-brand sbt-logo" href="/">
+        <img src="images/sbt-suite-logo.svg" alt="SBT Suite" class="sbt-logo-icon" />
+        <div class="sbt-logo-text">
+            <span class="sbt-logo-bold">SBT</span>
+            <span class="sbt-logo-light">Suite</span>
+        </div>
+    </a>
     <!-- Hamburger button για κινητό -->
     <button class="navbar-toggler" type="button" @onclick="ToggleMenu">
         <span class="navbar-toggler-icon"></span>
