@@ -99,3 +99,140 @@ a, .btn-link {
     .loading-progress-text:after {
         content: var(--blazor-load-percentage-text, "Loading");
     }
+
+/* ── SBT Suite Logo System ── */
+
+/* Navbar logo */
+.sbt-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+}
+
+.sbt-logo-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(79, 209, 197, 0.25);
+}
+
+.sbt-logo-text {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+}
+
+.sbt-logo-bold {
+    font-size: 20px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+}
+
+.sbt-logo-light {
+    font-size: 20px;
+    font-weight: 400;
+    color: #4fd1c5;
+    letter-spacing: -0.3px;
+}
+
+/* Login page - large centered */
+.sbt-logo-centered {
+    justify-content: center;
+    margin-bottom: 24px;
+}
+
+.sbt-logo-icon-lg {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(79, 209, 197, 0.3);
+}
+
+.sbt-logo-text-lg {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.sbt-logo-text-lg .sbt-logo-bold {
+    font-size: 32px;
+}
+
+.sbt-logo-text-lg .sbt-logo-light {
+    font-size: 32px;
+}
+
+.sbt-logo-large {
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Page headers - small icon next to title */
+/* (named sbt-page-header: StockSearch already uses .page-header for a stacked block layout) */
+.sbt-page-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+    .sbt-page-header h1,
+    .sbt-page-header h2,
+    .sbt-page-header h3 {
+        margin-bottom: 0;
+    }
+
+.sbt-page-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    box-shadow: 0 1px 4px rgba(79, 209, 197, 0.2);
+    vertical-align: text-bottom;
+}
+
+/* Chat widget icon */
+.sbt-chat-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+}
+
+/* Loading screen */
+.sbt-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: 16px;
+    background: #f5f7fa;
+}
+
+.sbt-loading-text {
+    font-size: 28px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Blazor progress indicator repositioned inside the flex loading screen */
+.sbt-loading .loading-progress {
+    width: 4rem;
+    height: 4rem;
+    margin: 0 auto;
+}
+
+.sbt-loading .loading-progress-text {
+    position: static;
+    inset: auto;
+    color: #2c7a7b;
+}
+
+/* Light background variant */
+.sbt-logo-on-light .sbt-logo-bold {
+    color: #0f2b46;
+}
+
+.sbt-logo-on-light .sbt-logo-light {
+    color: #2c7a7b;
+}
