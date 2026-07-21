@@ -1,0 +1,180 @@
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (userManager.IsLoggedIn)
+{
+    <div class="ai-chat-root">
+        @if (isOpen)
+        {
+            <div class="ai-panel">
+                <div class="ai-header">
+                    <div class="ai-header-info">
+                        <span class="ai-title">SBT Suite AI</span>
+                        <span class="ai-subtitle"><span class="ai-online-dot"></span> Online · Powered by Claude</span>
+                    </div>
+                    <button class="ai-close" title="Κλείσιμο" @onclick="Toggle">✕</button>
+                </div>
+
+                <div class="ai-messages" @ref="messagesRef">
+                    @foreach (var msg in messages)
+                    {
+                        <div class="ai-bubble-row @(msg.Role == "user" ? "ai-row-user" : "ai-row-assistant")">
+                            <div class="ai-bubble @(msg.Role == "user" ? "ai-bubble-user" : "ai-bubble-assistant")">@msg.Content</div>
+                        </div>
+                    }
+                    @if (isBusy)
+                    {
+                        <div class="ai-bubble-row ai-row-assistant">
+                            <div class="ai-bubble ai-bubble-assistant ai-typing">
+                                <span></span><span></span><span></span>
+                            </div>
+                        </div>
+                    }
+                    @if (messages.Count <= 1 && !isBusy)
+                    {
+                        <div class="ai-chips">
+                            @foreach (var chip in suggestionChips)
+                            {
+                                <button class="ai-chip" @onclick="() => SendChip(chip)">@chip</button>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="ai-input-area">
+                    <textarea @ref="inputRef"
+                              class="ai-input"
+                              rows="1"
+                              placeholder="Γράψε την ερώτησή σου..."
+                              @bind="currentInput"
+                              @bind:event="oninput"
+                              disabled="@isBusy"></textarea>
+                    <button class="ai-send" title="Αποστολή" disabled="@(isBusy || string.IsNullOrWhiteSpace(currentInput))" @onclick="Send">➤</button>
+                </div>
+            </div>
+        }
+
+        <button class="ai-fab" title="AI Βοηθός" @onclick="Toggle">
+            @if (isOpen)
+            {
+                <span class="ai-fab-icon">✕</span>
+            }
+            else
+            {
+                <span class="ai-fab-icon">💬</span>
+            }
+        </button>
+    </div>
+}
+
+@code {
+    private bool isOpen;
+    private bool isBusy;
+    private string currentInput = "";
+    private ElementReference messagesRef;
+    private ElementReference inputRef;
+    private IJSObjectReference module;
+    private DotNetObjectReference<AiChatWidget> dotnetRef;
+    private bool inputWired;
+
+    private readonly List<ChatMessage> messages = new()
+    {
+        new ChatMessage
+        {
+            Role = "assistant",
+            Content = "Γεια σου! Είμαι ο AI βοηθός του SBT Suite. Ρώτα με ό,τι θέλεις για παραγγελίες, stock, γιατρούς ή αποστολές."
+        }
+    };
+
+    private readonly string[] suggestionChips =
+    {
+        "Τι stock έχω;",
+        "Εκκρεμείς παραγγελίες",
+        "Πώς δουλεύει το FIFO;",
+        "Stock alerts"
+    };
+
+    private void Toggle()
+    {
+        isOpen = !isOpen;
+        // Το textarea ξαναδημιουργείται σε κάθε άνοιγμα -- πρέπει να ξαναδεθεί το keydown
+        inputWired = false;
+    }
+
+    protected override void OnInitialized()
+    {
+        dotnetRef = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!isOpen)
+            return;
+
+        module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Shared/AiChatWidget.razor.js");
+
+        if (!inputWired)
+        {
+            // Enter = αποστολή, Shift+Enter = νέα γραμμή (με preventDefault από JS)
+            await module.InvokeVoidAsync("wireInput", inputRef, dotnetRef);
+            inputWired = true;
+        }
+
+        await module.InvokeVoidAsync("scrollToBottom", messagesRef);
+    }
+
+    [JSInvokable]
+    public async Task SendFromJs()
+    {
+        await InvokeAsync(Send);
+    }
+
+    private async Task SendChip(string chip)
+    {
+        currentInput = chip;
+        await Send();
+    }
+
+    private async Task Send()
+    {
+        var text = currentInput?.Trim();
+        if (string.IsNullOrEmpty(text) || isBusy)
+            return;
+
+        // Το history είναι ό,τι υπήρχε ΠΡΙΝ το νέο μήνυμα -- ο server προσθέτει το νέο μόνος του
+        var history = messages.Select(m => new ChatMessage { Role = m.Role, Content = m.Content }).ToList();
+
+        messages.Add(new ChatMessage { Role = "user", Content = text });
+        currentInput = "";
+        isBusy = true;
+        StateHasChanged();
+
+        var response = await dataService.Post<ChatRequest, ChatResponse>(
+            "api/ai/chat",
+            new ChatRequest { Message = text, History = history });
+
+        messages.Add(new ChatMessage
+        {
+            Role = "assistant",
+            Content = string.IsNullOrWhiteSpace(response?.Reply)
+                ? "⚠️ Σφάλμα σύνδεσης. Δοκίμασε ξανά."
+                : response.Reply
+        });
+
+        isBusy = false;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        dotnetRef?.Dispose();
+        if (module != null)
+        {
+            try { await module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}

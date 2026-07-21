@@ -36,6 +36,9 @@ builder.Services.AddRazorPages();
 builder.Services.AddDbContext<StallmedManager.Server.Models.StallmedContext>(x => x.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 34))));
 builder.Services.AddSingleton<AesService>();
 builder.Services.AddScoped<StockSearchService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<AiContextService>();
 
 var app = builder.Build();
 
