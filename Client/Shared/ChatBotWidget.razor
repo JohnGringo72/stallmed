@@ -149,9 +149,20 @@
         isBusy = true;
         StateHasChanged();
 
-        var response = await dataService.Post<ChatBotRequest, ChatBotResponse>(
-            "api/chatbot/query",
-            new ChatBotRequest { Message = text });
+        // Ο DataService.Post δεν πιάνει network exceptions από το SendAsync --
+        // χωρίς το try/catch ένα σκέτο σφάλμα δικτύου θα κράσαρε το widget.
+        // (Το User model δεν έχει CompanyId, οπότε δεν στέλνεται εταιρεία.)
+        ChatBotResponse response = null;
+        try
+        {
+            response = await dataService.Post<ChatBotRequest, ChatBotResponse>(
+                "api/chatbot/query",
+                new ChatBotRequest { Message = text });
+        }
+        catch (Exception ex)
+        {
+            response = new ChatBotResponse { Reply = $"⚠️ Client error: {ex.Message}", Type = "error" };
+        }
 
         // Μικρό delay για φυσική αίσθηση -- η απάντηση είναι ουσιαστικά instant
         await Task.Delay(300);

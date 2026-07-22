@@ -121,9 +121,13 @@ namespace StallmedManager.Server.Services
         private async Task<Dictionary<string, string>> GetAllergenDescriptions(IEnumerable<string> codes)
         {
             var list = codes.Distinct().ToList();
-            return await _context.AllergenCodes
+            // GroupBy/First αντί για ToDictionaryAsync: αν ποτέ υπάρξουν
+            // duplicate CodePrick, το ToDictionary θα πετούσε exception
+            return (await _context.AllergenCodes
                 .Where(a => list.Contains(a.CodePrick))
-                .ToDictionaryAsync(a => a.CodePrick, a => a.DescriptionGreek ?? a.Description ?? a.CodePrick);
+                .ToListAsync())
+                .GroupBy(a => a.CodePrick)
+                .ToDictionary(g => g.Key, g => g.First().DescriptionGreek ?? g.First().Description ?? g.Key);
         }
 
         // ---------------------------------------------------------------
@@ -321,9 +325,12 @@ namespace StallmedManager.Server.Services
                 .ToListAsync();
 
             var codes = stock.Select(s => s.CodePrick).ToList();
-            var allergens = await _context.AllergenCodes
+            // GroupBy/First αντί για ToDictionaryAsync (βλ. GetAllergenDescriptions)
+            var allergens = (await _context.AllergenCodes
                 .Where(a => codes.Contains(a.CodePrick))
-                .ToDictionaryAsync(a => a.CodePrick, a => a);
+                .ToListAsync())
+                .GroupBy(a => a.CodePrick)
+                .ToDictionary(g => g.Key, g => g.First());
 
             bool CompanyOk(string code) =>
                 company == null ||

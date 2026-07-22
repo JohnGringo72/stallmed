@@ -185,9 +185,9 @@ a, .btn-link {
     }
 
 .sbt-page-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 7px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
     box-shadow: 0 1px 4px rgba(79, 209, 197, 0.2);
     vertical-align: text-bottom;
 }
