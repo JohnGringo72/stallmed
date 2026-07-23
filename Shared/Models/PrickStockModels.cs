@@ -48,6 +48,12 @@ namespace StallmedManager.Shared.Models
         public string? City { get; set; }
         public string? Address { get; set; }
         public string? Notes { get; set; }
+        // Πεδία για πελάτες-νοσοκομεία (Quotes module): οι πελάτες των προσφορών
+        // ζουν στον ίδιο πίνακα με τους γιατρούς (μόνο τα ονόματα ήταν περασμένα).
+        public string? VatNumber { get; set; }
+        public string? Department { get; set; }
+        public string? ContactPerson { get; set; }
+        public string? PostalCode { get; set; }
         public bool IsActive { get; set; } = true;
         public int? CreatedBy { get; set; }
         public DateTime CreatedAt { get; set; }

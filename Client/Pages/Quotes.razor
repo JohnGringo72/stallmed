@@ -1,0 +1,1049 @@
+@page "/quotes"
+@using StallmedManager.Shared.Models
+@using Microsoft.AspNetCore.Components.Forms
+@inject DataService dataService
+@inject UserManager userManager
+@inject IJSRuntime JS
+
+<PageTitle>Προσφορές</PageTitle>
+
+<style>
+    .filters-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+
+    .quote-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1050;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        overflow-y: auto;
+        padding: 30px 10px;
+    }
+
+    .quote-modal {
+        background: white;
+        border-radius: 10px;
+        width: 100%;
+        max-width: 1000px;
+        padding: 20px;
+        box-shadow: 0 5px 25px rgba(0,0,0,0.3);
+    }
+
+    .quote-modal-sm {
+        max-width: 550px;
+    }
+
+    .lines-table input, .lines-table select {
+        font-size: 0.85rem;
+    }
+
+    .totals-box {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 10px 16px;
+        display: inline-block;
+        min-width: 260px;
+    }
+</style>
+
+<div class="sbt-page-header">
+    <h1 class="mb-3">Προσφορές</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert @(messageIsError ? "alert-danger" : "alert-success") alert-dismissible">
+        @message
+        <button type="button" class="btn-close" @onclick="() => message = null"></button>
+    </div>
+}
+
+<div class="filters-panel">
+    <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Εταιρεία</label>
+            <select class="form-select" @bind="filterCompany">
+                <option value="">Όλες</option>
+                <option value="SM">SM</option>
+                <option value="BM">BM</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Κατάσταση</label>
+            <select class="form-select" @bind="filterStatus">
+                <option value="All">Όλες</option>
+                <option value="@QuoteStatus.Draft">@QuoteStatus.Label(QuoteStatus.Draft)</option>
+                <option value="@QuoteStatus.Sent">@QuoteStatus.Label(QuoteStatus.Sent)</option>
+                <option value="@QuoteStatus.Accepted">@QuoteStatus.Label(QuoteStatus.Accepted)</option>
+                <option value="@QuoteStatus.Rejected">@QuoteStatus.Label(QuoteStatus.Rejected)</option>
+                <option value="@QuoteStatus.Expired">@QuoteStatus.Label(QuoteStatus.Expired)</option>
+                <option value="@QuoteStatus.Converted">@QuoteStatus.Label(QuoteStatus.Converted)</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Από</label>
+            <input type="date" class="form-control" @bind="filterFrom" />
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Έως</label>
+            <input type="date" class="form-control" @bind="filterTo" />
+        </div>
+        <div class="col-8 col-md-2">
+            <label class="form-label mb-1">Αναζήτηση</label>
+            <input class="form-control" placeholder="Αριθμός, πελάτης..." @bind="filterSearch"
+                   @onkeyup="@(async e => { if (e.Key == "Enter") await LoadQuotes(); })" />
+        </div>
+        <div class="col-4 col-md-2 d-flex gap-2">
+            <button class="btn btn-outline-primary w-50" @onclick="LoadQuotes">Φίλτρα</button>
+            <button class="btn btn-success w-50" @onclick="OpenCreate">+ Νέα</button>
+        </div>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (quotes.Count == 0)
+{
+    <div class="alert alert-info">Δεν βρέθηκαν προσφορές.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Αριθμός</th>
+                    <th>Ημ/νία</th>
+                    <th>Πελάτης</th>
+                    <th>Εταιρεία</th>
+                    <th>Ισχύς έως</th>
+                    <th class="text-end">Σύνολο</th>
+                    <th>Κατάσταση</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var q in quotes)
+                {
+                    <tr style="cursor:pointer" @onclick="() => OpenDetails(q)">
+                        <td class="fw-bold">@q.QuoteNumber</td>
+                        <td>@q.IssueDate.ToString("dd/MM/yyyy")</td>
+                        <td>@q.CustomerName</td>
+                        <td>
+                            <span class="badge" style="background-color:@(q.Company == "SM" ? "#28a745" : "#b57bee")">@q.Company</span>
+                        </td>
+                        <td>@q.ValidUntil.ToString("dd/MM/yyyy")</td>
+                        <td class="text-end">@q.Total.ToString("N2") €</td>
+                        <td>
+                            <span class="badge bg-@QuoteStatus.Color(q.Status)">@QuoteStatus.Label(q.Status)</span>
+                            @if (q.AttachmentCount > 0)
+                            {
+                                <span class="badge bg-light text-dark ms-1" title="Συνημμένα">📎 @q.AttachmentCount</span>
+                            }
+                        </td>
+                        <td>
+                            @if (q.HasPdf)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" title="Λήψη PDF"
+                                        @onclick:stopPropagation="true" @onclick="() => DownloadPdf(q)">PDF</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@* ============ Modal προβολής ============ *@
+@if (detailsQuote != null)
+{
+    <div class="quote-modal-backdrop" @onclick="CloseDetails">
+        <div class="quote-modal" @onclick:stopPropagation="true">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <h4 class="mb-1">
+                        @detailsQuote.QuoteNumber
+                        <span class="badge bg-@QuoteStatus.Color(detailsQuote.Status) ms-2">@QuoteStatus.Label(detailsQuote.Status)</span>
+                        <span class="badge ms-1" style="background-color:@(detailsQuote.Company == "SM" ? "#28a745" : "#b57bee")">@detailsQuote.Company</span>
+                    </h4>
+                    <div class="text-muted small">
+                        Έκδοση: @detailsQuote.IssueDate.ToString("dd/MM/yyyy") · Ισχύς έως: @detailsQuote.ValidUntil.ToString("dd/MM/yyyy")
+                        @if (detailsQuote.SentAt.HasValue)
+                        {
+                            <span> · Εστάλη: @detailsQuote.SentAt.Value.ToString("dd/MM/yyyy HH:mm")</span>
+                        }
+                    </div>
+                </div>
+                <button class="btn-close" @onclick="CloseDetails"></button>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="fw-bold">@detailsQuote.CustomerName</div>
+                    @if (!string.IsNullOrEmpty(detailsQuote.CustomerDepartment))
+                    {
+                        <div class="small">@detailsQuote.CustomerDepartment</div>
+                    }
+                    @if (!string.IsNullOrEmpty(detailsQuote.CustomerContact))
+                    {
+                        <div class="small">Υπόψη: @detailsQuote.CustomerContact</div>
+                    }
+                    <div class="small text-muted">
+                        @detailsQuote.CustomerEmail @detailsQuote.CustomerPhone
+                        @if (!string.IsNullOrEmpty(detailsQuote.CustomerVat))
+                        {
+                            <span> · ΑΦΜ: @detailsQuote.CustomerVat</span>
+                        }
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    @if (!string.IsNullOrEmpty(detailsQuote.HospitalRequestRef))
+                    {
+                        <div class="small">Αρ. πρωτ. ζήτησης: <b>@detailsQuote.HospitalRequestRef</b></div>
+                    }
+                    @if (!string.IsNullOrEmpty(detailsQuote.Notes))
+                    {
+                        <div class="small text-muted">Σημειώσεις: @detailsQuote.Notes</div>
+                    }
+                    @if (detailsQuote.Status == QuoteStatus.Rejected && !string.IsNullOrEmpty(detailsQuote.RejectReason))
+                    {
+                        <div class="small text-danger">Λόγος απόρριψης: @detailsQuote.RejectReason</div>
+                    }
+                    @if (detailsQuote.Status == QuoteStatus.Converted)
+                    {
+                        <div class="small text-success">Παραγγελία: <b>@(detailsQuote.ConvertedOrderCode ?? detailsQuote.ConvertedOrderID?.ToString())</b></div>
+                    }
+                </div>
+            </div>
+
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Κωδικός</th>
+                        <th>Περιγραφή</th>
+                        <th class="text-end">Ποσ.</th>
+                        <th class="text-end">Τιμή μον.</th>
+                        <th class="text-end">Έκπτ.</th>
+                        <th class="text-end">ΦΠΑ</th>
+                        <th class="text-end">Σύνολο</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (line, idx) in detailsQuote.Lines.Select((l, i) => (l, i)))
+                    {
+                        <tr>
+                            <td>@(idx + 1)</td>
+                            <td>@line.CodePrick / @line.ProductTypeCode</td>
+                            <td>@(string.IsNullOrEmpty(line.Description) ? $"{line.AllergenDescription} - {line.ProductDescription}" : line.Description)</td>
+                            <td class="text-end">@line.Quantity @line.Unit</td>
+                            <td class="text-end">@line.UnitPrice.ToString("N2") €</td>
+                            <td class="text-end">@(line.DiscountPct > 0 ? $"{line.DiscountPct:N1}%" : "-")</td>
+                            <td class="text-end">@line.VatRate.ToString("N1")%</td>
+                            <td class="text-end">@line.LineTotal.ToString("N2") €</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="d-flex justify-content-end mb-3">
+                <div class="totals-box">
+                    <div class="d-flex justify-content-between"><span>Καθαρή αξία:</span><span>@detailsQuote.Subtotal.ToString("N2") €</span></div>
+                    <div class="d-flex justify-content-between"><span>ΦΠΑ:</span><span>@detailsQuote.VatTotal.ToString("N2") €</span></div>
+                    <div class="d-flex justify-content-between fw-bold"><span>Γενικό σύνολο:</span><span>@detailsQuote.Total.ToString("N2") €</span></div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <h6 class="mb-2">Συνημμένα</h6>
+                @if (attachments.Count == 0)
+                {
+                    <div class="text-muted small mb-2">Δεν υπάρχουν συνημμένα.</div>
+                }
+                else
+                {
+                    <ul class="list-group mb-2">
+                        @foreach (var att in attachments)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center py-1">
+                                <a href="javascript:void(0)" @onclick="() => DownloadAttachment(att)">@att.FileName</a>
+                                <span>
+                                    <span class="text-muted small me-2">@att.CreatedAt.ToString("dd/MM/yyyy")</span>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAttachment(att)">×</button>
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+                <InputFile OnChange="OnAttachmentSelected" class="form-control form-control-sm" style="max-width:320px;" />
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 justify-content-end">
+                @if (busy)
+                {
+                    <span class="text-muted align-self-center"><em>Επεξεργάζομαι...</em></span>
+                }
+                <button class="btn btn-outline-secondary" @onclick="() => GeneratePdf(detailsQuote)" disabled="@busy">Έκδοση PDF</button>
+                @if (QuoteStateMachine.CanEdit(detailsQuote.Status))
+                {
+                    <button class="btn btn-outline-primary" @onclick="() => OpenEdit(detailsQuote)" disabled="@busy">Επεξεργασία</button>
+                }
+                @if (detailsQuote.Status == QuoteStatus.Draft)
+                {
+                    <button class="btn btn-primary" @onclick="() => SendQuote(detailsQuote)" disabled="@busy">Αποστολή email</button>
+                }
+                @if (detailsQuote.Status == QuoteStatus.Sent)
+                {
+                    <button class="btn btn-success" @onclick="() => Accept(detailsQuote)" disabled="@busy">Αποδοχή</button>
+                    <button class="btn btn-outline-danger" @onclick="() => rejectingQuote = detailsQuote" disabled="@busy">Απόρριψη</button>
+                    <button class="btn btn-outline-warning" @onclick="() => ExpireQuote(detailsQuote)" disabled="@busy">Λήξη</button>
+                }
+                @if (detailsQuote.Status == QuoteStatus.Accepted)
+                {
+                    <button class="btn btn-success" @onclick="() => ConvertQuote(detailsQuote)" disabled="@busy">Μετατροπή σε παραγγελία</button>
+                }
+                @if (detailsQuote.Status == QuoteStatus.Expired)
+                {
+                    <button class="btn btn-warning" @onclick="() => Reissue(detailsQuote)" disabled="@busy">Επανέκδοση</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ============ Modal απόρριψης (λόγος) ============ *@
+@if (rejectingQuote != null)
+{
+    <div class="quote-modal-backdrop" style="z-index:1060" @onclick="() => rejectingQuote = null">
+        <div class="quote-modal quote-modal-sm" @onclick:stopPropagation="true">
+            <h5>Απόρριψη προσφοράς @rejectingQuote.QuoteNumber</h5>
+            <div class="mb-3">
+                <label class="form-label">Λόγος (προαιρετικά)</label>
+                <textarea class="form-control" rows="3" @bind="rejectReason"></textarea>
+            </div>
+            <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-outline-secondary" @onclick="() => rejectingQuote = null">Άκυρο</button>
+                <button class="btn btn-danger" @onclick="ConfirmReject" disabled="@busy">Απόρριψη</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ============ Modal δημιουργίας/επεξεργασίας ============ *@
+@if (showEditModal)
+{
+    <div class="quote-modal-backdrop">
+        <div class="quote-modal" @onclick:stopPropagation="true">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="mb-0">@(editQuoteId == null ? "Νέα Προσφορά" : $"Επεξεργασία {editQuoteNumber}")</h4>
+                <button class="btn-close" @onclick="CloseEdit"></button>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1">Εταιρεία</label>
+                    <select class="form-select" value="@editCompany" @onchange="OnCompanyChanged" disabled="@(editQuoteId != null)">
+                        <option value="SM">SM</option>
+                        <option value="BM">BM</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-4">
+                    <label class="form-label mb-1">Πελάτης (από λίστα γιατρών/νοσοκομείων)</label>
+                    <div class="input-group">
+                        <select class="form-select" @bind="editCustomerId">
+                            <option value="">-- Επιλογή --</option>
+                            @foreach (var c in customers)
+                            {
+                                <option value="@c.DoctorID">@c.Name @(string.IsNullOrEmpty(c.Department) ? "" : $"({c.Department})")</option>
+                            }
+                        </select>
+                        <button class="btn btn-outline-primary" title="Στοιχεία πελάτη (ΑΦΜ, email...)" @onclick="OpenEditCustomer" disabled="@(editCustomerId == null)">✎</button>
+                        <button class="btn btn-outline-success" title="Νέος πελάτης" @onclick="OpenNewCustomer">+</button>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1">Ημ/νία έκδοσης</label>
+                    <input type="date" class="form-control" @bind="editIssueDate" />
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1">Ισχύς έως</label>
+                    <input type="date" class="form-control" @bind="editValidUntil" />
+                </div>
+                <div class="col-12 col-md-2">
+                    <label class="form-label mb-1">Αρ. πρωτ. ζήτησης</label>
+                    <input class="form-control" @bind="editHospitalRef" />
+                </div>
+            </div>
+
+            <h6>Είδη</h6>
+            <div class="table-responsive">
+                <table class="table table-sm lines-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width:150px">Κωδικός Πρικ</th>
+                            <th style="min-width:150px">Τύπος προϊόντος</th>
+                            <th style="min-width:150px">Περιγραφή (προαιρετικά)</th>
+                            <th style="width:70px">Ποσ.</th>
+                            <th style="width:90px">Τιμή μον.</th>
+                            <th style="width:70px">Έκπτ. %</th>
+                            <th style="width:70px">ΦΠΑ %</th>
+                            <th style="width:90px" class="text-end">Σύνολο</th>
+                            <th style="width:40px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in editLines)
+                        {
+                            <tr>
+                                <td>
+                                    <select class="form-select form-select-sm" @bind="line.CodePrick">
+                                        <option value="">--</option>
+                                        @foreach (var a in allergens)
+                                        {
+                                            <option value="@a.CodePrick">@a.CodePrick - @a.AllergenDescription</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm" value="@line.ProductTypeCode"
+                                            @onchange="e => OnProductTypeChanged(line, e.Value?.ToString())">
+                                        <option value="">--</option>
+                                        @foreach (var p in productTypes)
+                                        {
+                                            <option value="@p.ProductTypeCode">@p.ProductTypeCode - @p.Description</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td><input class="form-control form-control-sm" @bind="line.Description" /></td>
+                                <td><input type="number" min="1" class="form-control form-control-sm text-end" @bind="line.Quantity" /></td>
+                                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" @bind="line.UnitPrice" /></td>
+                                <td><input type="number" step="0.5" min="0" max="100" class="form-control form-control-sm text-end" @bind="line.DiscountPct" /></td>
+                                <td><input type="number" step="0.5" min="0" class="form-control form-control-sm text-end" @bind="line.VatRate" /></td>
+                                <td class="text-end align-middle">@LineTotal(line).ToString("N2") €</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => editLines.Remove(line)">×</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <button class="btn btn-sm btn-outline-primary" @onclick="AddLine">+ Γραμμή</button>
+                <span class="ms-3 small text-muted">Εισαγωγή από Excel:</span>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadImportTemplate">Πρότυπο</button>
+                <InputFile OnChange="OnImportFileSelected" accept=".xlsx" class="form-control form-control-sm" style="max-width:280px;" />
+                @if (!string.IsNullOrEmpty(importSummary))
+                {
+                    <span class="small @(importHadErrors ? "text-danger" : "text-success")">@importSummary</span>
+                }
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label mb-1">Όροι παράδοσης</label>
+                    <input class="form-control" @bind="editTermsDelivery" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label mb-1">Όροι πληρωμής</label>
+                    <input class="form-control" @bind="editTermsPayment" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label mb-1">Εγγύηση</label>
+                    <input class="form-control" @bind="editTermsWarranty" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label mb-1">Εσωτερικές σημειώσεις</label>
+                    <textarea class="form-control" rows="2" @bind="editNotes"></textarea>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="totals-box">
+                    <div class="d-flex justify-content-between"><span>Καθαρή αξία:</span><span>@EditTotals().net.ToString("N2") €</span></div>
+                    <div class="d-flex justify-content-between"><span>ΦΠΑ:</span><span>@EditTotals().vat.ToString("N2") €</span></div>
+                    <div class="d-flex justify-content-between fw-bold"><span>Σύνολο:</span><span>@EditTotals().total.ToString("N2") €</span></div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary" @onclick="CloseEdit">Άκυρο</button>
+                    <button class="btn btn-success" @onclick="SaveQuote" disabled="@busy">Αποθήκευση</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ============ Modal νέου πελάτη ============ *@
+@if (showCustomerModal)
+{
+    <div class="quote-modal-backdrop" style="z-index:1060" @onclick="() => showCustomerModal = false">
+        <div class="quote-modal quote-modal-sm" @onclick:stopPropagation="true">
+            <h5>@(newCustomer.DoctorID == 0 ? "Νέος πελάτης (νοσοκομείο)" : $"Στοιχεία πελάτη: {newCustomer.Name}")</h5>
+            <div class="row g-2 mb-3">
+                <div class="col-12">
+                    <label class="form-label mb-1">Επωνυμία *</label>
+                    <input class="form-control" @bind="newCustomer.Name" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label mb-1">ΑΦΜ</label>
+                    <input class="form-control" @bind="newCustomer.VatNumber" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label mb-1">Τμήμα</label>
+                    <input class="form-control" @bind="newCustomer.Department" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label mb-1">Υπεύθυνος</label>
+                    <input class="form-control" @bind="newCustomer.ContactPerson" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label mb-1">Email</label>
+                    <input class="form-control" @bind="newCustomer.Email" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label mb-1">Τηλέφωνο</label>
+                    <input class="form-control" @bind="newCustomer.Phone" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label mb-1">Πόλη</label>
+                    <input class="form-control" @bind="newCustomer.City" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label mb-1">Διεύθυνση</label>
+                    <input class="form-control" @bind="newCustomer.Address" />
+                </div>
+            </div>
+            <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-outline-secondary" @onclick="() => showCustomerModal = false">Άκυρο</button>
+                <button class="btn btn-success" @onclick="SaveCustomer" disabled="@busy">Αποθήκευση</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private QuotesService Service => new QuotesService(dataService);
+
+    private bool loading = true;
+    private bool busy = false;
+    private string? message;
+    private bool messageIsError;
+
+    private List<QuoteViewDto> quotes = new();
+    private string filterCompany = "";
+    private string filterStatus = "All";
+    private DateTime? filterFrom;
+    private DateTime? filterTo;
+    private string filterSearch = "";
+
+    private QuoteViewDto? detailsQuote;
+    private QuoteViewDto? rejectingQuote;
+    private string rejectReason = "";
+
+    // Φόρμα δημιουργίας/επεξεργασίας
+    private bool showEditModal = false;
+    private long? editQuoteId;
+    private string editQuoteNumber = "";
+    private string editCompany = "SM";
+    private int? editCustomerId;
+    private DateTime editIssueDate = DateTime.Today;
+    private DateTime editValidUntil = DateTime.Today.AddDays(30);
+    private string? editHospitalRef;
+    private string? editNotes;
+    private string? editTermsDelivery;
+    private string? editTermsPayment;
+    private string? editTermsWarranty;
+    private List<SaveQuoteLineRequest> editLines = new();
+
+    private List<CustomerDto> customers = new();
+    private List<QuoteProductOptionDto> allergens = new();
+    private List<QuoteProductTypeOptionDto> productTypes = new();
+
+    private bool showCustomerModal = false;
+    private CustomerDto newCustomer = new();
+
+    private List<AttachmentDto> attachments = new();
+    private string? importSummary;
+    private bool importHadErrors;
+
+    private const decimal DefaultVatRate = 6m;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadQuotes();
+    }
+
+    private async Task LoadQuotes()
+    {
+        loading = true;
+        StateHasChanged();
+        quotes = await Service.GetQuotes(
+            string.IsNullOrEmpty(filterCompany) ? null : filterCompany,
+            filterStatus, null, filterFrom, filterTo,
+            string.IsNullOrEmpty(filterSearch) ? null : filterSearch);
+        loading = false;
+        StateHasChanged();
+    }
+
+    private void ShowMessage(string text, bool isError = false)
+    {
+        message = text;
+        messageIsError = isError;
+    }
+
+    // ---- Προβολή ----
+
+    private async Task OpenDetails(QuoteViewDto q)
+    {
+        detailsQuote = q;
+        attachments = await Service.GetAttachments(q.QuoteID);
+        StateHasChanged();
+    }
+
+    private void CloseDetails() => detailsQuote = null;
+
+    private async Task RefreshAndReopen(long quoteId)
+    {
+        await LoadQuotes();
+        detailsQuote = quotes.FirstOrDefault(x => x.QuoteID == quoteId);
+        if (detailsQuote != null)
+            attachments = await Service.GetAttachments(quoteId);
+    }
+
+    // ---- Συνημμένα ----
+
+    private async Task OnAttachmentSelected(InputFileChangeEventArgs e)
+    {
+        if (detailsQuote == null) return;
+        var file = e.File;
+        if (file == null) return;
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(ms);
+        busy = true;
+        await Service.UploadAttachment(detailsQuote.QuoteID, ms.ToArray(), file.Name);
+        busy = false;
+        await RefreshAndReopen(detailsQuote.QuoteID);
+    }
+
+    private async Task DownloadAttachment(AttachmentDto att)
+    {
+        var bytes = await Service.DownloadAttachment(att.AttachmentID);
+        if (bytes != null)
+            await JS.InvokeVoidAsync("downloadFileFromBytes", att.FileName ?? "attachment", bytes);
+    }
+
+    private async Task DeleteAttachment(AttachmentDto att)
+    {
+        if (detailsQuote == null) return;
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Διαγραφή του συνημμένου «{att.FileName}»;");
+        if (!ok) return;
+        await Service.DeleteAttachment(att.AttachmentID);
+        await RefreshAndReopen(detailsQuote.QuoteID);
+    }
+
+    // ---- Ενέργειες ----
+
+    private async Task GeneratePdf(QuoteViewDto q)
+    {
+        busy = true;
+        var bytes = await Service.GeneratePdf(q.QuoteID, new QuoteActionRequest { UserID = userManager.User?.IdUser });
+        busy = false;
+        if (bytes == null)
+        {
+            ShowMessage("Σφάλμα παραγωγής PDF.", isError: true);
+            return;
+        }
+        await JS.InvokeVoidAsync("downloadFileFromBytes", $"{q.QuoteNumber}.pdf", bytes);
+        await RefreshAndReopen(q.QuoteID);
+    }
+
+    private async Task DownloadPdf(QuoteViewDto q)
+    {
+        var bytes = await Service.DownloadPdf(q.QuoteID);
+        if (bytes != null)
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"{q.QuoteNumber}.pdf", bytes);
+    }
+
+    private async Task SendQuote(QuoteViewDto q)
+    {
+        if (string.IsNullOrEmpty(q.CustomerEmail))
+        {
+            ShowMessage("Ο πελάτης δεν έχει email.", isError: true);
+            return;
+        }
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Αποστολή της προσφοράς {q.QuoteNumber} στο {q.CustomerEmail};");
+        if (!ok) return;
+
+        busy = true;
+        var result = await Service.Send(q.QuoteID, new QuoteActionRequest { UserID = userManager.User?.IdUser });
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            ShowMessage(result?.Message ?? "Σφάλμα αποστολής email. Έλεγξε τις ρυθμίσεις SMTP.", isError: true);
+            return;
+        }
+        ShowMessage(result.Message ?? "Η προσφορά εστάλη.");
+        await RefreshAndReopen(q.QuoteID);
+    }
+
+    private async Task Accept(QuoteViewDto q)
+    {
+        busy = true;
+        var result = await Service.Accept(q.QuoteID, new QuoteActionRequest { UserID = userManager.User?.IdUser });
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            ShowMessage("Δεν επιτρέπεται η ενέργεια.", isError: true);
+            return;
+        }
+        await RefreshAndReopen(q.QuoteID);
+    }
+
+    private async Task ConfirmReject()
+    {
+        if (rejectingQuote == null) return;
+        busy = true;
+        var result = await Service.Reject(rejectingQuote.QuoteID,
+            new QuoteActionRequest { UserID = userManager.User?.IdUser, Reason = rejectReason });
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            ShowMessage("Δεν επιτρέπεται η ενέργεια.", isError: true);
+            return;
+        }
+        var id = rejectingQuote.QuoteID;
+        rejectingQuote = null;
+        rejectReason = "";
+        await RefreshAndReopen(id);
+    }
+
+    private async Task ExpireQuote(QuoteViewDto q)
+    {
+        busy = true;
+        var result = await Service.Expire(q.QuoteID, new QuoteActionRequest { UserID = userManager.User?.IdUser });
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            ShowMessage("Δεν επιτρέπεται η ενέργεια.", isError: true);
+            return;
+        }
+        await RefreshAndReopen(q.QuoteID);
+    }
+
+    private async Task Reissue(QuoteViewDto q)
+    {
+        busy = true;
+        var result = await Service.Reissue(q.QuoteID, new QuoteActionRequest { UserID = userManager.User?.IdUser });
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            ShowMessage("Δεν επιτρέπεται η ενέργεια.", isError: true);
+            return;
+        }
+        await RefreshAndReopen(q.QuoteID);
+    }
+
+    private async Task ConvertQuote(QuoteViewDto q)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Μετατροπή της προσφοράς {q.QuoteNumber} σε παραγγελία; Η προσφορά θα κλειδώσει.");
+        if (!ok) return;
+
+        busy = true;
+        var result = await Service.Convert(q.QuoteID, new QuoteActionRequest { UserID = userManager.User?.IdUser });
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            ShowMessage(result?.Message ?? "Σφάλμα μετατροπής.", isError: true);
+            return;
+        }
+        ShowMessage(result.Message ?? $"Δημιουργήθηκε η παραγγελία {result.OrderCode}.");
+        await RefreshAndReopen(q.QuoteID);
+    }
+
+    // ---- Φόρμα ----
+
+    private async Task OpenCreate()
+    {
+        editQuoteId = null;
+        editQuoteNumber = "";
+        editCompany = "SM";
+        editCustomerId = null;
+        editIssueDate = DateTime.Today;
+        editValidUntil = DateTime.Today.AddDays(30);
+        editHospitalRef = null;
+        editNotes = null;
+        editTermsDelivery = null;
+        editTermsPayment = null;
+        editTermsWarranty = null;
+        editLines = new List<SaveQuoteLineRequest>();
+        AddLine();
+        importSummary = null;
+        showEditModal = true;
+        await LoadFormLookups();
+    }
+
+    private async Task OpenEdit(QuoteViewDto q)
+    {
+        editQuoteId = q.QuoteID;
+        editQuoteNumber = q.QuoteNumber;
+        editCompany = q.Company;
+        editCustomerId = q.CustomerDoctorID;
+        editIssueDate = q.IssueDate;
+        editValidUntil = q.ValidUntil;
+        editHospitalRef = q.HospitalRequestRef;
+        editNotes = q.Notes;
+        editTermsDelivery = q.TermsDelivery;
+        editTermsPayment = q.TermsPayment;
+        editTermsWarranty = q.TermsWarranty;
+        editLines = q.Lines.Select(l => new SaveQuoteLineRequest
+        {
+            CodePrick = l.CodePrick,
+            ProductTypeCode = l.ProductTypeCode,
+            Description = l.Description,
+            Quantity = l.Quantity,
+            Unit = l.Unit,
+            UnitPrice = l.UnitPrice,
+            DiscountPct = l.DiscountPct,
+            VatRate = l.VatRate
+        }).ToList();
+        detailsQuote = null;
+        importSummary = null;
+        showEditModal = true;
+        await LoadFormLookups();
+    }
+
+    private void CloseEdit() => showEditModal = false;
+
+    private async Task LoadFormLookups()
+    {
+        customers = await Service.GetCustomers(null);
+        allergens = await Service.GetAllergens(editCompany);
+        productTypes = await Service.GetProductTypes(editCompany);
+        StateHasChanged();
+    }
+
+    private async Task OnCompanyChanged(ChangeEventArgs e)
+    {
+        editCompany = e.Value?.ToString() ?? "SM";
+        allergens = await Service.GetAllergens(editCompany);
+        productTypes = await Service.GetProductTypes(editCompany);
+    }
+
+    private void AddLine()
+    {
+        editLines.Add(new SaveQuoteLineRequest
+        {
+            CodePrick = "",
+            ProductTypeCode = "",
+            Quantity = 1,
+            Unit = "τεμ.",
+            VatRate = DefaultVatRate
+        });
+    }
+
+    // Προσυμπλήρωση τιμής από τον τύπο προϊόντος (χονδρική αν υπάρχει, αλλιώς λιανική).
+    private void OnProductTypeChanged(SaveQuoteLineRequest line, string? code)
+    {
+        line.ProductTypeCode = code ?? "";
+        var product = productTypes.FirstOrDefault(p => p.ProductTypeCode == code);
+        if (product != null && line.UnitPrice == 0)
+            line.UnitPrice = product.ExFactoryPrice ?? product.PublicPrice ?? 0;
+    }
+
+    // Live υπολογισμοί -- ίδια λογική με τον server (QuoteCalculator).
+    private decimal LineTotal(SaveQuoteLineRequest l)
+    {
+        var line = new QuoteLine
+        {
+            Quantity = l.Quantity,
+            UnitPrice = l.UnitPrice,
+            DiscountPct = l.DiscountPct,
+            VatRate = l.VatRate
+        };
+        QuoteCalculator.ComputeLine(line);
+        return line.LineTotal;
+    }
+
+    private (decimal net, decimal vat, decimal total) EditTotals()
+    {
+        decimal net = 0, vat = 0;
+        foreach (var l in editLines)
+        {
+            var line = new QuoteLine
+            {
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice,
+                DiscountPct = l.DiscountPct,
+                VatRate = l.VatRate
+            };
+            QuoteCalculator.ComputeLine(line);
+            net += line.LineNet;
+            vat += line.LineVat;
+        }
+        return (net, vat, net + vat);
+    }
+
+    private async Task SaveQuote()
+    {
+        if (editCustomerId == null)
+        {
+            ShowMessage("Επίλεξε πελάτη.", isError: true);
+            return;
+        }
+        var validLines = editLines
+            .Where(l => !string.IsNullOrEmpty(l.CodePrick) && !string.IsNullOrEmpty(l.ProductTypeCode) && l.Quantity > 0)
+            .ToList();
+        if (validLines.Count == 0)
+        {
+            ShowMessage("Συμπλήρωσε τουλάχιστον μία πλήρη γραμμή (κωδικός, τύπος, ποσότητα).", isError: true);
+            return;
+        }
+
+        var req = new SaveQuoteRequest
+        {
+            Company = editCompany,
+            CustomerDoctorID = editCustomerId,
+            IssueDate = editIssueDate,
+            ValidUntil = editValidUntil,
+            HospitalRequestRef = editHospitalRef,
+            Notes = editNotes,
+            TermsDelivery = editTermsDelivery,
+            TermsPayment = editTermsPayment,
+            TermsWarranty = editTermsWarranty,
+            CreatedBy = userManager.User?.IdUser,
+            Lines = validLines
+        };
+
+        busy = true;
+        var result = editQuoteId == null
+            ? await Service.CreateQuote(req)
+            : await Service.UpdateQuote(editQuoteId.Value, req);
+        busy = false;
+
+        if (result == null)
+        {
+            ShowMessage("Σφάλμα αποθήκευσης προσφοράς.", isError: true);
+            return;
+        }
+        showEditModal = false;
+        ShowMessage($"Η προσφορά {result.QuoteNumber} αποθηκεύτηκε.");
+        await LoadQuotes();
+        detailsQuote = quotes.FirstOrDefault(x => x.QuoteID == result.QuoteID);
+    }
+
+    private void OpenNewCustomer()
+    {
+        newCustomer = new CustomerDto();
+        showCustomerModal = true;
+    }
+
+    // Επεξεργασία στοιχείων (ΑΦΜ, τμήμα, email...) του επιλεγμένου πελάτη --
+    // ενημερώνει την υπάρχουσα εγγραφή στον πίνακα Doctors.
+    private void OpenEditCustomer()
+    {
+        var selected = customers.FirstOrDefault(c => c.DoctorID == editCustomerId);
+        if (selected == null) return;
+        newCustomer = new CustomerDto
+        {
+            DoctorID = selected.DoctorID,
+            Name = selected.Name,
+            VatNumber = selected.VatNumber,
+            Department = selected.Department,
+            ContactPerson = selected.ContactPerson,
+            Email = selected.Email,
+            Phone = selected.Phone,
+            Address = selected.Address,
+            City = selected.City,
+            PostalCode = selected.PostalCode
+        };
+        showCustomerModal = true;
+    }
+
+    private async Task SaveCustomer()
+    {
+        if (string.IsNullOrWhiteSpace(newCustomer.Name))
+        {
+            ShowMessage("Η επωνυμία είναι υποχρεωτική.", isError: true);
+            return;
+        }
+        busy = true;
+        var saved = newCustomer.DoctorID == 0
+            ? await Service.CreateCustomer(newCustomer)
+            : await Service.UpdateCustomer(newCustomer.DoctorID, newCustomer);
+        busy = false;
+        if (saved == null)
+        {
+            ShowMessage("Σφάλμα αποθήκευσης πελάτη.", isError: true);
+            return;
+        }
+        customers = await Service.GetCustomers(null);
+        editCustomerId = saved.DoctorID;
+        newCustomer = new CustomerDto();
+        showCustomerModal = false;
+    }
+
+    // ---- Εισαγωγή γραμμών από Excel ----
+
+    private async Task DownloadImportTemplate()
+    {
+        var bytes = await Service.DownloadImportTemplate();
+        if (bytes != null)
+            await JS.InvokeVoidAsync("downloadFileFromBytes", "Πρότυπο_Εισαγωγής_Προσφοράς.xlsx", bytes);
+    }
+
+    private async Task OnImportFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024).CopyToAsync(ms);
+
+        busy = true;
+        var preview = await Service.ImportPreview(editCompany, ms.ToArray(), file.Name);
+        busy = false;
+
+        if (preview == null)
+        {
+            importSummary = "Σφάλμα ανάγνωσης του αρχείου.";
+            importHadErrors = true;
+            return;
+        }
+
+        var valid = preview.Lines.Where(l => l.IsValid).ToList();
+        foreach (var l in valid)
+        {
+            editLines.Add(new SaveQuoteLineRequest
+            {
+                CodePrick = l.CodePrick,
+                ProductTypeCode = l.ProductTypeCode,
+                Description = l.Description,
+                Quantity = l.Quantity,
+                Unit = "τεμ.",
+                UnitPrice = l.UnitPrice,
+                DiscountPct = l.DiscountPct,
+                VatRate = l.VatRate
+            });
+        }
+        // Καθάρισμα τυχόν αρχικής κενής γραμμής
+        editLines.RemoveAll(l => string.IsNullOrEmpty(l.CodePrick) && string.IsNullOrEmpty(l.ProductTypeCode));
+        if (editLines.Count == 0) AddLine();
+
+        importHadErrors = preview.ErrorRows > 0;
+        importSummary = preview.ErrorRows == 0
+            ? $"Εισήχθησαν {valid.Count} γραμμές."
+            : $"Εισήχθησαν {valid.Count} γραμμές, {preview.ErrorRows} απορρίφθηκαν: " +
+              string.Join(" · ", preview.Lines.Where(l => !l.IsValid).Take(3)
+                  .Select(l => $"{l.CodePrick}/{l.ProductTypeCode}: {l.Warning}"));
+    }
+}

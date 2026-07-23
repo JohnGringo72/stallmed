@@ -45,6 +45,10 @@
                         <li><a class="dropdown-item" href="/prick-doctors" @onclick="CloseMenu">Doctors</a></li>
                     }
                     <li><a class="dropdown-item" href="/prick-doctor-orders" @onclick="CloseMenu">Orders</a></li>
+                    @if (!userManager.IsWarehouse)
+                    {
+                        <li><a class="dropdown-item" href="/quotes" @onclick="CloseMenu">Quotations</a></li>
+                    }
                     <li><a class="dropdown-item" href="/prick-production" @onclick="CloseMenu">Stock</a></li>
                     <li><a class="dropdown-item" href="/prick-receiving" @onclick="CloseMenu">Receiving</a></li>
                     <li><a class="dropdown-item" href="/prick-shipments" @onclick="CloseMenu">Deliveries</a></li>

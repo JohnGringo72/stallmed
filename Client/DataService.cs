@@ -63,6 +63,31 @@ namespace StallmedManager.Client
             }
         }
 
+        public async Task<TResponse> Put<TRequest, TResponse>(string path, TRequest body)
+        {
+            if (userManager?.User == null)
+                return default(TResponse);
+            var request = new HttpRequestMessage(HttpMethod.Put, path);
+            request.Headers.Add("Authorization", "Bearer " + userManager.User.Token);
+            request.Content = JsonContent.Create(body);
+            var response = await http.SendAsync(request);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                await userManager.Logout();
+                return default(TResponse);
+            }
+            if (!response.IsSuccessStatusCode)
+                return default(TResponse);
+            try
+            {
+                return await response.Content.ReadFromJsonAsync<TResponse>();
+            }
+            catch
+            {
+                return default(TResponse);
+            }
+        }
+
         public async Task<byte[]> GetBytes(string path)
         {
             if (userManager?.User == null)

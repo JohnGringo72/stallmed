@@ -24,6 +24,12 @@ namespace StallmedManager.Server.Models
         public virtual DbSet<ShippingCourier> ShippingCouriers { get; set; }
         public virtual DbSet<DeliveryPerson> DeliveryPersons { get; set; }
 
+        // ---- Quotes Module (Προσφορές) -- οι πελάτες/νοσοκομεία ζουν στον πίνακα Doctors ----
+        public virtual DbSet<Quote> Quotes { get; set; }
+        public virtual DbSet<QuoteLine> QuoteLines { get; set; }
+        public virtual DbSet<QuoteEvent> QuoteEvents { get; set; }
+        public virtual DbSet<QuoteAttachment> QuoteAttachments { get; set; }
+
         public StallmedContext(DbContextOptions<StallmedContext> options) : base(options)
         {
         }

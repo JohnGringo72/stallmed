@@ -6,6 +6,10 @@
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "Server/StallmedManager.Server.csproj", "--urls", "http://localhost:5238"],
       "port": 5238
+    },
+    {
+      "name": "attach",
+      "url": "http://localhost:5238"
     }
   ]
 }

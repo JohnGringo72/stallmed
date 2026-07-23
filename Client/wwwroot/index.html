@@ -15,15 +15,17 @@
 <body>
     <div id="app">
         <div class="sbt-loading">
-            <img src="images/sbt-suite-logo.svg" alt="SBT Suite" width="60" />
+            <div class="sbt-loading-ring">
+                <svg class="loading-progress">
+                    <circle r="40%" cx="50%" cy="50%" />
+                    <circle r="40%" cx="50%" cy="50%" />
+                </svg>
+                <img src="images/sbt-suite-logo.svg" alt="SBT Suite" width="60" />
+            </div>
             <div class="sbt-loading-text">
                 <span style="font-weight:800;color:#0f2b46;">SBT</span>
                 <span style="font-weight:400;color:#4fd1c5;">Suite</span>
             </div>
-            <svg class="loading-progress">
-                <circle r="40%" cx="50%" cy="50%" />
-                <circle r="40%" cx="50%" cy="50%" />
-            </svg>
             <div class="loading-progress-text"></div>
         </div>
     </div>

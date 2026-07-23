@@ -40,6 +40,8 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AiContextService>();
 builder.Services.AddScoped<ChatBotService>();
+builder.Services.AddScoped<QuotePdfService>();
+builder.Services.AddScoped<QuoteEmailService>();
 
 var app = builder.Build();
 
