@@ -22,6 +22,7 @@ namespace StallmedManager.Server.Models
         public virtual DbSet<ProductionReceiptAllocation> ProductionReceiptAllocations { get; set; }
         public virtual DbSet<DoctorOrderAttachment> DoctorOrderAttachments { get; set; }
         public virtual DbSet<ShippingCourier> ShippingCouriers { get; set; }
+        public virtual DbSet<StockReorderPoint> StockReorderPoints { get; set; }
         public virtual DbSet<DeliveryPerson> DeliveryPersons { get; set; }
 
         // ---- Quotes Module (Προσφορές) -- οι πελάτες/νοσοκομεία ζουν στον πίνακα Doctors ----

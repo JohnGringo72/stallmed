@@ -233,6 +233,22 @@ namespace StallmedManager.Shared.Models
         public DateTime CreatedAt { get; set; }
     }
 
+    // Όριο αναπαραγγελίας ανά κωδικό+τύπο προϊόντος (Dashboard Αποθέματος).
+    // Το φυσικό/δεσμευμένο/παραγγελμένο απόθεμα υπολογίζεται live από τα
+    // transactional δεδομένα -- εδώ αποθηκεύεται μόνο το όριο.
+    [Table("StockReorderPoints")]
+    public class StockReorderPoint
+    {
+        [Key]
+        public long ReorderPointID { get; set; }
+        public string CodePrick { get; set; }
+        public string ProductTypeCode { get; set; }
+        [Column("ReorderPoint")]
+        public int Quantity { get; set; }
+        public int? UpdatedBy { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
     // Διαχειρίσιμη λίστα ονομάτων για αποστολή "Ίδια Μέσα" -- απλά ονόματα,
     // ΔΕΝ συνδέεται με τον πίνακα Users/λογαριασμούς σύνδεσης.
     [Table("DeliveryPersons")]

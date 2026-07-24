@@ -41,6 +41,16 @@ namespace StallmedManager.Client
             return await dataService.Get<List<SmartStockProposalDto>>($"api/prickdashboard/smart-stock-proposal{query}") ?? new();
         }
 
+        public async Task<List<StockDashboardItemDto>> GetStockDashboard()
+        {
+            return await dataService.Get<List<StockDashboardItemDto>>("api/prickdashboard/stock-dashboard") ?? new();
+        }
+
+        public async Task<SetReorderPointResult> SetReorderPoint(SetReorderPointRequest req)
+        {
+            return await dataService.Post<SetReorderPointRequest, SetReorderPointResult>("api/prickdashboard/reorder-point", req);
+        }
+
         public async Task<byte[]> ExportSmartStockProposalExcel(string company, string productTypeCode, List<SmartStockProposalDto> items)
         {
             return await dataService.PostBytes(

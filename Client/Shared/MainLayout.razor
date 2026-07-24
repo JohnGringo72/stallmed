@@ -40,6 +40,7 @@
                 </a>
                 <ul class="dropdown-menu dropdown-menu-dark">
                     <li><a class="dropdown-item" href="/prick-dashboard" @onclick="CloseMenu">Dashboard</a></li>
+                    <li><a class="dropdown-item" href="/apothema" @onclick="CloseMenu">Inventory</a></li>
                     @if (!userManager.IsWarehouse)
                     {
                         <li><a class="dropdown-item" href="/prick-doctors" @onclick="CloseMenu">Doctors</a></li>
@@ -110,7 +111,7 @@
 
     // Οι μόνες σελίδες που επιτρέπονται στο role "warehouse".
     private static readonly string[] WarehouseAllowedPaths =
-        { "/prick-dashboard", "/prick-doctor-orders", "/prick-production", "/prick-receiving", "/prick-shipments" };
+        { "/prick-dashboard", "/apothema", "/prick-doctor-orders", "/prick-production", "/prick-receiving", "/prick-shipments" };
 
     // Αυτό το layout instance επιβιώνει σε όλα τα navigations (μόνο το Body αλλάζει),
     // οπότε το OnParametersSet τρέχει σε κάθε αλλαγή route -- ιδανικό hook για route guard

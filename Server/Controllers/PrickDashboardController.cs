@@ -280,6 +280,116 @@ namespace StallmedManager.Server.Controllers
             return Ok(result.OrderBy(x => x.ProductTypeCode).ThenBy(x => x.CodePrick).ToList());
         }
 
+        // ---- Dashboard Αποθέματος (§8β): μία γραμμή ανά κωδικό+τύπο ----
+        // Φυσικό (OnHand)      = ελεύθερο υπόλοιπο παραλαβών + allocated τεμάχια
+        //                        μη απεσταλμένων παραγγελιών (είναι ακόμα στην αποθήκη)
+        // Δεσμευμένο (Committed) = ζήτηση ανοιχτών παραγγελιών γιατρών
+        //                        (Requested - Cancelled, order όχι Fulfilled/Cancelled)
+        //                        -- αυξάνεται με τη μετατροπή προσφοράς σε παραγγελία,
+        //                        μειώνεται με την αποστολή, όπως ζητά η προδιαγραφή.
+        // Παραγγελμένα (OnOrder) = υπόλοιπο προς παραλαβή (Ordered - Received) από
+        //                        ProductionOrderLines σε Open/PartiallyReceived.
+        // Διαθέσιμο/ΓιαΠαραγγελία = παράγωγα στο shared StockDashboardLogic.
+        [HttpGet("stock-dashboard")]
+        public async Task<ActionResult<List<StockDashboardItemDto>>> GetStockDashboard()
+        {
+            // Ελεύθερο (μη δεσμευμένο) υπόλοιπο ανά κωδικό+τύπο
+            var free = await _context.StockReceipts
+                .Where(r => !r.IsDepleted)
+                .GroupBy(r => new { r.CodePrick, r.ProductTypeCode })
+                .Select(g => new { g.Key.CodePrick, g.Key.ProductTypeCode, Total = g.Sum(x => x.QuantityRemaining) })
+                .ToListAsync();
+
+            // Ζήτηση + allocated ανοιχτών (μη απεσταλμένων/ακυρωμένων) παραγγελιών
+            var openDemand = await _context.DoctorOrderLines
+                .Where(l => l.Order.OrderStatus != "Fulfilled" && l.Order.OrderStatus != "Cancelled")
+                .GroupBy(l => new { l.CodePrick, l.ProductTypeCode })
+                .Select(g => new
+                {
+                    g.Key.CodePrick,
+                    g.Key.ProductTypeCode,
+                    Committed = g.Sum(l => l.QuantityRequested - l.QuantityCancelled),
+                    Allocated = g.Sum(l => l.QuantityAllocated)
+                })
+                .ToListAsync();
+
+            // Παραγγελμένα στην παραγωγή, αναμένονται (υπόλοιπο προς παραλαβή)
+            var onOrder = await _context.ProductionOrderLines
+                .Where(l => l.LineStatus == "Open" || l.LineStatus == "PartiallyReceived")
+                .GroupBy(l => new { l.CodePrick, l.ProductTypeCode })
+                .Select(g => new { g.Key.CodePrick, g.Key.ProductTypeCode, Total = g.Sum(l => l.QuantityOrdered - l.QuantityReceived) })
+                .ToListAsync();
+
+            var reorderPoints = await _context.StockReorderPoints.ToListAsync();
+            var allergenLookup = await _context.AllergenCodes.ToDictionaryAsync(a => a.CodePrick);
+            var productLookup = await _context.ProductTypes.ToDictionaryAsync(p => p.ProductTypeCode);
+
+            var freeDict = free.ToDictionary(x => (x.CodePrick, x.ProductTypeCode), x => x.Total);
+            var demandDict = openDemand.ToDictionary(x => (x.CodePrick, x.ProductTypeCode), x => (x.Committed, x.Allocated));
+            var onOrderDict = onOrder.ToDictionary(x => (x.CodePrick, x.ProductTypeCode), x => x.Total);
+            var ropDict = reorderPoints.ToDictionary(x => (x.CodePrick, x.ProductTypeCode), x => x.Quantity);
+
+            var keys = freeDict.Keys
+                .Union(demandDict.Keys)
+                .Union(onOrderDict.Keys)
+                .Union(ropDict.Keys)
+                .ToList();
+
+            var result = new List<StockDashboardItemDto>();
+            foreach (var key in keys)
+            {
+                allergenLookup.TryGetValue(key.CodePrick, out var allergen);
+                productLookup.TryGetValue(key.ProductTypeCode, out var product);
+                demandDict.TryGetValue(key, out var demand);
+
+                result.Add(new StockDashboardItemDto
+                {
+                    CodePrick = key.CodePrick,
+                    Description = allergen?.DescriptionGreek ?? allergen?.Description,
+                    ProductTypeCode = key.ProductTypeCode,
+                    ProductDescription = product?.Description,
+                    OnHand = (freeDict.TryGetValue(key, out var f) ? f : 0) + demand.Allocated,
+                    Committed = demand.Committed,
+                    OnOrder = onOrderDict.TryGetValue(key, out var o) ? o : 0,
+                    ReorderPoint = ropDict.TryGetValue(key, out var rop) ? rop : 0
+                });
+            }
+
+            return Ok(result.OrderBy(x => x.CodePrick).ThenBy(x => x.ProductTypeCode).ToList());
+        }
+
+        // ---- Ορισμός ορίου αναπαραγγελίας (upsert) ----
+        [HttpPost("reorder-point")]
+        public async Task<ActionResult<SetReorderPointResult>> SetReorderPoint([FromBody] SetReorderPointRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.CodePrick) || string.IsNullOrWhiteSpace(req.ProductTypeCode))
+                return Ok(new SetReorderPointResult { Success = false, Message = "Λείπει κωδικός ή τύπος προϊόντος." });
+            if (req.ReorderPoint < 0)
+                return Ok(new SetReorderPointResult { Success = false, Message = "Το όριο δεν μπορεί να είναι αρνητικό." });
+
+            var existing = await _context.StockReorderPoints
+                .FirstOrDefaultAsync(x => x.CodePrick == req.CodePrick && x.ProductTypeCode == req.ProductTypeCode);
+
+            if (existing == null)
+            {
+                _context.StockReorderPoints.Add(new StockReorderPoint
+                {
+                    CodePrick = req.CodePrick,
+                    ProductTypeCode = req.ProductTypeCode,
+                    Quantity = req.ReorderPoint,
+                    UpdatedAt = DateTime.Now
+                });
+            }
+            else
+            {
+                existing.Quantity = req.ReorderPoint;
+                existing.UpdatedAt = DateTime.Now;
+            }
+
+            await _context.SaveChangesAsync();
+            return Ok(new SetReorderPointResult { Success = true });
+        }
+
         // ---- Export πρότασης παραγγελίας σε Excel (Κωδικός/Ποσότητα) ----
         [HttpPost("smart-stock-proposal-export")]
         public ActionResult ExportSmartStockProposalExcel(

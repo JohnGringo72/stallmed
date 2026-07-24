@@ -1,0 +1,255 @@
+@page "/apothema"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+
+<PageTitle>Απόθεμα - Dashboard</PageTitle>
+
+<style>
+    .stat-tile {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 18px;
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+        .stat-tile .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .stat-tile .stat-label {
+            color: #777;
+            font-size: 0.9rem;
+        }
+
+    .stock-row-danger { background-color: #f8d7da !important; }
+    .stock-row-warn { background-color: #fff3cd !important; }
+
+    .rop-input { width: 80px; display: inline-block; }
+    .rop-saved { color: #198754; font-weight: 700; margin-left: 4px; }
+
+    .group-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 18px 0 8px 0;
+    }
+</style>
+
+<div class="sbt-page-header">
+    <img src="images/icons/icon-dashboard.svg" alt="" class="sbt-page-icon" />
+    <h1 class="mb-3">Απόθεμα</h1>
+</div>
+
+@if (status == "loading")
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (status == "loaded")
+{
+    <!-- ===== STAT TILES ===== -->
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="stat-tile">
+                <div class="stat-value">@items.Count</div>
+                <div class="stat-label">Σύνολο ειδών</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-tile">
+                <div class="stat-value text-danger">@items.Count(x => x.ToOrder > 0)</div>
+                <div class="stat-label">Είδη προς παραγγελία</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-tile">
+                <div class="stat-value text-warning">@items.Sum(x => x.ToOrder)</div>
+                <div class="stat-label">Τεμάχια για παραγγελία</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-tile">
+                <div class="stat-value text-info">@items.Sum(x => x.OnOrder)</div>
+                <div class="stat-label">Παραγγελμένα (αναμένονται)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== ΦΙΛΤΡΑ ===== -->
+    <div class="row g-2 mb-2 align-items-end">
+        <div class="col-12 col-md-4">
+            <input class="form-control" placeholder="Αναζήτηση κωδικού ή περιγραφής..."
+                   value="@searchText" @oninput="e => searchText = e.Value?.ToString() ?? string.Empty" />
+        </div>
+        <div class="col-auto form-check ms-2">
+            <input class="form-check-input" type="checkbox" id="onlyToOrder" @bind="onlyToOrder" />
+            <label class="form-check-label" for="onlyToOrder">Μόνο είδη προς παραγγελία</label>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-outline-primary btn-sm" @onclick="Load">🔄 Ανανέωση</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger py-2">@errorMessage</div>
+    }
+
+    @foreach (var group in Groups)
+    {
+        <div class="group-header">
+            <h4 class="mb-0">@group.Title</h4>
+            <span class="badge bg-secondary">@group.Items.Count</span>
+        </div>
+
+        @if (!group.Items.Any())
+        {
+            <p class="text-muted">Δεν βρέθηκαν είδη.</p>
+        }
+        else
+        {
+            <div class="table-responsive mb-3">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Κωδικός</th>
+                            <th>Περιγραφή</th>
+                            <th>Τύπος</th>
+                            <th title="Φυσικό απόθεμα στην αποθήκη">Φυσικό</th>
+                            <th title="Δεσμευμένο από ανοιχτές παραγγελίες γιατρών">Δεσμευμένο</th>
+                            <th title="Παραγγελμένα στην παραγωγή, αναμένεται παραλαβή">Παραγγελμένα</th>
+                            <th title="Διαθέσιμο = Φυσικό - Δεσμευμένο">Διαθέσιμο</th>
+                            <th title="Όριο (σημείο) αναπαραγγελίας -- επεξεργάσιμο">Όριο</th>
+                            <th title="Για παραγγελία = max(0, Όριο - (Διαθέσιμο + Παραγγελμένα))">Για παραγγελία</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in group.Items)
+                        {
+                            var rowClass = item.Urgency == StockDashboardLogic.UrgencyUrgent ? "stock-row-danger"
+                                         : item.Urgency == StockDashboardLogic.UrgencyLow ? "stock-row-warn"
+                                         : "";
+                            <tr class="@rowClass">
+                                <td><strong>@item.CodePrick</strong></td>
+                                <td><small>@item.Description</small></td>
+                                <td>@item.ProductTypeCode</td>
+                                <td>@item.OnHand</td>
+                                <td>@item.Committed</td>
+                                <td>@item.OnOrder</td>
+                                <td><strong>@item.Available</strong></td>
+                                <td>
+                                    <input type="number" min="0" class="form-control form-control-sm rop-input"
+                                           value="@item.ReorderPoint"
+                                           @onchange="e => SaveReorderPoint(item, e)" />
+                                    @if (savedKey == Key(item))
+                                    {
+                                        <span class="rop-saved">✔</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (item.Urgency == StockDashboardLogic.UrgencyUrgent)
+                                    {
+                                        <span class="badge bg-danger">⛔ Επείγον@(item.ToOrder > 0 ? $" · {item.ToOrder} τεμ." : "")</span>
+                                    }
+                                    else if (item.Urgency == StockDashboardLogic.UrgencyLow)
+                                    {
+                                        <span class="badge bg-warning text-dark">⚠️ Χαμηλό · @item.ToOrder τεμ.</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    private string status = "idle";
+    private List<StockDashboardItemDto> items = new();
+    private string searchText = "";
+    private bool onlyToOrder = false;
+    private string errorMessage = "";
+    private string? savedKey;
+
+    private static string Key(StockDashboardItemDto item) => $"{item.CodePrick}|{item.ProductTypeCode}";
+
+    private IEnumerable<StockDashboardItemDto> Filtered
+    {
+        get
+        {
+            var q = items.AsEnumerable();
+            if (onlyToOrder)
+                q = q.Where(x => x.ToOrder > 0);
+            if (!string.IsNullOrWhiteSpace(searchText))
+                q = q.Where(x =>
+                    (x.CodePrick?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (x.Description?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false));
+            return q;
+        }
+    }
+
+    // Δύο ομάδες κατά την προδιαγραφή: Τρόφιμα (κωδικός F%) και Λοιπά.
+    private List<(string Title, List<StockDashboardItemDto> Items)> Groups => new()
+    {
+        ("🍎 Τρόφιμα", Filtered.Where(x => x.IsFood).ToList()),
+        ("📦 Λοιπά", Filtered.Where(x => !x.IsFood).ToList())
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        status = "loading";
+        errorMessage = "";
+        StateHasChanged();
+
+        items = await new PrickDashboardService(dataService).GetStockDashboard();
+
+        status = "loaded";
+        StateHasChanged();
+    }
+
+    private async Task SaveReorderPoint(StockDashboardItemDto item, ChangeEventArgs e)
+    {
+        errorMessage = "";
+        if (!int.TryParse(e.Value?.ToString(), out var value) || value < 0)
+        {
+            errorMessage = "Το όριο πρέπει να είναι ακέραιος αριθμός ≥ 0.";
+            StateHasChanged();
+            return;
+        }
+
+        var result = await new PrickDashboardService(dataService).SetReorderPoint(new SetReorderPointRequest
+        {
+            CodePrick = item.CodePrick,
+            ProductTypeCode = item.ProductTypeCode,
+            ReorderPoint = value
+        });
+
+        if (result?.Success == true)
+        {
+            item.ReorderPoint = value;
+            savedKey = Key(item);
+            StateHasChanged();
+            await Task.Delay(1500);
+            if (savedKey == Key(item)) savedKey = null;
+            StateHasChanged();
+        }
+        else
+        {
+            errorMessage = result?.Message ?? "Σφάλμα κατά την αποθήκευση του ορίου.";
+            StateHasChanged();
+        }
+    }
+}

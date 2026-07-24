@@ -1360,7 +1360,9 @@
         }
         else
         {
-            topBannerMessage = "⚠️ Κάτι πήγε στραβά με τον διαχωρισμό, δοκίμασε ξανά.";
+            topBannerMessage = !string.IsNullOrEmpty(result?.Message)
+                ? $"⚠️ {result.Message}"
+                : "⚠️ Κάτι πήγε στραβά με τον διαχωρισμό, δοκίμασε ξανά.";
         }
     }
 

@@ -1027,12 +1027,19 @@ namespace StallmedManager.Server.Controllers
 
             var baseCode = GetBaseOrderCode(order.OrderCode);
 
+            // Τα γράμματα διαβάζονται ΜΙΑ φορά από τη βάση και το σύνολο ενημερώνεται
+            // in-memory: η μετονομασία της αρχικής σε -A δεν έχει αποθηκευτεί ακόμα,
+            // οπότε ένα δεύτερο query στη βάση δεν θα την έβλεπε και θα ξαναέδινε
+            // το ίδιο γράμμα στη νέα παραγγελία (duplicate key στο uq_order_code).
+            var usedLetters = await GetUsedSplitLetters(baseCode);
+
             if (!HasLetterSuffix(order.OrderCode))
             {
-                var letterForOriginal = await GenerateNextSplitLetter(baseCode);
+                var letterForOriginal = NextFreeLetter(usedLetters);
+                usedLetters.Add(letterForOriginal);
                 order.OrderCode = $"{baseCode}-{letterForOriginal}";
             }
-            var newLetter = await GenerateNextSplitLetter(baseCode);
+            var newLetter = NextFreeLetter(usedLetters);
             var newOrderCode = $"{baseCode}-{newLetter}";
 
             var newOrder = new DoctorOrder
@@ -1049,7 +1056,21 @@ namespace StallmedManager.Server.Controllers
                 UpdatedAt = DateTime.Now
             };
             _context.DoctorOrders.Add(newOrder);
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                // Safety net για race condition: αν άλλο request πήρε το ίδιο γράμμα
+                // στο μεταξύ, καθαρό μήνυμα αντί για 500.
+                _logger.LogError(ex, "Duplicate order code κατά τον διαχωρισμό της {OrderCode}", baseCode);
+                return Ok(new ShipResult
+                {
+                    Success = false,
+                    Message = $"Ο κωδικός {newOrderCode} μόλις χρησιμοποιήθηκε από άλλη ενέργεια. Δοκίμασε ξανά τον διαχωρισμό."
+                });
+            }
 
             foreach (var pl in pendingLines)
             {
@@ -1087,7 +1108,9 @@ namespace StallmedManager.Server.Controllers
         private static string GetBaseOrderCode(string code) =>
             HasLetterSuffix(code) ? code[..^2] : code;
 
-        private async Task<string> GenerateNextSplitLetter(string baseCode)
+        // Όλα τα split γράμματα που υπάρχουν ήδη στη βάση για το base code
+        // (πιάνει και τις δύο περιπτώσεις: αρχική χωρίς suffix ή ήδη -A/-B...).
+        private async Task<HashSet<char>> GetUsedSplitLetters(string baseCode)
         {
             var siblings = await _context.DoctorOrders
                 .Where(o => o.OrderCode == baseCode || o.OrderCode.StartsWith(baseCode + "-"))
@@ -1100,9 +1123,14 @@ namespace StallmedManager.Server.Controllers
                 if (HasLetterSuffix(c))
                     used.Add(c[^1]);
             }
+            return used;
+        }
+
+        private static char NextFreeLetter(HashSet<char> used)
+        {
             var next = 'A';
             while (used.Contains(next)) next++;
-            return next.ToString();
+            return next;
         }
 
         // ---- Δημιουργία κωδικού παραγγελίας: SM/BM + YYMMDD + αύξων αριθμός ημέρας ----
