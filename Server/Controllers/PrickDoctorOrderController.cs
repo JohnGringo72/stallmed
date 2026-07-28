@@ -2,6 +2,9 @@ using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 using StallmedManager.Server.Models;
 using StallmedManager.Server.Services;
 using StallmedManager.Shared.Models;
@@ -1089,10 +1092,19 @@ namespace StallmedManager.Server.Controllers
                     UpdatedAt = DateTime.Now
                 });
 
-                // Το υπόλοιπο της αρχικής γραμμής "κλειδώνει" στο ό,τι δεσμεύτηκε
+                // Το υπόλοιπο της αρχικής γραμμής "κλειδώνει" στο ό,τι δεσμεύτηκε.
+                // Γραμμή που δεν είχε ούτε δέσμευση ούτε ακύρωση θα έμενε με 0 τεμ. --
+                // σβήνεται από την αρχική (το σύνολό της μεταφέρθηκε στη νέα παραγγελία).
                 pl.QuantityRequested = pl.QuantityAllocated + pl.QuantityCancelled;
-                pl.LineStatus = "Fulfilled";
-                pl.UpdatedAt = DateTime.Now;
+                if (pl.QuantityRequested == 0)
+                {
+                    _context.DoctorOrderLines.Remove(pl);
+                }
+                else
+                {
+                    pl.LineStatus = "Fulfilled";
+                    pl.UpdatedAt = DateTime.Now;
+                }
             }
 
             order.OrderStatus = "ReadyToShip";
@@ -1131,6 +1143,156 @@ namespace StallmedManager.Server.Controllers
             var next = 'A';
             while (used.Contains(next)) next++;
             return next;
+        }
+
+        // ---- Φύλλο προετοιμασίας παραγγελίας (picking list) σε PDF ----
+        // Τυπώνεται για να μαζέψει η αποθήκη τα είδη: ReadyToShip -> ό,τι δεσμεύτηκε,
+        // αλλιώς -> ζητούμενο μείον ακυρωμένο. Ακυρωμένες γραμμές δεν τυπώνονται.
+        [HttpGet("print/{orderId}")]
+        public async Task<IActionResult> PrintPickingSheet(long orderId)
+        {
+            var order = await _context.DoctorOrders.Include(o => o.Doctor)
+                .FirstOrDefaultAsync(o => o.OrderID == orderId);
+            if (order == null) return NotFound();
+
+            var lines = await _context.DoctorOrderLines.Where(l => l.OrderID == orderId).ToListAsync();
+            var allergenLookup = await _context.AllergenCodes.ToDictionaryAsync(a => a.CodePrick);
+            var productLookup = await _context.ProductTypes.ToDictionaryAsync(p => p.ProductTypeCode);
+
+            int QtyToPick(DoctorOrderLine l) => order.OrderStatus == "ReadyToShip"
+                ? l.QuantityAllocated
+                : l.QuantityRequested - l.QuantityCancelled;
+
+            var printLines = lines.Where(l => QtyToPick(l) > 0).ToList();
+            if (printLines.Count == 0)
+                return BadRequest("Δεν υπάρχουν είδη για προετοιμασία σε αυτή την παραγγελία.");
+
+            QuestPDF.Settings.License = LicenseType.Community;
+
+            var doctorName = order.Doctor?.FullName ?? order.DoctorName ?? "";
+            var accent = order.Company == "SM" ? "#28a745" : "#b57bee";
+
+            var document = Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(35);
+                    page.DefaultTextStyle(x => x.FontSize(10));
+
+                    page.Header().Column(col =>
+                    {
+                        col.Item().Background(accent).Padding(10).Row(row =>
+                        {
+                            row.RelativeItem().Text("ΦΥΛΛΟ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΠΑΡΑΓΓΕΛΙΑΣ")
+                                .FontSize(14).Bold().FontColor("#FFFFFF");
+                            row.ConstantItem(120).AlignRight().Text(order.OrderCode)
+                                .FontSize(14).Bold().FontColor("#FFFFFF");
+                        });
+                        col.Item().PaddingTop(8).Row(row =>
+                        {
+                            row.RelativeItem().Column(c =>
+                            {
+                                c.Item().Text($"Γιατρός/Πελάτης: {doctorName}").Bold();
+                                if (!string.IsNullOrWhiteSpace(order.RecipientName))
+                                    c.Item().Text($"Παραλήπτης: {order.RecipientName}").FontSize(9);
+                                var addr = $"{order.ShippingAddress} {order.ShippingCity} {order.ShippingPostalCode}".Trim();
+                                if (addr.Length > 0)
+                                    c.Item().Text($"Διεύθυνση: {addr}").FontSize(9);
+                                if (!string.IsNullOrWhiteSpace(order.ShippingPhone))
+                                    c.Item().Text($"Τηλέφωνο: {order.ShippingPhone}").FontSize(9);
+                            });
+                            row.ConstantItem(170).AlignRight().Column(c =>
+                            {
+                                c.Item().AlignRight().Text($"Εταιρεία: {order.Company}").FontSize(9);
+                                c.Item().AlignRight().Text($"Ημ/νία παραγγελίας: {order.OrderDate:dd/MM/yyyy}").FontSize(9);
+                                c.Item().AlignRight().Text($"Κατάσταση: {order.OrderStatus}").FontSize(9);
+                                if (!string.IsNullOrWhiteSpace(order.Notes))
+                                    c.Item().AlignRight().Text($"Σημ.: {order.Notes}").FontSize(8).Italic();
+                            });
+                        });
+                        col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#000000");
+                    });
+
+                    page.Content().PaddingTop(10).Column(col =>
+                    {
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.ConstantColumn(28);   // Α/Α
+                                columns.ConstantColumn(70);   // Κωδικός
+                                columns.RelativeColumn();     // Αλλεργιογόνο
+                                columns.RelativeColumn();     // Τύπος
+                                columns.ConstantColumn(50);   // Ποσότητα
+                                columns.ConstantColumn(40);   // ✓
+                            });
+
+                            table.Header(header =>
+                            {
+                                void HeaderCell(string text)
+                                {
+                                    header.Cell().BorderBottom(1.5f).BorderColor("#000000")
+                                        .PaddingVertical(5).PaddingHorizontal(3)
+                                        .Text(text).FontSize(9).Bold();
+                                }
+
+                                HeaderCell("Α/Α");
+                                HeaderCell("Κωδικός");
+                                HeaderCell("Αλλεργιογόνο");
+                                HeaderCell("Τύπος");
+                                HeaderCell("Τεμ.");
+                                HeaderCell("✓");
+                            });
+
+                            int idx = 0;
+                            foreach (var line in printLines)
+                            {
+                                allergenLookup.TryGetValue(line.CodePrick, out var allergen);
+                                productLookup.TryGetValue(line.ProductTypeCode, out var product);
+                                var bg = idx % 2 == 0 ? "#FFFFFF" : "#F2F2F2";
+
+                                void DataCell(string text, bool bold = false)
+                                {
+                                    var t = table.Cell().Background(bg)
+                                        .BorderBottom(1).BorderColor("#E0E0E0")
+                                        .PaddingVertical(6).PaddingHorizontal(3)
+                                        .Text(text).FontSize(10);
+                                    if (bold) t.Bold();
+                                }
+
+                                DataCell((idx + 1).ToString());
+                                DataCell(line.CodePrick, bold: true);
+                                DataCell(allergen?.DescriptionGreek ?? allergen?.Description ?? "");
+                                DataCell(product?.Description ?? line.ProductTypeCode);
+                                DataCell(QtyToPick(line).ToString(), bold: true);
+                                DataCell("☐");
+
+                                idx++;
+                            }
+                        });
+
+                        col.Item().PaddingTop(10).AlignRight()
+                            .Text($"Σύνολο: {printLines.Sum(QtyToPick)} τεμ. σε {printLines.Count} κωδικούς")
+                            .FontSize(10).Bold();
+                    });
+
+                    page.Footer().Column(col =>
+                    {
+                        col.Item().LineHorizontal(1).LineColor("#000000");
+                        col.Item().PaddingTop(6).Row(row =>
+                        {
+                            row.RelativeItem().Text($"Εκτύπωση: {DateTime.Now:dd/MM/yyyy HH:mm}").FontSize(9);
+                            row.ConstantItem(220).AlignRight()
+                                .Text("Ετοίμασε: ____________________").FontSize(9);
+                        });
+                    });
+                });
+            });
+
+            using var stream = new MemoryStream();
+            document.GeneratePdf(stream);
+            return File(stream.ToArray(), "application/pdf", $"{order.OrderCode}_Προετοιμασία.pdf");
         }
 
         // ---- Δημιουργία κωδικού παραγγελίας: SM/BM + YYMMDD + αύξων αριθμός ημέρας ----

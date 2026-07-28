@@ -49,6 +49,11 @@ namespace StallmedManager.Client
             return await dataService.GetBytes("api/prickdoctororder/import/template");
         }
 
+        public async Task<byte[]> PrintPickingSheet(long orderId)
+        {
+            return await dataService.GetBytes($"api/prickdoctororder/print/{orderId}");
+        }
+
         public async Task<ImportPreviewResult> ImportPreview(byte[] fileBytes, string fileName)
         {
             return await dataService.PostFile<ImportPreviewResult>("api/prickdoctororder/import/preview", fileBytes, fileName);

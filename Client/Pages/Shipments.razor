@@ -2,6 +2,7 @@
 @using StallmedManager.Shared.Models
 @inject DataService dataService
 @inject UserManager userManager
+@inject IJSRuntime JS
 
 <PageTitle>Prick Test - Αποστολές</PageTitle>
 
@@ -145,7 +146,10 @@
     }
     @foreach (var order in FilteredOrders)
     {
-        var totalQty = order.Lines.Sum(l => l.QuantityRequested);
+        // Προς αποστολή πάει ό,τι δεσμεύτηκε -- γραμμές χωρίς δέσμευση
+        // (π.χ. πλήρως ακυρωμένες) δεν εμφανίζονται εδώ.
+        var shipLines = order.Lines.Where(l => l.QuantityAllocated > 0).ToList();
+        var totalQty = shipLines.Sum(l => l.QuantityAllocated);
         var isOpen = expandedOrderCode == order.OrderCode;
         <div class="ship-card">
             <div class="ship-card-header" @onclick="() => ToggleExpand(order.OrderCode)">
@@ -156,13 +160,16 @@
                     <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
                     <span>👨‍⚕️ @order.DoctorName</span>
                     <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
-                    <span class="summary-pill">📦 @totalQty τεμ. - @order.Lines.Count κωδικοί</span>
+                    <span class="summary-pill">📦 @totalQty τεμ. - @shipLines.Count κωδικοί</span>
                     @if (order.AttachmentCount > 0)
                     {
                         <span class="summary-pill">📎 @order.AttachmentCount</span>
                     }
                 </div>
-                <button class="btn btn-primary" @onclick="() => OpenShipPopup(order)" @onclick:stopPropagation="true" title="@Hint("Καταχώρηση στοιχείων αποστολής και κλείσιμο της παραγγελίας")">📦 Αποστολή</button>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary" @onclick="() => PrintOrder(order)" @onclick:stopPropagation="true" title="@Hint("Εκτύπωση φύλλου προετοιμασίας παραγγελίας")">🖨️</button>
+                    <button class="btn btn-primary" @onclick="() => OpenShipPopup(order)" @onclick:stopPropagation="true" title="@Hint("Καταχώρηση στοιχείων αποστολής και κλείσιμο της παραγγελίας")">📦 Αποστολή</button>
+                </div>
             </div>
             @if (isOpen)
             {
@@ -188,7 +195,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var line in order.Lines)
+                            @foreach (var line in shipLines)
                             {
                                 <tr>
                                     <td>@line.CodePrick</td>
@@ -462,6 +469,15 @@
         }
         status = "loaded";
         StateHasChanged();
+    }
+
+    private async Task PrintOrder(DoctorOrderViewDto order)
+    {
+        var bytes = await new PrickDoctorOrderService(dataService).PrintPickingSheet(order.OrderID);
+        if (bytes != null)
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"{order.OrderCode}_Προετοιμασία.pdf", bytes);
+        else
+            loadError = "Σφάλμα εκτύπωσης φύλλου προετοιμασίας.";
     }
 
     private void OpenShipPopup(DoctorOrderViewDto order)

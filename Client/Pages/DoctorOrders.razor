@@ -465,6 +465,9 @@
                                     }
                                 </div>
                                 <div class="d-flex gap-1">
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => PrintOrder(order)" @onclick:stopPropagation="true" title="@Hint("Εκτύπωση φύλλου προετοιμασίας παραγγελίας")">
+                                        🖨️
+                                    </button>
                                     @if (totalFulfillable > 0)
                                     {
                                         <button class="btn btn-sm btn-success" @onclick="() => DoBulkAllocate(order)" @onclick:stopPropagation="true" title="@Hint("Δέσμευση ό,τι είναι διαθέσιμο σε όλες τις γραμμές")">
@@ -1344,6 +1347,15 @@
         };
         importCommitResult = await new PrickDoctorOrderService(dataService).ImportCommit(req);
         StateHasChanged();
+    }
+
+    private async Task PrintOrder(DoctorOrderViewDto order)
+    {
+        var bytes = await new PrickDoctorOrderService(dataService).PrintPickingSheet(order.OrderID);
+        if (bytes != null)
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"{order.OrderCode}_Προετοιμασία.pdf", bytes);
+        else
+            topBannerMessage = "⚠️ Σφάλμα εκτύπωσης φύλλου προετοιμασίας.";
     }
 
     private async Task DoSplitPending(DoctorOrderViewDto order)
