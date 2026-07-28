@@ -38,7 +38,7 @@ builder.Services.AddSingleton<AesService>();
 builder.Services.AddScoped<StockSearchService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
-builder.Services.AddScoped<AiContextService>();
+// builder.Services.AddScoped<AiContextService>(); // ΑΝΕΝΕΡΓΟ (23/07/2026): χρησιμοποιούνταν μόνο από τον σχολιασμένο AiChatController
 builder.Services.AddScoped<ChatBotService>();
 builder.Services.AddScoped<QuotePdfService>();
 builder.Services.AddScoped<QuoteEmailService>();

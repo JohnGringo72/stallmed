@@ -1,6 +1,10 @@
-﻿namespace StallmedManager.Client.Pages
-{
-    public class AuthorizedPage
-    {
-    }
-}
+// ============================================================
+// ΑΝΕΝΕΡΓΟΣ ΚΩΔΙΚΑΣ (23/07/2026): δεν αναφέρεται πουθενά στο project.
+// Σχολιάστηκε αντί να διαγραφεί -- αφαίρεσε τα // αν ξαναχρειαστεί.
+// ============================================================
+// ﻿namespace StallmedManager.Client.Pages
+// {
+//     public class AuthorizedPage
+//     {
+//     }
+// }

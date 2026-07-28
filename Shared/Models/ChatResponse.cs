@@ -1,7 +1,11 @@
-namespace StallmedManager.Shared.Models
-{
-    public class ChatResponse
-    {
-        public string Reply { get; set; }
-    }
-}
+// ============================================================
+// ΑΝΕΝΕΡΓΟΣ ΚΩΔΙΚΑΣ (23/07/2026): δεν αναφέρεται πουθενά στο project.
+// Σχολιάστηκε αντί να διαγραφεί -- αφαίρεσε τα // αν ξαναχρειαστεί.
+// ============================================================
+// namespace StallmedManager.Shared.Models
+// {
+//     public class ChatResponse
+//     {
+//         public string Reply { get; set; }
+//     }
+// }
