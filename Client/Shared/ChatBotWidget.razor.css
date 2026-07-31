@@ -12,8 +12,15 @@
     font-family: inherit;
 }
 
+/* Όταν το κουμπί έχει συρθεί στο πάνω μισό της οθόνης, το panel ανοίγει
+   προς τα ΚΑΤΩ (το κουμπί μένει από πάνω) -- κλάση από το wireDrag (JS). */
+.ai-chat-root.ai-top-mode {
+    flex-direction: column-reverse;
+}
+
 /* ---- Κυκλικό κουμπί ---- */
 .ai-fab {
+    touch-action: none; /* για σύρσιμο και σε οθόνη αφής χωρίς να σκρολάρει η σελίδα */
     width: 56px;
     height: 56px;
     border-radius: 50%;

@@ -6,7 +6,7 @@
 
 @if (userManager.IsLoggedIn)
 {
-    <div class="ai-chat-root">
+    <div class="ai-chat-root" @ref="rootRef">
         @if (isOpen)
         {
             <div class="ai-panel">
@@ -57,7 +57,7 @@
             </div>
         }
 
-        <button class="ai-fab" title="SBT Suite Bot" @onclick="Toggle">
+        <button class="ai-fab" title="SBT Suite Bot (σύρε με για μετακίνηση)" @ref="fabRef" @onclick="Toggle">
             @if (isOpen)
             {
                 <span class="ai-fab-icon">✕</span>
@@ -76,9 +76,12 @@
     private string currentInput = "";
     private ElementReference messagesRef;
     private ElementReference inputRef;
+    private ElementReference rootRef;
+    private ElementReference fabRef;
     private IJSObjectReference module;
     private DotNetObjectReference<ChatBotWidget> dotnetRef;
     private bool inputWired;
+    private bool dragWired;
 
     private readonly List<ChatMessage> messages = new()
     {
@@ -111,6 +114,15 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Το floating κουμπί γίνεται συρόμενο μόλις υπάρξει στο DOM
+        // (μετά το login), ανεξάρτητα από το αν έχει ανοίξει το panel.
+        if (userManager.IsLoggedIn && !dragWired)
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Shared/ChatBotWidget.razor.js");
+            await module.InvokeVoidAsync("wireDrag", rootRef, fabRef);
+            dragWired = true;
+        }
+
         if (!isOpen)
             return;
 
