@@ -365,13 +365,40 @@ namespace StallmedManager.Server.Controllers
             var newPatients = currentPatients.Except(existingPatients).Count();
 
             // Ασθενείς προηγούμενης ισόχρονης περιόδου + τάση (αντίστοιχο του Προηγ. ΤΕΜ/Τάση)
-            var prevUniquePatients = prevOrders
+            var prevPatients = prevOrders
                 .Where(x => x.Patient != null)
                 .Select(x => x.Patient!)
                 .Distinct()
-                .Count();
+                .ToList();
+            var prevUniquePatients = prevPatients.Count;
             double patientsTrend = prevUniquePatients > 0
                 ? Math.Round((double)(currentPatients.Count - prevUniquePatients) / prevUniquePatients * 100, 1)
+                : 0;
+
+            // Νέοι ασθενείς της προηγούμενης περιόδου: όσοι δεν είχαν εμφανιστεί πριν το prevFromDate
+            var existingBeforePrevQuery = context.WebOrders
+                .Where(x => x.Ordered < prevFromDate &&
+                            x.TreatmentDescription != null &&
+                            (x.TreatmentDescription.StartsWith("BELTA") ||
+                             x.TreatmentDescription.StartsWith("STALORAL")) &&
+                            x.Patient != null);
+            if (!string.IsNullOrWhiteSpace(company))
+                existingBeforePrevQuery = existingBeforePrevQuery.Where(x => x.CompanyID == company);
+            if (!string.IsNullOrWhiteSpace(serverFilter))
+            {
+                var companyId = serverFilter == "SM" ? "1" : "2";
+                existingBeforePrevQuery = existingBeforePrevQuery.Where(x => x.CompanyID == companyId);
+            }
+            var existingBeforePrev = existingBeforePrevQuery.Select(x => x.Patient!).Distinct().ToList();
+            var prevNewPatients = prevPatients.Except(existingBeforePrev).Count();
+
+            // Ανάλυση παραγγελιών ανά εταιρεία + τάση πλήθους παραγγελιών
+            var currentOrdersSM = orders.Count(x => x.CompanyID == "1");
+            var currentOrdersBM = orders.Count(x => x.CompanyID == "2");
+            var prevOrdersSM = prevOrders.Count(x => x.CompanyID == "1");
+            var prevOrdersBM = prevOrders.Count(x => x.CompanyID == "2");
+            double ordersTrend = prevOrders.Count > 0
+                ? Math.Round((double)(orders.Count - prevOrders.Count) / prevOrders.Count * 100, 1)
                 : 0;
 
             // ── Νέοι ασθενείς με POLYMERISED θεραπεία ──
@@ -420,6 +447,13 @@ namespace StallmedManager.Server.Controllers
                 QNTTrendPercent = qntTrend,
                 PrevUniquePatients = prevUniquePatients,
                 PatientsTrendPercent = patientsTrend,
+                CurrentOrdersSM = currentOrdersSM,
+                CurrentOrdersBM = currentOrdersBM,
+                PrevOrdersSM = prevOrdersSM,
+                PrevOrdersBM = prevOrdersBM,
+                PrevTotalOrders = prevOrders.Count,
+                OrdersTrendPercent = ordersTrend,
+                PrevNewPatients = prevNewPatients,
                 NewPolymerizedPatients = newPolymerizedPatients.Count,
                 NewPolymerizedQNT = newPolymerizedQNT,
                 PolymerizedProducts = polymerizedProducts,

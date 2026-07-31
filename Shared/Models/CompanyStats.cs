@@ -14,6 +14,15 @@ namespace StallmedManager.Shared.Models
         public double QNTTrendPercent { get; set; }
         public int PrevUniquePatients { get; set; }
         public double PatientsTrendPercent { get; set; }
+        // Ανάλυση παραγγελιών ανά εταιρεία (CompanyID "1"=SM, "2"=BM)
+        public int CurrentOrdersSM { get; set; }
+        public int CurrentOrdersBM { get; set; }
+        public int PrevOrdersSM { get; set; }
+        public int PrevOrdersBM { get; set; }
+        public int PrevTotalOrders { get; set; }
+        public double OrdersTrendPercent { get; set; }
+        // Νέοι ασθενείς της προηγούμενης ισόχρονης περιόδου
+        public int PrevNewPatients { get; set; }
         public int NewPolymerizedPatients { get; set; }
         public int NewPolymerizedQNT { get; set; }
         public List<ProductCount> PolymerizedProducts { get; set; } = new();

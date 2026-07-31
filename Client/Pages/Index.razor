@@ -78,6 +78,11 @@
         margin: 0 4px;
     }
 
+    /* Λίγο μικρότερα ψηφία για τα κουτιά με 3-4 νούμερα, να μη σπάει η γραμμή */
+    .kpi-value-sm {
+        font-size: 1.35rem;
+    }
+
     .kpi-label {
         font-size: 0.90rem;
         color: #555;
@@ -163,31 +168,37 @@
     <!-- Row 1: Κύρια KPIs -->
     <div class="row g-3 mb-3">
 
-        <!-- Card 1: Παραγγελίες / Τεμάχια -->
+        <!-- Card 1: Παραγγελίες SM / BM / Σύνολο -->
         <div class="col-6 col-md-3">
             <div class="kpi-card">
-                <div class="kpi-tooltip">Αριθμός παραγγελιών και συνολικά τεμάχια στην επιλεγμένη περίοδο</div>
-                <div class="kpi-value">
-                    @stats.TotalOrders
+                <div class="kpi-tooltip">Παραγγελίες τρέχουσας περιόδου: SM / BM / Σύνολο</div>
+                <div class="kpi-value kpi-value-sm">
+                    <span style="color:#28a745;">@stats.CurrentOrdersSM</span>
                     <span class="kpi-sep">/</span>
-                    @stats.TotalQNT
+                    <span style="color:#b57bee;">@stats.CurrentOrdersBM</span>
+                    <span class="kpi-sep">/</span>
+                    @stats.TotalOrders
                 </div>
-                <div class="kpi-label">Παραγγελίες / Τεμάχια</div>
+                <div class="kpi-label">Παραγγελίες SM / BM / Σύνολο</div>
             </div>
         </div>
 
-        <!-- Card 2: Προηγ. ΤΕΜ / Τάση (δίπλα στο 1ο για άμεση σύγκριση τεμαχίων) -->
+        <!-- Card 2: Προηγούμενη περίοδος SM / BM / Σύνολο / Τάση -->
         <div class="col-6 col-md-3">
             <div class="kpi-card">
-                <div class="kpi-tooltip">Τεμάχια προηγούμενης ισόχρονης περιόδου / Τάση τεμαχίων vs προηγούμενη περίοδο</div>
-                <div class="kpi-value">
-                    @stats.PrevTotalQNT
+                <div class="kpi-tooltip">Παραγγελίες ίδιας περιόδου πέρυσι: SM / BM / Σύνολο / Τάση vs φέτος</div>
+                <div class="kpi-value kpi-value-sm">
+                    <span style="color:#28a745;">@stats.PrevOrdersSM</span>
                     <span class="kpi-sep">/</span>
-                    <span style="color:@(stats.QNTTrendPercent >= 0 ? "#198754" : "#dc3545")">
-                        @(stats.QNTTrendPercent >= 0 ? "▲" : "▼") @Math.Abs(stats.QNTTrendPercent)%
+                    <span style="color:#b57bee;">@stats.PrevOrdersBM</span>
+                    <span class="kpi-sep">/</span>
+                    @stats.PrevTotalOrders
+                    <span class="kpi-sep">/</span>
+                    <span style="color:@(stats.OrdersTrendPercent >= 0 ? "#198754" : "#dc3545")">
+                        @(stats.OrdersTrendPercent >= 0 ? "▲" : "▼") @Math.Abs(stats.OrdersTrendPercent)%
                     </span>
                 </div>
-                <div class="kpi-label">Προηγ. ΤΕΜ / Τάση</div>
+                <div class="kpi-label">Προηγ. SM / BM / Σύνολο / Τάση</div>
             </div>
         </div>
 
@@ -204,18 +215,20 @@
             </div>
         </div>
 
-        <!-- Card 4: Προηγ. Ασθενείς / Τάση (δίπλα στο 3ο για άμεση σύγκριση ασθενών) -->
+        <!-- Card 4: Προηγούμενοι ασθενείς / Νέοι / Τάση -->
         <div class="col-6 col-md-3">
             <div class="kpi-card">
-                <div class="kpi-tooltip">Ασθενείς προηγούμενης ισόχρονης περιόδου / Τάση ασθενών vs προηγούμενη περίοδο</div>
-                <div class="kpi-value">
+                <div class="kpi-tooltip">Ασθενείς ίδιας περιόδου πέρυσι / εκ των οποίων νέοι τότε / Τάση ασθενών vs φέτος</div>
+                <div class="kpi-value kpi-value-sm">
                     @stats.PrevUniquePatients
+                    <span class="kpi-sep">/</span>
+                    <span style="color:#198754;">@stats.PrevNewPatients</span>
                     <span class="kpi-sep">/</span>
                     <span style="color:@(stats.PatientsTrendPercent >= 0 ? "#198754" : "#dc3545")">
                         @(stats.PatientsTrendPercent >= 0 ? "▲" : "▼") @Math.Abs(stats.PatientsTrendPercent)%
                     </span>
                 </div>
-                <div class="kpi-label">Προηγ. Ασθενείς / Τάση</div>
+                <div class="kpi-label">Προηγούμενοι / Νέοι / Τάση</div>
             </div>
         </div>
 
