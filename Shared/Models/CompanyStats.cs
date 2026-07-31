@@ -12,6 +12,8 @@ namespace StallmedManager.Shared.Models
         public double TrendPercent { get; set; }
         public int PrevTotalQNT { get; set; }
         public double QNTTrendPercent { get; set; }
+        public int PrevUniquePatients { get; set; }
+        public double PatientsTrendPercent { get; set; }
         public int NewPolymerizedPatients { get; set; }
         public int NewPolymerizedQNT { get; set; }
         public List<ProductCount> PolymerizedProducts { get; set; } = new();

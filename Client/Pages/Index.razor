@@ -176,20 +176,7 @@
             </div>
         </div>
 
-        <!-- Card 2: Ασθενείς / Νέοι -->
-        <div class="col-6 col-md-3">
-            <div class="kpi-card">
-                <div class="kpi-tooltip">Σύνολο ασθενών που παρήγγειλαν στην περίοδο / εκ των οποίων νέοι ασθενείς</div>
-                <div class="kpi-value">
-                    @stats.UniquePatients
-                    <span class="kpi-sep">/</span>
-                    <span style="color:#198754;">@stats.NewPatients</span>
-                </div>
-                <div class="kpi-label">Ασθενείς / Νέοι</div>
-            </div>
-        </div>
-
-        <!-- Card 3: Προηγ. ΤΕΜ / Τάση -->
+        <!-- Card 2: Προηγ. ΤΕΜ / Τάση (δίπλα στο 1ο για άμεση σύγκριση τεμαχίων) -->
         <div class="col-6 col-md-3">
             <div class="kpi-card">
                 <div class="kpi-tooltip">Τεμάχια προηγούμενης ισόχρονης περιόδου / Τάση τεμαχίων vs προηγούμενη περίοδο</div>
@@ -204,18 +191,31 @@
             </div>
         </div>
 
-        <!-- Card 4: Μερίδιο / Τάση -->
+        <!-- Card 3: Ασθενείς / Νέοι -->
         <div class="col-6 col-md-3">
             <div class="kpi-card">
-                <div class="kpi-tooltip">Μερίδιο παραγγελιών επί συνόλου (@stats.TotalAllOrders Τεμ.) / Τάση μεριδίου vs προηγούμενη περίοδο</div>
+                <div class="kpi-tooltip">Σύνολο ασθενών που παρήγγειλαν στην περίοδο / εκ των οποίων νέοι ασθενείς</div>
                 <div class="kpi-value">
-                    @stats.SharePercent%
+                    @stats.UniquePatients
                     <span class="kpi-sep">/</span>
-                    <span style="color:@(stats.TrendPercent >= 0 ? "#198754" : "#dc3545")">
-                        @(stats.TrendPercent >= 0 ? "▲" : "▼") @Math.Abs(stats.TrendPercent)%
+                    <span style="color:#198754;">@stats.NewPatients</span>
+                </div>
+                <div class="kpi-label">Ασθενείς / Νέοι</div>
+            </div>
+        </div>
+
+        <!-- Card 4: Προηγ. Ασθενείς / Τάση (δίπλα στο 3ο για άμεση σύγκριση ασθενών) -->
+        <div class="col-6 col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-tooltip">Ασθενείς προηγούμενης ισόχρονης περιόδου / Τάση ασθενών vs προηγούμενη περίοδο</div>
+                <div class="kpi-value">
+                    @stats.PrevUniquePatients
+                    <span class="kpi-sep">/</span>
+                    <span style="color:@(stats.PatientsTrendPercent >= 0 ? "#198754" : "#dc3545")">
+                        @(stats.PatientsTrendPercent >= 0 ? "▲" : "▼") @Math.Abs(stats.PatientsTrendPercent)%
                     </span>
                 </div>
-                <div class="kpi-label">Μερίδιο (@stats.TotalAllOrders Τεμ.) / Τάση</div>
+                <div class="kpi-label">Προηγ. Ασθενείς / Τάση</div>
             </div>
         </div>
 

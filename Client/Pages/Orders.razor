@@ -246,9 +246,11 @@
         }
         else
         {
-            <div class="alert alert-info py-2 mb-0 flex-grow-1">
-                Σύνολο παραγγελιών: <strong>@FilteredPeople.Length</strong> |
-                Σύνολο QNT: <strong>@FilteredPeople.Sum(x => x.QNT ?? 0)</strong>
+            <div class="alert alert-info py-2 mb-0 flex-grow-1"
+                 title="Στα σύνολα δεν μετράνε οι Δερματικές Δοκιμασίες/IDR και οι ακυρωμένες (εκτός αν τις επιλέξεις ρητά στα φίλτρα)">
+                Σύνολο παραγγελιών: <strong>@TotalsPeople.Length</strong> |
+                Σύνολο QNT: <strong>@TotalsPeople.Sum(x => x.QNT ?? 0)</strong>
+                <span class="text-muted small ms-1">(μόνο εμβόλια)</span>
             </div>
         }
         <div style="min-width:220px;" class="d-flex flex-wrap gap-2">
@@ -526,6 +528,18 @@
         .ToArray();
 
     private WebOrder[] FilteredPeople => ApplySort(FilteredPeopleUnsorted).ToArray();
+
+    // Σύνολα "μόνο εμβόλια": εξαιρούνται Δερματικές Δοκιμασίες/IDR (υλικό πρικ,
+    // με χύμα ποσότητες που παραμόρφωναν το QNT) και οι ακυρωμένες. Αν όμως ο
+    // χρήστης επιλέξει ρητά θεραπεία ή κατάσταση στα φίλτρα, μετράει ό,τι διάλεξε.
+    private static bool IsSkinTest(WebOrder x) =>
+        (x.TreatmentDescription ?? "").Contains("Δερματικ", StringComparison.OrdinalIgnoreCase) ||
+        (x.TreatmentDescription ?? "").Contains("IDR", StringComparison.OrdinalIgnoreCase);
+
+    private WebOrder[] TotalsPeople => FilteredPeople
+        .Where(x => !string.IsNullOrEmpty(selectedTreatment) || !IsSkinTest(x))
+        .Where(x => !string.IsNullOrEmpty(selectedStatus) || x.Status != "5")
+        .ToArray();
 
     private IEnumerable<WebOrder> ApplySort(IEnumerable<WebOrder> source)
     {

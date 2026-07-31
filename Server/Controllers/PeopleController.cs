@@ -364,6 +364,16 @@ namespace StallmedManager.Server.Controllers
 
             var newPatients = currentPatients.Except(existingPatients).Count();
 
+            // Ασθενείς προηγούμενης ισόχρονης περιόδου + τάση (αντίστοιχο του Προηγ. ΤΕΜ/Τάση)
+            var prevUniquePatients = prevOrders
+                .Where(x => x.Patient != null)
+                .Select(x => x.Patient!)
+                .Distinct()
+                .Count();
+            double patientsTrend = prevUniquePatients > 0
+                ? Math.Round((double)(currentPatients.Count - prevUniquePatients) / prevUniquePatients * 100, 1)
+                : 0;
+
             // ── Νέοι ασθενείς με POLYMERISED θεραπεία ──
             var polymerizedOrders = orders
                 .Where(x => x.Patient != null &&
@@ -408,6 +418,8 @@ namespace StallmedManager.Server.Controllers
                 TrendPercent = trendPct,
                 PrevTotalQNT = prevQNT,
                 QNTTrendPercent = qntTrend,
+                PrevUniquePatients = prevUniquePatients,
+                PatientsTrendPercent = patientsTrend,
                 NewPolymerizedPatients = newPolymerizedPatients.Count,
                 NewPolymerizedQNT = newPolymerizedQNT,
                 PolymerizedProducts = polymerizedProducts,
