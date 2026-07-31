@@ -393,6 +393,14 @@
         <span class="summary-pill">✅ Διαθ. @summary.TotalAvailable</span>
         <span class="summary-pill">⏳ Εκκρεμές @summary.TotalPending</span>
         <span class="summary-pill">🔴 Χωρίς stock @summary.NoStock</span>
+        <div class="form-check form-switch ms-auto mb-0">
+            <input class="form-check-input" type="checkbox" id="groupByDoctorToggle"
+                   checked="@groupByDoctor" @onchange='e => groupByDoctor = (bool)e.Value!' />
+            <label class="form-check-label" for="groupByDoctorToggle"
+                   title="@Hint("Με ομαδοποίηση: μία κάρτα ανά γιατρό. Χωρίς: όλες οι παραγγελίες σε ενιαία λίστα.")">
+                Group ανά γιατρό
+            </label>
+        </div>
     </div>
 }
 
@@ -410,19 +418,23 @@
 
     @foreach (var dg in SortedDoctorGroups)
     {
-        var isDoctorOpen = expandedDoctor == dg.DoctorName;
+        @* Χωρίς ομαδοποίηση: μία εικονική ομάδα με όλες τις παραγγελίες, πάντα ανοιχτή, χωρίς κεφαλίδα γιατρού *@
+        var isDoctorOpen = !groupByDoctor || expandedDoctor == dg.DoctorName;
         <div class="order-card">
-            <div class="order-card-header" @onclick="() => ToggleDoctorExpand(dg.DoctorName)">
-                <div class="d-flex align-items-center gap-2">
-                    <span class="expand-arrow @(isDoctorOpen ? "open" : "")">▶</span>
-                    <strong>👨‍⚕️ @dg.DoctorName</strong>
+            @if (groupByDoctor)
+            {
+                <div class="order-card-header" @onclick="() => ToggleDoctorExpand(dg.DoctorName)">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="expand-arrow @(isDoctorOpen ? "open" : "")">▶</span>
+                        <strong>👨‍⚕️ @dg.DoctorName</strong>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="summary-pill">📋 @dg.TotalOrders παραγγελίες</span>
+                        <span class="summary-pill @(dg.TotalPending > 0 ? "stock-low" : "")">⏳ @dg.TotalPending εκκρεμή</span>
+                        <span class="summary-pill">📅 @dg.LastOrderDate.ToString("dd/MM/yyyy")</span>
+                    </div>
                 </div>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="summary-pill">📋 @dg.TotalOrders παραγγελίες</span>
-                    <span class="summary-pill @(dg.TotalPending > 0 ? "stock-low" : "")">⏳ @dg.TotalPending εκκρεμή</span>
-                    <span class="summary-pill">📅 @dg.LastOrderDate.ToString("dd/MM/yyyy")</span>
-                </div>
-            </div>
+            }
 
             @if (isDoctorOpen)
             {
@@ -440,6 +452,10 @@
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <span class="expand-arrow @(isOrderOpen ? "open" : "")">▶</span>
                                     <strong>@order.OrderCode</strong>
+                                    @if (!groupByDoctor)
+                                    {
+                                        <span>👨‍⚕️ @order.DoctorName</span>
+                                    }
                                     <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
                                     <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
                                     <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
@@ -1024,6 +1040,7 @@
     private string? expandedOrder = null;
 
     private string doctorSortBy = "date";
+    private bool groupByDoctor = true;
 
     // --- Confirmation popup (μη-αναστρέψιμες ενέργειες πάνω σε παραγγελία) ---
     private bool showConfirm = false;
@@ -1449,6 +1466,15 @@
     {
         get
         {
+            // Χωρίς ομαδοποίηση: όλα σε μία εικονική ομάδα (ενιαία λίστα παραγγελιών)
+            if (!groupByDoctor)
+            {
+                var all = DoctorGroups.SelectMany(g => g.Orders).ToList();
+                return all.Count == 0
+                    ? new List<DoctorGroup>()
+                    : new List<DoctorGroup> { new DoctorGroup { DoctorName = "", Orders = all } };
+            }
+
             IEnumerable<DoctorGroup> groups = DoctorGroups;
             groups = doctorSortBy switch
             {
