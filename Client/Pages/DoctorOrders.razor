@@ -711,7 +711,9 @@
 <!-- ================= NEW ORDER POPUP ================= -->
 @if (showNewOrderPopup)
 {
-    <div class="popup-overlay" @onclick="TryCloseNewOrderPopup">
+    @* Το κλικ έξω από τη φόρμα ΔΕΝ την κλείνει (χάνονταν τα στοιχεία) --
+       κλείνει μόνο από το κουμπί Ακύρωση (με διπλή επιβεβαίωση) ή μετά από επιτυχία. *@
+    <div class="popup-overlay" @onclick="OnNewOrderOverlayClick">
         <div class="popup-box" @onclick:stopPropagation="true">
             @if (!string.IsNullOrEmpty(successMessage))
             {
@@ -1089,11 +1091,14 @@
     private string newOrderAllergenFilter = "";
     private Dictionary<string, int> newOrderQtyMap = new();
 
+    // Αναζήτηση με κωδικό Ή όνομα, ελληνικά ή αγγλικά (Description/DescriptionOther)
     private List<SimpleCodeOptionDto> FilteredNewOrderAllergens =>
         allergenOptions
             .Where(a => string.IsNullOrEmpty(newOrderAllergenFilter) ||
                         a.Code.Contains(newOrderAllergenFilter, StringComparison.OrdinalIgnoreCase) ||
-                        (a.DescriptionGreek?.Contains(newOrderAllergenFilter, StringComparison.OrdinalIgnoreCase) ?? false))
+                        (a.DescriptionGreek?.Contains(newOrderAllergenFilter, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (a.Description?.Contains(newOrderAllergenFilter, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                        (a.DescriptionOther?.Contains(newOrderAllergenFilter, StringComparison.OrdinalIgnoreCase) ?? false))
             .OrderBy(a => a.Code)
             .ToList();
 
@@ -1556,6 +1561,14 @@
         newOrderQtyMap.Any(x => x.Value > 0);
 
     private bool closeConfirmPending = false;
+
+    // Κλικ στο σκούρο φόντο: κλείνει μόνο την οθόνη επιτυχίας -- όσο υπάρχει
+    // ανοιχτή φόρμα δεν κάνει τίποτα, για να μη χάνονται τα στοιχεία κατά λάθος.
+    private void OnNewOrderOverlayClick()
+    {
+        if (!string.IsNullOrEmpty(successMessage))
+            showNewOrderPopup = false;
+    }
 
     private void TryCloseNewOrderPopup()
     {
