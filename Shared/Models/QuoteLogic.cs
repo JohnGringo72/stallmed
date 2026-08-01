@@ -37,7 +37,9 @@ namespace StallmedManager.Shared.Models
     {
         private static readonly Dictionary<string, string[]> Allowed = new()
         {
-            [QuoteStatus.Draft] = new[] { QuoteStatus.Sent },
+            // Αποδοχή/απόρριψη επιτρέπεται και απευθείας από Draft: η προσφορά
+            // μπορεί να έχει σταλεί εκτός συστήματος (τηλέφωνο, χειροκίνητο email).
+            [QuoteStatus.Draft] = new[] { QuoteStatus.Sent, QuoteStatus.Accepted, QuoteStatus.Rejected },
             [QuoteStatus.Sent] = new[] { QuoteStatus.Accepted, QuoteStatus.Rejected, QuoteStatus.Expired },
             [QuoteStatus.Expired] = new[] { QuoteStatus.Draft },
             [QuoteStatus.Accepted] = new[] { QuoteStatus.Converted },

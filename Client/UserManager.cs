@@ -62,6 +62,8 @@ namespace StallmedManager.Client
 
 		public bool IsWarehouse => string.Equals(User?.Role?.Trim(), "warehouse", StringComparison.OrdinalIgnoreCase);
 
+		public bool IsAdmin => string.Equals(User?.Role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
+
 		public async Task<bool> Logout()
 		{
 			await localStorage.SetItemAsync("user", "");

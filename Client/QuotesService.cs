@@ -55,6 +55,9 @@ namespace StallmedManager.Client
         public async Task<QuoteActionResult> Convert(long id, QuoteActionRequest req)
             => await dataService.Post<QuoteActionRequest, QuoteActionResult>($"api/quotes/{id}/convert", req);
 
+        public async Task<QuoteActionResult> Delete(long id)
+            => await dataService.Post<object, QuoteActionResult>($"api/quotes/{id}/delete", new { });
+
         public async Task<List<CustomerDto>> GetCustomers(string? search)
         {
             var query = string.IsNullOrEmpty(search) ? "" : $"?search={Uri.EscapeDataString(search)}";

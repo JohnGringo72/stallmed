@@ -175,7 +175,7 @@ namespace StallmedManager.Tests
         }
 
         [Fact]
-        public async Task Accept_FromDraft_IsRejected()
+        public async Task Accept_FromDraft_Succeeds()
         {
             using var context = CreateContext();
             var quote = SeedQuote(context, QuoteStatus.Draft);
@@ -183,7 +183,10 @@ namespace StallmedManager.Tests
 
             var result = await controller.Accept(quote.QuoteID, new QuoteActionRequest());
 
-            Assert.IsType<BadRequestObjectResult>(result.Result);
+            Assert.IsType<OkObjectResult>(result.Result);
+            var updated = await context.Quotes.SingleAsync();
+            Assert.Equal(QuoteStatus.Accepted, updated.Status);
+            Assert.NotNull(updated.RespondedAt);
         }
     }
 }

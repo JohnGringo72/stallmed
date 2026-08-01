@@ -2,9 +2,10 @@
 @using StallmedManager.Shared.Models
 @inject DataService dataService
 @inject UserManager userManager
+@inject NavigationManager nav
 @inject IJSRuntime JS
 
-<PageTitle>Prick Test - Production Orders</PageTitle>
+<PageTitle>Prick Test - Bulk Orders</PageTitle>
 
 <style>
     .stock-check-bar {
@@ -453,6 +454,11 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (!userManager.IsAdmin)
+        {
+            nav.NavigateTo("/");
+            return;
+        }
         await LoadData();
     }
 

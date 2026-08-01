@@ -7,6 +7,8 @@ namespace StallmedManager.Tests
     {
         [Theory]
         [InlineData(QuoteStatus.Draft, QuoteStatus.Sent)]
+        [InlineData(QuoteStatus.Draft, QuoteStatus.Accepted)]   // αποδοχή χωρίς αποστολή (εκτός συστήματος)
+        [InlineData(QuoteStatus.Draft, QuoteStatus.Rejected)]
         [InlineData(QuoteStatus.Sent, QuoteStatus.Accepted)]
         [InlineData(QuoteStatus.Sent, QuoteStatus.Rejected)]
         [InlineData(QuoteStatus.Sent, QuoteStatus.Expired)]
@@ -18,9 +20,7 @@ namespace StallmedManager.Tests
         }
 
         [Theory]
-        [InlineData(QuoteStatus.Draft, QuoteStatus.Accepted)]   // αποδοχή χωρίς αποστολή
         [InlineData(QuoteStatus.Draft, QuoteStatus.Converted)]  // μετατροπή χωρίς αποδοχή
-        [InlineData(QuoteStatus.Draft, QuoteStatus.Rejected)]
         [InlineData(QuoteStatus.Sent, QuoteStatus.Draft)]
         [InlineData(QuoteStatus.Sent, QuoteStatus.Converted)]
         [InlineData(QuoteStatus.Accepted, QuoteStatus.Sent)]

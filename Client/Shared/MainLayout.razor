@@ -43,14 +43,18 @@
                     <li><a class="dropdown-item" href="/apothema" @onclick="CloseMenu">Inventory</a></li>
                     @if (!userManager.IsWarehouse)
                     {
-                        <li><a class="dropdown-item" href="/prick-doctors" @onclick="CloseMenu">Doctors</a></li>
+                        <li><a class="dropdown-item" href="/prick-doctors" @onclick="CloseMenu">Statistics</a></li>
                     }
-                    <li><a class="dropdown-item" href="/prick-doctor-orders" @onclick="CloseMenu">Orders</a></li>
+                    <li><a class="dropdown-item" href="/prick-doctor-orders" @onclick="CloseMenu">Doctor Orders</a></li>
                     @if (!userManager.IsWarehouse)
                     {
                         <li><a class="dropdown-item" href="/quotes" @onclick="CloseMenu">Quotations</a></li>
                     }
-                    <li><a class="dropdown-item" href="/prick-production" @onclick="CloseMenu">Stock</a></li>
+                    @if (userManager.IsAdmin)
+                    {
+                        <li><a class="dropdown-item" href="/prick-production" @onclick="CloseMenu">Bulk Orders</a></li>
+                        <li><a class="dropdown-item" href="/catalog-admin" @onclick="CloseMenu">Products</a></li>
+                    }
                     <li><a class="dropdown-item" href="/prick-receiving" @onclick="CloseMenu">Receiving</a></li>
                     <li><a class="dropdown-item" href="/prick-shipments" @onclick="CloseMenu">Deliveries</a></li>
                 </ul>

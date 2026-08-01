@@ -388,6 +388,38 @@ namespace StallmedManager.Server.Controllers
         }
 
         // =====================================================================
+        // Διαγραφή προσφοράς -- μαζί με γραμμές/ιστορικό/συνημμένα. Μια Converted
+        // προσφορά δεν διαγράφεται: έχει πίσω της πραγματική παραγγελία.
+        // =====================================================================
+
+        [HttpPost("{id:long}/delete")]
+        public async Task<ActionResult<QuoteActionResult>> Delete(long id)
+        {
+            var quote = await _context.Quotes.FindAsync(id);
+            if (quote == null) return NotFound();
+            if (quote.Status == QuoteStatus.Converted)
+                return BadRequest("Η προσφορά έχει μετατραπεί σε παραγγελία και δεν μπορεί να διαγραφεί.");
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                _context.QuoteLines.RemoveRange(_context.QuoteLines.Where(l => l.QuoteID == id));
+                _context.QuoteEvents.RemoveRange(_context.QuoteEvents.Where(e => e.QuoteID == id));
+                _context.QuoteAttachments.RemoveRange(_context.QuoteAttachments.Where(a => a.QuoteID == id));
+                _context.Quotes.Remove(quote);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return Ok(new QuoteActionResult { Success = true, Message = $"Η προσφορά {quote.QuoteNumber} διαγράφηκε." });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Σφάλμα διαγραφής προσφοράς {QuoteID}", id);
+                return StatusCode(500, "Σφάλμα διαγραφής. Δεν έγινε καμία αλλαγή.");
+            }
+        }
+
+        // =====================================================================
         // Πελάτες (νοσοκομεία) -- εγγραφές του πίνακα Doctors: τα ονόματα είναι
         // ήδη περασμένα εκεί, τα υπόλοιπα στοιχεία (ΑΦΜ κ.λπ.) συμπληρώνονται εδώ.
         // =====================================================================

@@ -1,0 +1,331 @@
+@page "/catalog-admin"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+@inject NavigationManager nav
+
+<PageTitle>Prick Test - Products</PageTitle>
+
+<style>
+    .catalog-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+
+    .catalog-add-panel {
+        background: #eef6ff;
+        border: 1px solid #b6d9ff;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+
+    .catalog-table input, .catalog-table select {
+        min-width: 90px;
+    }
+
+    .price-input {
+        max-width: 110px;
+    }
+</style>
+
+<h3>Είδη & Τιμές</h3>
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert @(messageIsError ? "alert-danger" : "alert-success") py-2">@message</div>
+}
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class="nav-link @(activeTab == "types" ? "active" : "")" @onclick='() => activeTab = "types"'>Τύποι & Τιμές</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link @(activeTab == "allergens" ? "active" : "")" @onclick='() => activeTab = "allergens"'>Αλλεργιογόνα</button>
+    </li>
+</ul>
+
+<div class="catalog-panel">
+    <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Εταιρεία</label>
+            <select class="form-control" @bind="filterCompany">
+                <option value="">Όλες</option>
+                <option value="SM">SM</option>
+                <option value="BM">BM</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-4">
+            <label class="form-label mb-1">Αναζήτηση</label>
+            <input class="form-control" placeholder="Κωδικός ή περιγραφή..." @bind="filterSearch" @bind:event="oninput" />
+        </div>
+        <div class="col-12 col-md-3">
+            <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="showInactive" @bind="showInactive" />
+                <label class="form-check-label" for="showInactive">Εμφάνιση ανενεργών</label>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (activeTab == "types")
+{
+    <div class="catalog-add-panel">
+        <div class="fw-bold mb-2">+ Νέος τύπος προϊόντος</div>
+        <div class="row g-2">
+            <div class="col-6 col-md-2"><input class="form-control form-control-sm" placeholder="Κωδικός *" @bind="newType.ProductTypeCode" /></div>
+            <div class="col-6 col-md-2">
+                <select class="form-control form-control-sm" @bind="newType.Company">
+                    <option value="BM">BM</option>
+                    <option value="SM">SM</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-3"><input class="form-control form-control-sm" placeholder="Περιγραφή" @bind="newType.Description" /></div>
+            <div class="col-6 col-md-2"><input type="number" step="0.01" class="form-control form-control-sm" placeholder="Τιμή λιανικής €" @bind="newType.PublicPrice" /></div>
+            <div class="col-6 col-md-2"><input type="number" step="0.01" class="form-control form-control-sm" placeholder="Τιμή ex-factory €" @bind="newType.ExFactoryPrice" /></div>
+            <div class="col-12 col-md-1"><button class="btn btn-success btn-sm w-100" @onclick="AddType" disabled="@busy">Προσθήκη</button></div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle catalog-table">
+            <thead>
+                <tr>
+                    <th>Κωδικός</th>
+                    <th>Εταιρεία</th>
+                    <th>Περιγραφή</th>
+                    <th>Τιμή Λιανικής €</th>
+                    <th>Τιμή Ex-Factory €</th>
+                    <th>Ενεργό</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in FilteredTypes)
+                {
+                    <tr class="@(t.IsActive ? "" : "table-secondary")">
+                        <td class="fw-bold">@t.ProductTypeCode</td>
+                        <td>
+                            <span class="badge" style="background-color:@(t.Company == "SM" ? "#28a745" : "#b57bee")">@t.Company</span>
+                        </td>
+                        <td><input class="form-control form-control-sm" @bind="t.Description" /></td>
+                        <td><input type="number" step="0.01" class="form-control form-control-sm price-input" @bind="t.PublicPrice" /></td>
+                        <td><input type="number" step="0.01" class="form-control form-control-sm price-input" @bind="t.ExFactoryPrice" /></td>
+                        <td>
+                            <button class="btn btn-sm @(t.IsActive ? "btn-success" : "btn-outline-secondary")"
+                                    title="@(t.IsActive ? "Απενεργοποίηση" : "Ενεργοποίηση")"
+                                    @onclick="() => ToggleType(t)" disabled="@busy">
+                                @(t.IsActive ? "ON" : "OFF")
+                            </button>
+                        </td>
+                        <td><button class="btn btn-sm btn-outline-primary" @onclick="() => SaveType(t)" disabled="@busy">Αποθήκευση</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="catalog-add-panel">
+        <div class="fw-bold mb-2">+ Νέο αλλεργιογόνο</div>
+        <div class="row g-2">
+            <div class="col-6 col-md-2"><input class="form-control form-control-sm" placeholder="Κωδικός * (π.χ. P-115)" @bind="newAllergen.CodePrick" /></div>
+            <div class="col-6 col-md-1">
+                <select class="form-control form-control-sm" @bind="newAllergen.Company">
+                    <option value="BM">BM</option>
+                    <option value="SM">SM</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-3"><input class="form-control form-control-sm" placeholder="Περιγραφή (ελληνικά)" @bind="newAllergen.DescriptionGreek" /></div>
+            <div class="col-12 col-md-3"><input class="form-control form-control-sm" placeholder="Περιγραφή (λατινικά/EN)" @bind="newAllergen.Description" /></div>
+            <div class="col-6 col-md-2"><input class="form-control form-control-sm" placeholder="Κατηγορία" @bind="newAllergen.Category" /></div>
+            <div class="col-12 col-md-1"><button class="btn btn-success btn-sm w-100" @onclick="AddAllergen" disabled="@busy">Προσθήκη</button></div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle catalog-table">
+            <thead>
+                <tr>
+                    <th>Κωδικός</th>
+                    <th>Εταιρεία</th>
+                    <th>Περιγραφή (GR)</th>
+                    <th>Περιγραφή (EN)</th>
+                    <th>Κατηγορία</th>
+                    <th>Ενεργό</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in FilteredAllergens)
+                {
+                    <tr class="@(a.IsActive ? "" : "table-secondary")">
+                        <td class="fw-bold">@a.CodePrick</td>
+                        <td>
+                            <span class="badge" style="background-color:@(a.Company == "SM" ? "#28a745" : "#b57bee")">@a.Company</span>
+                        </td>
+                        <td><input class="form-control form-control-sm" @bind="a.DescriptionGreek" /></td>
+                        <td><input class="form-control form-control-sm" @bind="a.Description" /></td>
+                        <td><input class="form-control form-control-sm" @bind="a.Category" /></td>
+                        <td>
+                            <button class="btn btn-sm @(a.IsActive ? "btn-success" : "btn-outline-secondary")"
+                                    title="@(a.IsActive ? "Απενεργοποίηση" : "Ενεργοποίηση")"
+                                    @onclick="() => ToggleAllergen(a)" disabled="@busy">
+                                @(a.IsActive ? "ON" : "OFF")
+                            </button>
+                        </td>
+                        <td><button class="btn btn-sm btn-outline-primary" @onclick="() => SaveAllergen(a)" disabled="@busy">Αποθήκευση</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="text-muted small">@FilteredAllergens.Count() από @allergens.Count αλλεργιογόνα</div>
+}
+
+@code {
+    private string activeTab = "types";
+    private bool loading = true;
+    private bool busy = false;
+    private string message = "";
+    private bool messageIsError = false;
+
+    private string filterCompany = "";
+    private string filterSearch = "";
+    private bool showInactive = false;
+
+    private List<ProductType> productTypes = new();
+    private List<AllergenCode> allergens = new();
+    private ProductType newType = new() { Company = "BM" };
+    private AllergenCode newAllergen = new() { Company = "BM" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!userManager.IsAdmin)
+        {
+            nav.NavigateTo("/");
+            return;
+        }
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        productTypes = await dataService.Get<List<ProductType>>("api/catalogadmin/producttypes") ?? new();
+        allergens = await dataService.Get<List<AllergenCode>>("api/catalogadmin/allergens") ?? new();
+        loading = false;
+    }
+
+    private IEnumerable<ProductType> FilteredTypes => productTypes
+        .Where(t => showInactive || t.IsActive)
+        .Where(t => string.IsNullOrEmpty(filterCompany) || t.Company == filterCompany)
+        .Where(t => string.IsNullOrEmpty(filterSearch)
+            || t.ProductTypeCode.Contains(filterSearch, StringComparison.OrdinalIgnoreCase)
+            || (t.Description ?? "").Contains(filterSearch, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<AllergenCode> FilteredAllergens => allergens
+        .Where(a => showInactive || a.IsActive)
+        .Where(a => string.IsNullOrEmpty(filterCompany) || a.Company == filterCompany)
+        .Where(a => string.IsNullOrEmpty(filterSearch)
+            || a.CodePrick.Contains(filterSearch, StringComparison.OrdinalIgnoreCase)
+            || (a.DescriptionGreek ?? "").Contains(filterSearch, StringComparison.OrdinalIgnoreCase)
+            || (a.Description ?? "").Contains(filterSearch, StringComparison.OrdinalIgnoreCase));
+
+    private void ShowMessage(string text, bool isError = false)
+    {
+        message = text;
+        messageIsError = isError;
+    }
+
+    // ---- Τύποι προϊόντος ----
+
+    private async Task AddType()
+    {
+        if (string.IsNullOrWhiteSpace(newType.ProductTypeCode))
+        {
+            ShowMessage("Συμπλήρωσε κωδικό τύπου.", isError: true);
+            return;
+        }
+        busy = true;
+        var created = await dataService.Post<ProductType, ProductType>("api/catalogadmin/producttypes", newType);
+        busy = false;
+        if (created == null)
+        {
+            ShowMessage("Η προσθήκη απέτυχε -- ίσως υπάρχει ήδη ο κωδικός.", isError: true);
+            return;
+        }
+        productTypes.Add(created);
+        productTypes = productTypes.OrderBy(p => p.Company).ThenBy(p => p.ProductTypeCode).ToList();
+        newType = new ProductType { Company = newType.Company };
+        ShowMessage($"Προστέθηκε ο τύπος {created.ProductTypeCode}.");
+    }
+
+    private async Task SaveType(ProductType t)
+    {
+        busy = true;
+        var updated = await dataService.Put<ProductType, ProductType>($"api/catalogadmin/producttypes/{t.ProductTypeCode}", t);
+        busy = false;
+        if (updated == null)
+        {
+            ShowMessage($"Η αποθήκευση του {t.ProductTypeCode} απέτυχε.", isError: true);
+            return;
+        }
+        ShowMessage($"Αποθηκεύτηκε ο τύπος {t.ProductTypeCode}.");
+    }
+
+    private async Task ToggleType(ProductType t)
+    {
+        t.IsActive = !t.IsActive;
+        await SaveType(t);
+    }
+
+    // ---- Αλλεργιογόνα ----
+
+    private async Task AddAllergen()
+    {
+        if (string.IsNullOrWhiteSpace(newAllergen.CodePrick))
+        {
+            ShowMessage("Συμπλήρωσε κωδικό αλλεργιογόνου.", isError: true);
+            return;
+        }
+        busy = true;
+        var created = await dataService.Post<AllergenCode, AllergenCode>("api/catalogadmin/allergens", newAllergen);
+        busy = false;
+        if (created == null)
+        {
+            ShowMessage("Η προσθήκη απέτυχε -- ίσως υπάρχει ήδη ο κωδικός.", isError: true);
+            return;
+        }
+        allergens.Add(created);
+        allergens = allergens.OrderBy(a => a.CodePrick).ToList();
+        newAllergen = new AllergenCode { Company = newAllergen.Company };
+        ShowMessage($"Προστέθηκε το αλλεργιογόνο {created.CodePrick}.");
+    }
+
+    private async Task SaveAllergen(AllergenCode a)
+    {
+        busy = true;
+        var updated = await dataService.Put<AllergenCode, AllergenCode>($"api/catalogadmin/allergens/{a.CodePrick}", a);
+        busy = false;
+        if (updated == null)
+        {
+            ShowMessage($"Η αποθήκευση του {a.CodePrick} απέτυχε.", isError: true);
+            return;
+        }
+        ShowMessage($"Αποθηκεύτηκε το {a.CodePrick}.");
+    }
+
+    private async Task ToggleAllergen(AllergenCode a)
+    {
+        a.IsActive = !a.IsActive;
+        await SaveAllergen(a);
+    }
+}

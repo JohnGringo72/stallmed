@@ -302,10 +302,13 @@ else
                 {
                     <button class="btn btn-primary" @onclick="() => SendQuote(detailsQuote)" disabled="@busy">Αποστολή email</button>
                 }
+                @if (detailsQuote.Status == QuoteStatus.Draft || detailsQuote.Status == QuoteStatus.Sent)
+                {
+                    <button class="btn btn-success" @onclick="() => AcceptAndConvert(detailsQuote)" disabled="@busy">Αποδοχή → Παραγγελία</button>
+                    <button class="btn btn-outline-danger" @onclick="() => rejectingQuote = detailsQuote" disabled="@busy">Απόρριψη</button>
+                }
                 @if (detailsQuote.Status == QuoteStatus.Sent)
                 {
-                    <button class="btn btn-success" @onclick="() => Accept(detailsQuote)" disabled="@busy">Αποδοχή</button>
-                    <button class="btn btn-outline-danger" @onclick="() => rejectingQuote = detailsQuote" disabled="@busy">Απόρριψη</button>
                     <button class="btn btn-outline-warning" @onclick="() => ExpireQuote(detailsQuote)" disabled="@busy">Λήξη</button>
                 }
                 @if (detailsQuote.Status == QuoteStatus.Accepted)
@@ -315,6 +318,10 @@ else
                 @if (detailsQuote.Status == QuoteStatus.Expired)
                 {
                     <button class="btn btn-warning" @onclick="() => Reissue(detailsQuote)" disabled="@busy">Επανέκδοση</button>
+                }
+                @if (detailsQuote.Status != QuoteStatus.Converted)
+                {
+                    <button class="btn btn-danger" @onclick="() => DeleteQuote(detailsQuote)" disabled="@busy">Διαγραφή</button>
                 }
             </div>
         </div>
@@ -696,17 +703,52 @@ else
         await RefreshAndReopen(q.QuoteID);
     }
 
-    private async Task Accept(QuoteViewDto q)
+    private async Task AcceptAndConvert(QuoteViewDto q)
     {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Αποδοχή της προσφοράς {q.QuoteNumber} και μετατροπή σε παραγγελία; Η προσφορά θα κλειδώσει.");
+        if (!ok) return;
+
         busy = true;
-        var result = await Service.Accept(q.QuoteID, new QuoteActionRequest { UserID = userManager.User?.IdUser });
-        busy = false;
-        if (result == null || !result.Success)
+        var accept = await Service.Accept(q.QuoteID, new QuoteActionRequest { UserID = userManager.User?.IdUser });
+        if (accept == null || !accept.Success)
         {
+            busy = false;
             ShowMessage("Δεν επιτρέπεται η ενέργεια.", isError: true);
             return;
         }
+
+        var convert = await Service.Convert(q.QuoteID, new QuoteActionRequest { UserID = userManager.User?.IdUser });
+        busy = false;
+        if (convert == null || !convert.Success)
+        {
+            // Η αποδοχή έχει ήδη γίνει -- η προσφορά μένει Accepted και το κουμπί
+            // «Μετατροπή σε παραγγελία» παραμένει διαθέσιμο για δεύτερη προσπάθεια.
+            ShowMessage(convert?.Message ?? "Η προσφορά έγινε αποδεκτή, αλλά η μετατροπή σε παραγγελία απέτυχε.", isError: true);
+            await RefreshAndReopen(q.QuoteID);
+            return;
+        }
+        ShowMessage(convert.Message ?? $"Δημιουργήθηκε η παραγγελία {convert.OrderCode}.");
         await RefreshAndReopen(q.QuoteID);
+    }
+
+    private async Task DeleteQuote(QuoteViewDto q)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Οριστική διαγραφή της προσφοράς {q.QuoteNumber}; Θα σβηστούν και οι γραμμές, το ιστορικό και τα συνημμένα της.");
+        if (!ok) return;
+
+        busy = true;
+        var result = await Service.Delete(q.QuoteID);
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            ShowMessage(result?.Message ?? "Η διαγραφή δεν επιτρέπεται.", isError: true);
+            return;
+        }
+        detailsQuote = null;
+        ShowMessage(result.Message ?? "Η προσφορά διαγράφηκε.");
+        await LoadQuotes();
     }
 
     private async Task ConfirmReject()

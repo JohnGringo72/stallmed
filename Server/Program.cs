@@ -28,6 +28,14 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("NotWarehouse", policy =>
         policy.RequireAssertion(ctx =>
             ctx.User.Identity?.IsAuthenticated == true && !ctx.User.IsInRole("warehouse")));
+
+    // Case-insensitive έλεγχος ρόλου (το IsInRole συγκρίνει case-sensitive
+    // και οι τιμές Role στον πίνακα Users δεν έχουν εγγυημένη μορφή).
+    options.AddPolicy("AdminOnly", policy =>
+        policy.RequireAssertion(ctx =>
+            ctx.User.Identity?.IsAuthenticated == true &&
+            ctx.User.Claims.Any(c => c.Type == System.Security.Claims.ClaimTypes.Role &&
+                string.Equals(c.Value?.Trim(), "admin", StringComparison.OrdinalIgnoreCase))));
 });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
