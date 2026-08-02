@@ -106,7 +106,7 @@ namespace StallmedManager.Server.Controllers
             [FromQuery] string? search)
         {
             var receiptsRaw = await (
-                from r in _context.StockReceipts
+                from r in _context.StockReceipts.Where(r => !r.IsDepleted)
                 join pol in _context.ProductionOrderLines on r.ProductionOrderLineID equals pol.ProductionOrderLineID into polJoin
                 from pol in polJoin.DefaultIfEmpty()
                 join po in _context.ProductionOrders on pol.ProductionOrderID equals po.ProductionOrderID into poJoin
