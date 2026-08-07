@@ -39,7 +39,6 @@
                     PRICK
                 </a>
                 <ul class="dropdown-menu dropdown-menu-dark">
-                    <li><a class="dropdown-item" href="/prick-dashboard" @onclick="CloseMenu">Dashboard</a></li>
                     <li><a class="dropdown-item" href="/apothema" @onclick="CloseMenu">Inventory</a></li>
                     @if (!userManager.IsWarehouse)
                     {
@@ -128,7 +127,7 @@
         if (path.Equals("/login", StringComparison.OrdinalIgnoreCase)) return;
 
         if (!WarehouseAllowedPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
-            Navigation.NavigateTo("/prick-dashboard");
+            Navigation.NavigateTo("/apothema");
     }
     private void OnStatusChanged(object sender, EventArgs e)
     {

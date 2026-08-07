@@ -1,6 +1,7 @@
 @page "/apothema"
 @using StallmedManager.Shared.Models
 @inject DataService dataService
+@inject IJSRuntime JS
 
 <PageTitle>Απόθεμα - Dashboard</PageTitle>
 
@@ -30,12 +31,58 @@
     .rop-input { width: 80px; display: inline-block; }
     .rop-saved { color: #198754; font-weight: 700; margin-left: 4px; }
 
-    .group-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin: 18px 0 8px 0;
+    /* Αναδιπλούμενες ενότητες -- ίδιο πατέρν με τις παραγγελίες γιατρών */
+    .section-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 14px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
+
+    .section-header {
+        padding: 12px 16px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+        .section-header:hover { background: #f8f9fa; }
+
+    .section-body {
+        border-top: 1px solid #eee;
+        background: #fcfcfc;
+    }
+
+    .expand-arrow {
+        transition: transform 0.15s;
+        display: inline-block;
+        width: 16px;
+        text-align: center;
+    }
+
+        .expand-arrow.open { transform: rotate(90deg); }
+
+    .company-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        color: white;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .aging-row-warn { background-color: #fff3cd !important; }
+    .aging-row-danger { background-color: #f8d7da !important; }
+
+    .proposal-row-ok { background-color: #d1e7dd !important; }
+    .proposal-row-warn { background-color: #fff3cd !important; }
+    .proposal-row-danger { background-color: #f8d7da !important; }
+    .qty-stepper { display: flex; align-items: center; gap: 4px; }
+    .qty-value { min-width: 30px; text-align: center; font-weight: 700; }
 </style>
 
 <div class="sbt-page-header">
@@ -78,7 +125,7 @@ else if (status == "loaded")
     </div>
 
     <!-- ===== ΦΙΛΤΡΑ ===== -->
-    <div class="row g-2 mb-2 align-items-end">
+    <div class="row g-2 mb-3 align-items-end">
         <div class="col-12 col-md-4">
             <input class="form-control" placeholder="Αναζήτηση κωδικού ή περιγραφής..."
                    value="@searchText" @oninput="e => searchText = e.Value?.ToString() ?? string.Empty" />
@@ -97,87 +144,304 @@ else if (status == "loaded")
         <div class="alert alert-danger py-2">@errorMessage</div>
     }
 
-    @foreach (var group in Groups)
+    <!-- ===== ΑΠΟΘΕΜΑ ΑΝΑ ΤΥΠΟ ΠΡΟΪΟΝΤΟΣ (αναδιπλούμενο) ===== -->
+    @foreach (var group in TypeGroups)
     {
-        <div class="group-header">
-            <h4 class="mb-0">@group.Title</h4>
-            <span class="badge bg-secondary">@group.Items.Count</span>
+        var isOpen = IsGroupOpen(group.Type);
+        <div class="section-card">
+            <div class="section-header" @onclick="() => ToggleGroup(group.Type)">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="expand-arrow @(isOpen ? "open" : "")">▶</span>
+                    <strong>📦 @group.Type@(string.IsNullOrEmpty(group.Description) ? "" : $" — {group.Description}")</strong>
+                    <span class="badge bg-secondary">@group.Items.Count είδη</span>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    @if (group.ToOrderCount > 0)
+                    {
+                        <span class="badge bg-danger">🛒 @group.ToOrderCount προς παραγγελία</span>
+                    }
+                    @if (group.OnOrderTotal > 0)
+                    {
+                        <span class="badge bg-info text-dark">⏳ @group.OnOrderTotal αναμένονται</span>
+                    }
+                </div>
+            </div>
+
+            @if (isOpen)
+            {
+                <div class="section-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Κωδικός</th>
+                                    <th>Περιγραφή</th>
+                                    <th title="Φυσικό απόθεμα στην αποθήκη">Φυσικό</th>
+                                    <th title="Δεσμευμένο από ανοιχτές παραγγελίες γιατρών">Δεσμευμένο</th>
+                                    <th title="Παραγγελμένα στην παραγωγή, αναμένεται παραλαβή">Παραγγελμένα</th>
+                                    <th title="Διαθέσιμο = Φυσικό - Δεσμευμένο">Διαθέσιμο</th>
+                                    <th title="Όριο (σημείο) αναπαραγγελίας -- επεξεργάσιμο">Όριο</th>
+                                    <th title="Για παραγγελία = max(0, Όριο - (Διαθέσιμο + Παραγγελμένα))">Για παραγγελία</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in group.Items)
+                                {
+                                    var rowClass = item.Urgency == StockDashboardLogic.UrgencyUrgent ? "stock-row-danger"
+                                                 : item.Urgency == StockDashboardLogic.UrgencyLow ? "stock-row-warn"
+                                                 : "";
+                                    <tr class="@rowClass">
+                                        <td><strong>@item.CodePrick</strong></td>
+                                        <td><small>@item.Description</small></td>
+                                        <td>@item.OnHand</td>
+                                        <td>@item.Committed</td>
+                                        <td>@item.OnOrder</td>
+                                        <td><strong>@item.Available</strong></td>
+                                        <td>
+                                            <input type="number" min="0" class="form-control form-control-sm rop-input"
+                                                   value="@item.ReorderPoint"
+                                                   @onchange="e => SaveReorderPoint(item, e)" />
+                                            @if (savedKey == Key(item))
+                                            {
+                                                <span class="rop-saved">✔</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (item.Urgency == StockDashboardLogic.UrgencyUrgent)
+                                            {
+                                                <span class="badge bg-danger">⛔ Επείγον@(item.ToOrder > 0 ? $" · {item.ToOrder} τεμ." : "")</span>
+                                            }
+                                            else if (item.Urgency == StockDashboardLogic.UrgencyLow)
+                                            {
+                                                <span class="badge bg-warning text-dark">⚠️ Χαμηλό · @item.ToOrder τεμ.</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- ===== 🧠 ΕΞΥΠΝΗ ΠΡΟΤΑΣΗ ΠΑΡΑΓΓΕΛΙΑΣ (αναδιπλούμενη) ===== -->
+    <div class="section-card">
+        <div class="section-header" @onclick="() => proposalOpen = !proposalOpen">
+            <div class="d-flex align-items-center gap-2">
+                <span class="expand-arrow @(proposalOpen ? "open" : "")">▶</span>
+                <strong>🧠 Έξυπνη Πρόταση Παραγγελίας</strong>
+            </div>
         </div>
 
-        @if (!group.Items.Any())
+        @if (proposalOpen)
         {
-            <p class="text-muted">Δεν βρέθηκαν είδη.</p>
-        }
-        else
-        {
-            <div class="table-responsive mb-3">
-                <table class="table table-hover table-sm">
-                    <thead>
-                        <tr>
-                            <th>Κωδικός</th>
-                            <th>Περιγραφή</th>
-                            <th>Τύπος</th>
-                            <th title="Φυσικό απόθεμα στην αποθήκη">Φυσικό</th>
-                            <th title="Δεσμευμένο από ανοιχτές παραγγελίες γιατρών">Δεσμευμένο</th>
-                            <th title="Παραγγελμένα στην παραγωγή, αναμένεται παραλαβή">Παραγγελμένα</th>
-                            <th title="Διαθέσιμο = Φυσικό - Δεσμευμένο">Διαθέσιμο</th>
-                            <th title="Όριο (σημείο) αναπαραγγελίας -- επεξεργάσιμο">Όριο</th>
-                            <th title="Για παραγγελία = max(0, Όριο - (Διαθέσιμο + Παραγγελμένα))">Για παραγγελία</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in group.Items)
+            <div class="section-body p-3">
+                <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                    <select class="form-control form-control-sm" style="width:auto;" @bind="proposalCompany">
+                        <option value="">Όλες οι Εταιρείες</option>
+                        <option value="SM">StallMedicals</option>
+                        <option value="BM">BeltaMed</option>
+                    </select>
+                    <select class="form-control form-control-sm" style="width:auto;" @bind="proposalProductType">
+                        <option value="">Όλοι οι Τύποι</option>
+                        @foreach (var pt in productTypes)
                         {
-                            var rowClass = item.Urgency == StockDashboardLogic.UrgencyUrgent ? "stock-row-danger"
-                                         : item.Urgency == StockDashboardLogic.UrgencyLow ? "stock-row-warn"
-                                         : "";
-                            <tr class="@rowClass">
-                                <td><strong>@item.CodePrick</strong></td>
-                                <td><small>@item.Description</small></td>
-                                <td>@item.ProductTypeCode</td>
-                                <td>@item.OnHand</td>
-                                <td>@item.Committed</td>
-                                <td>@item.OnOrder</td>
-                                <td><strong>@item.Available</strong></td>
-                                <td>
-                                    <input type="number" min="0" class="form-control form-control-sm rop-input"
-                                           value="@item.ReorderPoint"
-                                           @onchange="e => SaveReorderPoint(item, e)" />
-                                    @if (savedKey == Key(item))
-                                    {
-                                        <span class="rop-saved">✔</span>
-                                    }
-                                </td>
-                                <td>
-                                    @if (item.Urgency == StockDashboardLogic.UrgencyUrgent)
-                                    {
-                                        <span class="badge bg-danger">⛔ Επείγον@(item.ToOrder > 0 ? $" · {item.ToOrder} τεμ." : "")</span>
-                                    }
-                                    else if (item.Urgency == StockDashboardLogic.UrgencyLow)
-                                    {
-                                        <span class="badge bg-warning text-dark">⚠️ Χαμηλό · @item.ToOrder τεμ.</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">—</span>
-                                    }
-                                </td>
-                            </tr>
+                            <option value="@pt.ProductTypeCode">@pt.ProductTypeCode @(!string.IsNullOrEmpty(pt.Description) ? $"- {pt.Description}" : "")</option>
                         }
-                    </tbody>
-                </table>
+                    </select>
+                    <button class="btn btn-outline-primary btn-sm" @onclick="LoadSmartProposal" title="@Hint("Υπολογίζει ξανά την πρόταση παραγγελίας βάσει τρέχοντος stock και ζήτησης")">
+                        @(smartProposalStatus == "loading" ? "Φορτώνω..." : "🔄 Υπολογισμός")
+                    </button>
+                </div>
+
+                @if (smartProposalStatus == "loaded" && smartProposal != null)
+                {
+                    @if (!smartProposal.Any())
+                    {
+                        <div class="alert alert-success mb-0">✅ Δεν χρειάζεται παραγγελία αυτή τη στιγμή!</div>
+                    }
+                    else
+                    {
+                        @foreach (var grp in smartProposal.GroupBy(x => new { x.ProductTypeCode, x.ProductDescription }).OrderBy(g => g.Key.ProductTypeCode))
+                        {
+                            <div class="card mb-3">
+                                <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
+                                    <strong>@grp.Key.ProductTypeCode — @grp.Key.ProductDescription</strong>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        @if (grp.Any(x => x.Company == "BM" && x.OrderQuantity > 0))
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick='() => CreateSmartStockOrder("BM", grp.Key.ProductTypeCode)' title="@Hint("Δημιουργεί παραγγελία παραγωγής BM με τις ποσότητες της πρότασης")">
+                                                🛒 Παραγγελία BM
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportSmartProposalExcel("BM", grp.Key.ProductTypeCode)' title="@Hint("Κατεβάζει την πρόταση BM σε αρχείο Excel")">
+                                                📊 Excel BM
+                                            </button>
+                                        }
+                                        @if (grp.Any(x => x.Company == "SM" && x.OrderQuantity > 0))
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick='() => CreateSmartStockOrder("SM", grp.Key.ProductTypeCode)' title="@Hint("Δημιουργεί παραγγελία παραγωγής SM με τις ποσότητες της πρότασης")">
+                                                🛒 Παραγγελία SM
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick='() => ExportSmartProposalExcel("SM", grp.Key.ProductTypeCode)' title="@Hint("Κατεβάζει την πρόταση SM σε αρχείο Excel")">
+                                                📊 Excel SM
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover table-sm mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Κωδικός</th>
+                                                    <th>Περιγραφή</th>
+                                                    <th>Εταιρεία</th>
+                                                    <th title="Μέσος εβδομαδιαίος όγκος (90 ημέρες / 13 εβδ.)">Εβδ. Μέσος</th>
+                                                    <th title="12% του μέσου όρου">Security</th>
+                                                    <th title="Τρέχον διαθέσιμο stock">Stock</th>
+                                                    <th title="Ήδη σε παραγγελία παραγωγής (Open/PartiallyReceived)">Παραγγελμένο</th>
+                                                    <th title="Εκκρεμής ζήτηση από γιατρούς">Εκκρεμές</th>
+                                                    <th>Πρόταση</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var item in grp.OrderBy(x => x.CodePrick))
+                                                {
+                                                    var rowClass = item.CurrentStock == 0 && item.PendingDemand > 0 ? "proposal-row-danger"
+                                                                 : item.Proposed > 0 ? "proposal-row-warn"
+                                                                 : "proposal-row-ok";
+                                                    <tr class="@rowClass">
+                                                        <td><strong>@item.CodePrick</strong></td>
+                                                        <td><small>@item.AllergenDescription</small></td>
+                                                        <td>
+                                                            <span class="company-badge" style="background-color:@(item.Company == "SM" ? "#0d6efd" : "#6f42c1")">@item.Company</span>
+                                                        </td>
+                                                        <td>@item.WeeklyAvg</td>
+                                                        <td>@item.SecurityStock</td>
+                                                        <td>@item.CurrentStock</td>
+                                                        <td>@item.AlreadyOrdered</td>
+                                                        <td>@item.PendingDemand</td>
+                                                        <td>
+                                                            <div class="qty-stepper">
+                                                                <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                                        @onclick="() => ChangeSmartProposalQty(item, -1)" title="@Hint("Μειώνει την προτεινόμενη ποσότητα παραγγελίας κατά 1")">−</button>
+                                                                <span class="qty-value">@item.OrderQuantity</span>
+                                                                <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                                        @onclick="() => ChangeSmartProposalQty(item, 1)" title="@Hint("Αυξάνει την προτεινόμενη ποσότητα παραγγελίας κατά 1")">+</button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(smartProposalMessage))
+                        {
+                            <div class="alert alert-info mb-0">@smartProposalMessage</div>
+                        }
+                    }
+                }
             </div>
         }
-    }
+    </div>
+
+    <!-- ===== ⏳ ΕΚΚΡΕΜΕΙΣ ΓΡΑΜΜΕΣ (AGING, αναδιπλούμενο) ===== -->
+    <div class="section-card">
+        <div class="section-header" @onclick="ToggleAging">
+            <div class="d-flex align-items-center gap-2">
+                <span class="expand-arrow @(agingOpen ? "open" : "")">▶</span>
+                <strong>⏳ Παλαιότερες Εκκρεμείς Γραμμές (Aging)</strong>
+                @if (summary != null)
+                {
+                    <span class="badge bg-secondary">@summary.AgingLines.Count</span>
+                }
+            </div>
+        </div>
+
+        @if (agingOpen)
+        {
+            <div class="section-body">
+                @if (summaryStatus == "loading")
+                {
+                    <p class="p-3 mb-0"><em>Φορτώνω...</em></p>
+                }
+                else if (summary != null)
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Παραγγελία</th>
+                                    <th>Γιατρός</th>
+                                    <th>Κωδικός</th>
+                                    <th>Τύπος</th>
+                                    <th>Ζητ.</th>
+                                    <th>Δεσμ.</th>
+                                    <th>Εκκρεμές</th>
+                                    <th>Ημ. Παραγγελίας</th>
+                                    <th>Μέρες Εκκρεμότητας</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var a in summary.AgingLines)
+                                {
+                                    <tr class="@(a.DaysPending > 60 ? "aging-row-danger" : a.DaysPending > 30 ? "aging-row-warn" : "")">
+                                        <td>@a.OrderCode</td>
+                                        <td>@a.DoctorName</td>
+                                        <td>@a.CodePrick</td>
+                                        <td>@a.ProductTypeCode</td>
+                                        <td>@a.QuantityRequested</td>
+                                        <td>@a.QuantityAllocated</td>
+                                        <td><strong>@a.QuantityPending</strong></td>
+                                        <td>@a.OrderDate.ToString("dd/MM/yyyy")</td>
+                                        <td>@a.DaysPending</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </div>
 }
 
 @code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
     private string status = "idle";
     private List<StockDashboardItemDto> items = new();
+    private List<ProductType> productTypes = new();
     private string searchText = "";
     private bool onlyToOrder = false;
     private string errorMessage = "";
     private string? savedKey;
+
+    // Αναδιπλούμενες ενότητες: κλειστές by default
+    private readonly HashSet<string> expandedTypes = new();
+    private bool proposalOpen = false;
+    private bool agingOpen = false;
+
+    // Aging: το summary φορτώνεται lazily στο πρώτο άνοιγμα της ενότητας
+    private PrickDashboardSummaryDto summary;
+    private string summaryStatus = "idle";
+
+    private string proposalCompany = "";
+    private string proposalProductType = "";
+    private string smartProposalStatus = "idle";
+    private List<SmartStockProposalDto> smartProposal;
+    private string smartProposalMessage = "";
 
     private static string Key(StockDashboardItemDto item) => $"{item.CodePrick}|{item.ProductTypeCode}";
 
@@ -196,15 +460,44 @@ else if (status == "loaded")
         }
     }
 
-    // Δύο ομάδες κατά την προδιαγραφή: Τρόφιμα (κωδικός F%) και Λοιπά.
-    private List<(string Title, List<StockDashboardItemDto> Items)> Groups => new()
+    // Ομάδες ανά τύπο προϊόντος, μεγαλύτερη πρώτη (ο κύριος τύπος 92 πάνω-πάνω).
+    private List<(string Type, string? Description, List<StockDashboardItemDto> Items, int ToOrderCount, int OnOrderTotal)> TypeGroups =>
+        Filtered
+            .GroupBy(x => x.ProductTypeCode)
+            .Select(g => (
+                Type: g.Key,
+                Description: g.Select(x => x.ProductDescription).FirstOrDefault(d => !string.IsNullOrEmpty(d)),
+                Items: g.OrderBy(x => x.CodePrick).ToList(),
+                ToOrderCount: g.Count(x => x.ToOrder > 0),
+                OnOrderTotal: g.Sum(x => x.OnOrder)))
+            .OrderByDescending(g => g.Items.Count)
+            .ToList();
+
+    // Με ενεργό φίλτρο/αναζήτηση οι ομάδες ανοίγουν μόνες τους για να φαίνονται τα ευρήματα.
+    private bool IsGroupOpen(string type) =>
+        expandedTypes.Contains(type) || !string.IsNullOrWhiteSpace(searchText) || onlyToOrder;
+
+    private void ToggleGroup(string type)
     {
-        ("🍎 Τρόφιμα", Filtered.Where(x => x.IsFood).ToList()),
-        ("📦 Λοιπά", Filtered.Where(x => !x.IsFood).ToList())
-    };
+        if (!expandedTypes.Add(type))
+            expandedTypes.Remove(type);
+    }
+
+    private async Task ToggleAging()
+    {
+        agingOpen = !agingOpen;
+        if (agingOpen && summary == null && summaryStatus != "loading")
+        {
+            summaryStatus = "loading";
+            StateHasChanged();
+            summary = await new PrickDashboardService(dataService).GetSummary(null);
+            summaryStatus = "loaded";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
+        productTypes = await new PrickDashboardService(dataService).GetProductTypes() ?? new();
         await Load();
     }
 
@@ -251,5 +544,59 @@ else if (status == "loaded")
             errorMessage = result?.Message ?? "Σφάλμα κατά την αποθήκευση του ορίου.";
             StateHasChanged();
         }
+    }
+
+    private async Task LoadSmartProposal()
+    {
+        smartProposalStatus = "loading";
+        smartProposalMessage = "";
+        StateHasChanged();
+
+        smartProposal = await new PrickDashboardService(dataService).GetSmartStockProposal(
+            string.IsNullOrEmpty(proposalCompany) ? null : proposalCompany,
+            string.IsNullOrEmpty(proposalProductType) ? null : proposalProductType);
+
+        smartProposalStatus = "loaded";
+        StateHasChanged();
+    }
+
+    private void ChangeSmartProposalQty(SmartStockProposalDto item, int delta)
+    {
+        var updated = item.OrderQuantity + delta;
+        if (updated >= 0) item.OrderQuantity = updated;
+    }
+
+    private async Task CreateSmartStockOrder(string company, string productTypeCode)
+    {
+        if (smartProposal == null) return;
+        var lines = smartProposal.Where(x => x.Company == company && x.ProductTypeCode == productTypeCode && x.OrderQuantity > 0).ToList();
+        if (!lines.Any()) return;
+
+        var req = new CreateProductionOrderRequest
+        {
+            Company = company,
+            OrderDate = DateTime.Today,
+            CreatedBy = null,
+            Lines = lines.Select(x => new CreateProductionOrderLineRequest
+            {
+                CodePrick = x.CodePrick,
+                ProductTypeCode = x.ProductTypeCode,
+                QuantityOrdered = x.OrderQuantity
+            }).ToList()
+        };
+        await new PrickProductionService(dataService).CreateOrder(req);
+        smartProposalMessage = $"✅ Παραγγελία στοκ {company} / {productTypeCode} δημιουργήθηκε. Δες τη στη σελίδα Stock Orders.";
+        StateHasChanged();
+    }
+
+    private async Task ExportSmartProposalExcel(string company, string productTypeCode)
+    {
+        if (smartProposal == null) return;
+        var lines = smartProposal.Where(x => x.Company == company && x.ProductTypeCode == productTypeCode && x.OrderQuantity > 0).ToList();
+        if (!lines.Any()) return;
+
+        var bytes = await new PrickDashboardService(dataService).ExportSmartStockProposalExcel(company, productTypeCode, lines);
+        if (bytes != null)
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"StockOrder_{company}_{productTypeCode}_{DateTime.Today:yyyyMMdd}.xlsx", bytes);
     }
 }
