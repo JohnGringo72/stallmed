@@ -1028,6 +1028,28 @@ namespace StallmedManager.Server.Controllers
             if (pendingLines.Count == 0)
                 return BadRequest("Δεν υπάρχει εκκρεμές υπόλοιπο για διαχωρισμό.");
 
+            // Χωρίς καμία δέσμευση, η αρχική θα έμενε ReadyToShip χωρίς τίποτα να
+            // στείλει -- ο διαχωρισμός δεν έχει νόημα πριν δεσμευτεί stock.
+            if (lines.Sum(l => l.QuantityAllocated) == 0)
+                return Ok(new ShipResult
+                {
+                    Success = false,
+                    Message = "Καμία ποσότητα δεν είναι δεσμευμένη -- δεν υπάρχει τίποτα έτοιμο για αποστολή. Δέσμευσε πρώτα stock και μετά κάνε διαχωρισμό."
+                });
+
+            // Γραμμές με ιστορικό δεσμεύσεων (έστω αναιρεμένων) δεν επιτρέπεται να
+            // διαγραφούν -- το FK των OrderAllocations δείχνει πάνω τους.
+            var lineIds = pendingLines.Select(l => l.OrderLineID).ToList();
+            var lineIdsWithAllocHistory = (await _context.OrderAllocations
+                .Where(a => lineIds.Contains(a.OrderLineID))
+                .Select(a => a.OrderLineID)
+                .Distinct()
+                .ToListAsync()).ToHashSet();
+
+            // Όλος ο διαχωρισμός ατομικά: αποτυχία σε οποιοδήποτε βήμα δεν πρέπει
+            // να αφήνει πίσω μισοτελειωμένη (κενή) νέα παραγγελία.
+            using var splitTx = await _context.Database.BeginTransactionAsync();
+
             var baseCode = GetBaseOrderCode(order.OrderCode);
 
             // Τα γράμματα διαβάζονται ΜΙΑ φορά από τη βάση και το σύνολο ενημερώνεται
@@ -1096,9 +1118,16 @@ namespace StallmedManager.Server.Controllers
                 // Γραμμή που δεν είχε ούτε δέσμευση ούτε ακύρωση θα έμενε με 0 τεμ. --
                 // σβήνεται από την αρχική (το σύνολό της μεταφέρθηκε στη νέα παραγγελία).
                 pl.QuantityRequested = pl.QuantityAllocated + pl.QuantityCancelled;
-                if (pl.QuantityRequested == 0)
+                if (pl.QuantityRequested == 0 && !lineIdsWithAllocHistory.Contains(pl.OrderLineID))
                 {
                     _context.DoctorOrderLines.Remove(pl);
+                }
+                else if (pl.QuantityRequested == 0)
+                {
+                    // Δεν διαγράφεται λόγω FK ιστορικού δεσμεύσεων -- μένει μηδενική
+                    // ως Cancelled ώστε να μη μετράει σε κανένα υπολογισμό.
+                    pl.LineStatus = "Cancelled";
+                    pl.UpdatedAt = DateTime.Now;
                 }
                 else
                 {
@@ -1111,6 +1140,7 @@ namespace StallmedManager.Server.Controllers
             order.UpdatedAt = DateTime.Now;
 
             await _context.SaveChangesAsync();
+            await splitTx.CommitAsync();
             return Ok(new ShipResult { Success = true, NewOrderCode = newOrderCode });
         }
 
