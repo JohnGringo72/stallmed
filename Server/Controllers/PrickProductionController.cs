@@ -160,6 +160,20 @@ namespace StallmedManager.Server.Controllers
             if (req.Lines == null || req.Lines.Count == 0)
                 return BadRequest("Η παραγγελία πρέπει να έχει τουλάχιστον μία γραμμή.");
 
+            // Έλεγχος κωδικών στο μητρώο ΠΡΙΝ το save -- αλλιώς το FK απορρίπτει τις
+            // γραμμές μετά τη δημιουργία της κεφαλίδας και μένει κενή παραγγελία.
+            var requestedCodes = req.Lines.Select(l => l.CodePrick).Distinct().ToList();
+            var knownCodes = (await _context.AllergenCodes
+                .Where(a => requestedCodes.Contains(a.CodePrick))
+                .Select(a => a.CodePrick)
+                .ToListAsync()).ToHashSet();
+            var unknownCodes = requestedCodes.Where(c => !knownCodes.Contains(c)).ToList();
+            if (unknownCodes.Count > 0)
+                return BadRequest($"Άγνωστοι κωδικοί εκτός μητρώου: {string.Join(", ", unknownCodes)}. Καμία παραγγελία δεν δημιουργήθηκε.");
+
+            // Header + lines ατομικά: αποτυχία σε οποιοδήποτε βήμα δεν αφήνει κενή παραγγελία.
+            using var tx = await _context.Database.BeginTransactionAsync();
+
             var orderCode = await GenerateProductionOrderCode(req.Company, req.OrderDate);
 
             var order = new ProductionOrder
@@ -192,6 +206,7 @@ namespace StallmedManager.Server.Controllers
                 });
             }
             await _context.SaveChangesAsync();
+            await tx.CommitAsync();
 
             return Ok(new ProductionOrderDto
             {

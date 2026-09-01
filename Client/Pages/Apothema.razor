@@ -584,8 +584,17 @@ else if (status == "loaded")
                 QuantityOrdered = x.OrderQuantity
             }).ToList()
         };
-        await new PrickProductionService(dataService).CreateOrder(req);
-        smartProposalMessage = $"✅ Παραγγελία στοκ {company} / {productTypeCode} δημιουργήθηκε. Δες τη στη σελίδα Stock Orders.";
+        var created = await new PrickProductionService(dataService).CreateOrder(req);
+        if (created == null || created.ProductionOrderID == 0)
+        {
+            smartProposalMessage = $"⚠️ Η δημιουργία παραγγελίας {company} / {productTypeCode} απέτυχε — καμία παραγγελία δεν καταχωρήθηκε. Πιθανή αιτία: κωδικός εκτός μητρώου στην πρόταση.";
+            StateHasChanged();
+            return;
+        }
+
+        // Κατεβάζει αυτόματα και το Excel της παραγγελίας για αποστολή στην παραγωγή.
+        await ExportSmartProposalExcel(company, productTypeCode);
+        smartProposalMessage = $"✅ Παραγγελία στοκ {created.ProductionOrderCode} δημιουργήθηκε και κατέβηκε το Excel της. Δες τη στη σελίδα Stock Orders.";
         StateHasChanged();
     }
 
