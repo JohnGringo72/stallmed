@@ -484,6 +484,9 @@
                                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => PrintOrder(order)" @onclick:stopPropagation="true" title="@Hint("Εκτύπωση φύλλου προετοιμασίας παραγγελίας")">
                                         🖨️
                                     </button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => CopyOrder(order)" @onclick:stopPropagation="true" title="@Hint("Αντιγραφή σε νέα παραγγελία -- ίδια είδη/ποσότητες, διαλέγεις εσύ γιατρό")">
+                                        📋
+                                    </button>
                                     @if (totalFulfillable > 0)
                                     {
                                         <button class="btn btn-sm btn-success" @onclick="() => DoBulkAllocate(order)" @onclick:stopPropagation="true" title="@Hint("Δέσμευση ό,τι είναι διαθέσιμο σε όλες τις γραμμές")">
@@ -1580,6 +1583,36 @@
         showNewOrderPopup = true;
     }
     private void CloseNewOrderPopup() => showNewOrderPopup = false;
+
+    // Αντιγραφή υπάρχουσας παραγγελίας: ανοίγει τη φόρμα νέας παραγγελίας
+    // προσυμπληρωμένη με εταιρεία/τύπο/ποσότητες της παλιάς, ΧΩΡΙΣ γιατρό --
+    // τον επιλέγει ο χρήστης πριν την αποθήκευση.
+    private async Task CopyOrder(DoctorOrderViewDto source)
+    {
+        OpenNewOrderPopup();
+        await OnNewOrderCompanyChanged(source.Company);
+
+        var activeLines = source.Lines
+            .Where(l => l.LineStatus != "Cancelled" && (l.QuantityRequested - l.QuantityCancelled) > 0)
+            .ToList();
+
+        // Η φόρμα υποστηρίζει έναν τύπο ανά παραγγελία -- κρατάμε τον επικρατέστερο.
+        newOrderProductType = activeLines
+            .GroupBy(l => l.ProductTypeCode)
+            .OrderByDescending(g => g.Count())
+            .Select(g => g.Key)
+            .FirstOrDefault() ?? "";
+
+        newOrderQtyMap = activeLines
+            .Where(l => l.ProductTypeCode == newOrderProductType)
+            .GroupBy(l => l.CodePrick)
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.QuantityRequested - l.QuantityCancelled));
+
+        var droppedOtherTypes = activeLines.Count(l => l.ProductTypeCode != newOrderProductType);
+        newOrderMessage = $"📋 Αντιγραφή από {source.OrderCode} -- επίλεξε γιατρό και πάτα Δημιουργία."
+            + (droppedOtherTypes > 0 ? $" ⚠️ {droppedOtherTypes} γραμμές άλλου τύπου δεν αντιγράφηκαν." : "");
+        StateHasChanged();
+    }
 
     private bool HasUnsavedData =>
         selectedDoctor != null ||
