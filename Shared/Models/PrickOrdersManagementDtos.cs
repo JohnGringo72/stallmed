@@ -44,6 +44,9 @@ namespace StallmedManager.Shared.Models
     {
         public long OrderLineID { get; set; }
         public int? UserID { get; set; }
+        // true όταν το φιαλίδιο λείπει φυσικά από το ψυγείο: μαζί με την ανάκληση
+        // μηδενίζεται και το διαθέσιμο stock του κωδικού+τύπου.
+        public bool ZeroStock { get; set; }
     }
 
     // ---- Επεξεργασία παραγγελίας (notes, προσθήκη/αφαίρεση γραμμών) ----

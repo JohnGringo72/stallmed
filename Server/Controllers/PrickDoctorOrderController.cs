@@ -652,6 +652,20 @@ namespace StallmedManager.Server.Controllers
                 await cmd.ExecuteNonQueryAsync();
             }
 
+            // Το φιαλίδιο λείπει φυσικά: το stock που "ελευθέρωσε" η ανάκληση δεν
+            // υπάρχει στο ψυγείο -- μηδενίζεται για να μην ξαναπροταθεί για δέσμευση.
+            if (req.ZeroStock)
+            {
+                var missingReceipts = await _context.StockReceipts
+                    .Where(r => !r.IsDepleted && r.CodePrick == line.CodePrick && r.ProductTypeCode == line.ProductTypeCode)
+                    .ToListAsync();
+                foreach (var r in missingReceipts)
+                {
+                    r.QuantityRemaining = 0;
+                    r.IsDepleted = true;
+                }
+            }
+
             await _context.Entry(line).ReloadAsync();
             line.LineStatus = RecomputeLineStatus(line);
             line.UpdatedAt = DateTime.Now;
