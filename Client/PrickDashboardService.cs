@@ -41,6 +41,12 @@ namespace StallmedManager.Client
             return await dataService.Get<List<SmartStockProposalDto>>($"api/prickdashboard/smart-stock-proposal{query}") ?? new();
         }
 
+        public async Task<List<SmartProposalPendingDoctorDto>> GetSmartProposalPendingDoctors(string codePrick, string productTypeCode, string company)
+        {
+            return await dataService.Get<List<SmartProposalPendingDoctorDto>>(
+                $"api/prickdashboard/smart-stock-proposal/pending-doctors?codePrick={Uri.EscapeDataString(codePrick)}&productTypeCode={Uri.EscapeDataString(productTypeCode)}&company={Uri.EscapeDataString(company)}") ?? new();
+        }
+
         public async Task<List<StockDashboardItemDto>> GetStockDashboard()
         {
             return await dataService.Get<List<StockDashboardItemDto>>("api/prickdashboard/stock-dashboard") ?? new();

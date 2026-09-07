@@ -44,6 +44,14 @@ namespace StallmedManager.Shared.Models
         public int FreeStock { get; set; } // = QuantityRemaining (μη δεσμευμένο)
     }
 
+    public class SmartProposalPendingDoctorDto
+    {
+        public string? DoctorName { get; set; }
+        public string OrderCode { get; set; }
+        public DateTime OrderDate { get; set; }
+        public int QuantityPending { get; set; }
+    }
+
     public class SmartStockProposalDto
     {
         public string CodePrick { get; set; }

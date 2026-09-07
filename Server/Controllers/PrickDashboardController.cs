@@ -280,6 +280,32 @@ namespace StallmedManager.Server.Controllers
             return Ok(result.OrderBy(x => x.ProductTypeCode).ThenBy(x => x.CodePrick).ToList());
         }
 
+        // Ανάλυση του «Εκκρεμές» μιας γραμμής της έξυπνης πρότασης: ποιοι γιατροί
+        // το έχουν παραγγείλει. Ίδιο φίλτρο με το PendingDemand παραπάνω
+        // (Open γραμμές Pending/PartiallyAllocated, ποσότητα Requested-Allocated-Cancelled).
+        [HttpGet("smart-stock-proposal/pending-doctors")]
+        public async Task<ActionResult<List<SmartProposalPendingDoctorDto>>> GetSmartProposalPendingDoctors(
+            [FromQuery] string codePrick, [FromQuery] string productTypeCode, [FromQuery] string company)
+        {
+            var lines = await _context.DoctorOrderLines
+                .Include(l => l.Order).ThenInclude(o => o.Doctor)
+                .Where(l => (l.LineStatus == "Pending" || l.LineStatus == "PartiallyAllocated")
+                    && l.CodePrick == codePrick
+                    && l.ProductTypeCode == productTypeCode
+                    && l.Order.Company == company)
+                .OrderBy(l => l.Order.OrderDate)
+                .Select(l => new SmartProposalPendingDoctorDto
+                {
+                    DoctorName = l.Order.Doctor != null ? l.Order.Doctor.FullName : l.Order.DoctorName,
+                    OrderCode = l.Order.OrderCode,
+                    OrderDate = l.Order.OrderDate,
+                    QuantityPending = l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled
+                })
+                .ToListAsync();
+
+            return Ok(lines.Where(x => x.QuantityPending > 0).ToList());
+        }
+
         // ---- Dashboard Αποθέματος (§8β): μία γραμμή ανά κωδικό+τύπο ----
         // Φυσικό (OnHand)      = ελεύθερο υπόλοιπο παραλαβών + allocated τεμάχια
         //                        μη απεσταλμένων παραγγελιών (είναι ακόμα στην αποθήκη)

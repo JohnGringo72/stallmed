@@ -326,7 +326,20 @@ else if (status == "loaded")
                                                         <td>@item.SecurityStock</td>
                                                         <td>@item.CurrentStock</td>
                                                         <td>@item.AlreadyOrdered</td>
-                                                        <td>@item.PendingDemand</td>
+                                                        <td>
+                                                            @if (item.PendingDemand > 0)
+                                                            {
+                                                                <button class="btn btn-sm btn-outline-info py-0 px-1"
+                                                                        @onclick="() => ShowPendingDoctors(item)"
+                                                                        title="@Hint("Δείχνει ποιοι γιατροί έχουν παραγγείλει αυτόν τον κωδικό και εκκρεμεί")">
+                                                                    👥 @item.PendingDemand
+                                                                </button>
+                                                            }
+                                                            else
+                                                            {
+                                                                @item.PendingDemand
+                                                            }
+                                                        </td>
                                                         <td>
                                                             <div class="qty-stepper">
                                                                 <button class="btn btn-sm btn-outline-secondary py-0 px-1"
@@ -413,6 +426,68 @@ else if (status == "loaded")
                 }
             </div>
         }
+    </div>
+}
+
+@if (pendingDoctorsItem != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="ClosePendingDoctors">
+        <div class="modal-dialog modal-lg" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">
+                        👥 Εκκρεμείς παραγγελίες — @pendingDoctorsItem.CodePrick @pendingDoctorsItem.ProductTypeCode
+                        <span class="company-badge ms-1" style="background-color:@(pendingDoctorsItem.Company == "SM" ? "#0d6efd" : "#6f42c1")">@pendingDoctorsItem.Company</span>
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="ClosePendingDoctors"></button>
+                </div>
+                <div class="modal-body p-0">
+                    @if (pendingDoctorsStatus == "loading")
+                    {
+                        <p class="p-3 mb-0"><em>Φορτώνω...</em></p>
+                    }
+                    else if (pendingDoctors == null || !pendingDoctors.Any())
+                    {
+                        <p class="p-3 mb-0">Δεν βρέθηκαν εκκρεμείς γραμμές για τον κωδικό.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Γιατρός</th>
+                                        <th>Ημερομηνία</th>
+                                        <th>Παραγγελία</th>
+                                        <th class="text-end">Τεμάχια</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var d in pendingDoctors)
+                                    {
+                                        <tr>
+                                            <td>@(string.IsNullOrEmpty(d.DoctorName) ? "—" : d.DoctorName)</td>
+                                            <td>@d.OrderDate.ToString("dd/MM/yyyy")</td>
+                                            <td><small>@d.OrderCode</small></td>
+                                            <td class="text-end"><strong>@d.QuantityPending</strong></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="3"><strong>Σύνολο</strong></td>
+                                        <td class="text-end"><strong>@pendingDoctors.Sum(x => x.QuantityPending)</strong></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer py-1">
+                    <button class="btn btn-secondary btn-sm" @onclick="ClosePendingDoctors">Κλείσιμο</button>
+                </div>
+            </div>
+        </div>
     </div>
 }
 
@@ -558,6 +633,28 @@ else if (status == "loaded")
 
         smartProposalStatus = "loaded";
         StateHasChanged();
+    }
+
+    private SmartStockProposalDto pendingDoctorsItem;
+    private List<SmartProposalPendingDoctorDto> pendingDoctors;
+    private string pendingDoctorsStatus = "idle";
+
+    private async Task ShowPendingDoctors(SmartStockProposalDto item)
+    {
+        pendingDoctorsItem = item;
+        pendingDoctorsStatus = "loading";
+        pendingDoctors = null;
+        StateHasChanged();
+        pendingDoctors = await new PrickDashboardService(dataService)
+            .GetSmartProposalPendingDoctors(item.CodePrick, item.ProductTypeCode, item.Company);
+        pendingDoctorsStatus = "loaded";
+    }
+
+    private void ClosePendingDoctors()
+    {
+        pendingDoctorsItem = null;
+        pendingDoctors = null;
+        pendingDoctorsStatus = "idle";
     }
 
     private void ChangeSmartProposalQty(SmartStockProposalDto item, int delta)
