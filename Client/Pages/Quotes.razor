@@ -413,13 +413,11 @@ else
                         {
                             <tr>
                                 <td>
-                                    <select class="form-select form-select-sm" @bind="line.CodePrick">
-                                        <option value="">--</option>
-                                        @foreach (var a in allergens)
-                                        {
-                                            <option value="@a.CodePrick">@a.CodePrick - @a.AllergenDescription</option>
-                                        }
-                                    </select>
+                                    <input class="form-control form-control-sm @(IsAllergenInvalid(line) ? "is-invalid" : "")"
+                                           list="quoteAllergenList"
+                                           value="@GetAllergenText(line)"
+                                           @onchange="e => OnAllergenChanged(line, e.Value?.ToString())"
+                                           placeholder="Αναζήτηση κωδικού ή ονόματος..." />
                                 </td>
                                 <td>
                                     <select class="form-select form-select-sm" value="@line.ProductTypeCode"
@@ -445,6 +443,12 @@ else
                     </tbody>
                 </table>
             </div>
+            <datalist id="quoteAllergenList">
+                @foreach (var a in allergens)
+                {
+                    <option value="@($"{a.CodePrick} - {a.AllergenDescription}")"></option>
+                }
+            </datalist>
             <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
                 <button class="btn btn-sm btn-outline-primary" @onclick="AddLine">+ Γραμμή</button>
                 <span class="ms-3 small text-muted">Εισαγωγή από Excel:</span>
@@ -829,6 +833,7 @@ else
         editTermsPayment = null;
         editTermsWarranty = null;
         editLines = new List<SaveQuoteLineRequest>();
+        allergenTexts.Clear();
         AddLine();
         importSummary = null;
         showEditModal = true;
@@ -848,6 +853,7 @@ else
         editTermsDelivery = q.TermsDelivery;
         editTermsPayment = q.TermsPayment;
         editTermsWarranty = q.TermsWarranty;
+        allergenTexts.Clear();
         editLines = q.Lines.Select(l => new SaveQuoteLineRequest
         {
             CodePrick = l.CodePrick,
@@ -895,6 +901,52 @@ else
     }
 
     // Προσυμπλήρωση τιμής από τον τύπο προϊόντος (χονδρική αν υπάρχει, αλλιώς λιανική).
+    // Αναζητήσιμη επιλογή αλλεργιογόνου: το κείμενο του input ανά γραμμή,
+    // ώστε άκυρη πληκτρολόγηση να μένει ορατή (κόκκινη) αντί να χάνεται.
+    private readonly Dictionary<SaveQuoteLineRequest, string> allergenTexts = new();
+
+    private string GetAllergenText(SaveQuoteLineRequest line)
+    {
+        if (allergenTexts.TryGetValue(line, out var t)) return t;
+        if (string.IsNullOrEmpty(line.CodePrick)) return "";
+        var a = allergens.FirstOrDefault(x => x.CodePrick == line.CodePrick);
+        return a != null ? $"{a.CodePrick} - {a.AllergenDescription}" : line.CodePrick;
+    }
+
+    private bool IsAllergenInvalid(SaveQuoteLineRequest line)
+        => allergenTexts.TryGetValue(line, out var t)
+           && !string.IsNullOrWhiteSpace(t)
+           && string.IsNullOrEmpty(line.CodePrick);
+
+    private void OnAllergenChanged(SaveQuoteLineRequest line, string? text)
+    {
+        var t = (text ?? "").Trim();
+        if (string.IsNullOrEmpty(t))
+        {
+            allergenTexts.Remove(line);
+            line.CodePrick = "";
+            return;
+        }
+
+        // Ταίριασμα: πλήρες "ΚΩΔ - Περιγραφή" (επιλογή από τη λίστα), σκέτος κωδικός,
+        // ή μοναδικό αποτέλεσμα αναζήτησης σε κωδικό/περιγραφή.
+        var match = allergens.FirstOrDefault(a =>
+                string.Equals($"{a.CodePrick} - {a.AllergenDescription}", t, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(a.CodePrick, t, StringComparison.OrdinalIgnoreCase));
+        if (match == null)
+        {
+            var hits = allergens.Where(a =>
+                ($"{a.CodePrick} - {a.AllergenDescription}").Contains(t, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (hits.Count == 1) match = hits[0];
+        }
+
+        line.CodePrick = match?.CodePrick ?? "";
+        if (match != null)
+            allergenTexts[line] = $"{match.CodePrick} - {match.AllergenDescription}";
+        else
+            allergenTexts[line] = t;
+    }
+
     private void OnProductTypeChanged(SaveQuoteLineRequest line, string? code)
     {
         line.ProductTypeCode = code ?? "";
