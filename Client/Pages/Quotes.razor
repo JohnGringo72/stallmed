@@ -393,56 +393,65 @@ else
             </div>
 
             <h6>Είδη</h6>
-            <div class="table-responsive">
-                <table class="table table-sm lines-table">
-                    <thead>
-                        <tr>
-                            <th style="min-width:150px">Κωδικός Πρικ</th>
-                            <th style="min-width:150px">Τύπος προϊόντος</th>
-                            <th style="min-width:150px">Περιγραφή (προαιρετικά)</th>
-                            <th style="width:70px">Ποσ.</th>
-                            <th style="width:90px">Τιμή μον.</th>
-                            <th style="width:70px">Έκπτ. %</th>
-                            <th style="width:70px">ΦΠΑ %</th>
-                            <th style="width:90px" class="text-end">Σύνολο</th>
-                            <th style="width:40px"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var line in editLines)
-                        {
-                            <tr>
-                                <td>
-                                    <input class="form-control form-control-sm @(IsAllergenInvalid(line) ? "is-invalid" : "")"
-                                           list="quoteAllergenList"
-                                           value="@GetAllergenText(line)"
-                                           @onchange="e => OnAllergenChanged(line, e.Value?.ToString())"
-                                           placeholder="Αναζήτηση κωδικού ή ονόματος..." />
-                                </td>
-                                <td>
-                                    <select class="form-select form-select-sm" value="@line.ProductTypeCode"
-                                            @onchange="e => OnProductTypeChanged(line, e.Value?.ToString())">
-                                        <option value="">--</option>
-                                        @foreach (var p in productTypes)
-                                        {
-                                            <option value="@p.ProductTypeCode">@p.ProductTypeCode - @p.Description</option>
-                                        }
-                                    </select>
-                                </td>
-                                <td><input class="form-control form-control-sm" @bind="line.Description" /></td>
-                                <td><input type="number" min="1" class="form-control form-control-sm text-end" @bind="line.Quantity" /></td>
-                                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" @bind="line.UnitPrice" /></td>
-                                <td><input type="number" step="0.5" min="0" max="100" class="form-control form-control-sm text-end" @bind="line.DiscountPct" /></td>
-                                <td><input type="number" step="0.5" min="0" class="form-control form-control-sm text-end" @bind="line.VatRate" /></td>
-                                <td class="text-end align-middle">@LineTotal(line).ToString("N2") €</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => editLines.Remove(line)">×</button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
+            @foreach (var typeGroup in editLines.GroupBy(l => l.ProductTypeCode ?? "").ToList())
+            {
+                var groupType = typeGroup.Key;
+                var groupLines = typeGroup.ToList();
+                <div class="border rounded mb-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2 p-2" style="background:#f8f9fa">
+                        <strong class="small">Τύπος:</strong>
+                        <select class="form-select form-select-sm" style="max-width:340px"
+                                value="@groupType" @onchange="e => OnGroupTypeChanged(groupLines, e.Value?.ToString())">
+                            <option value="">-- επιλογή τύπου --</option>
+                            @foreach (var p in productTypes)
+                            {
+                                <option value="@p.ProductTypeCode">@p.ProductTypeCode - @p.Description</option>
+                            }
+                        </select>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => AddLineToGroup(groupType)">+ Γραμμή</button>
+                        <span class="small text-muted ms-auto">@groupLines.Count γραμμές</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm lines-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th style="min-width:220px">Κωδικός Πρικ</th>
+                                    <th style="min-width:150px">Περιγραφή (προαιρετικά)</th>
+                                    <th style="width:70px">Ποσ.</th>
+                                    <th style="width:90px">Τιμή μον.</th>
+                                    <th style="width:70px">Έκπτ. %</th>
+                                    <th style="width:70px">ΦΠΑ %</th>
+                                    <th style="width:90px" class="text-end">Σύνολο</th>
+                                    <th style="width:40px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in groupLines)
+                                {
+                                    <tr>
+                                        <td>
+                                            <input class="form-control form-control-sm @(IsAllergenInvalid(line) ? "is-invalid" : "")"
+                                                   list="quoteAllergenList"
+                                                   value="@GetAllergenText(line)"
+                                                   @onchange="e => OnAllergenChanged(line, e.Value?.ToString())"
+                                                   placeholder="Αναζήτηση κωδικού ή ονόματος..." />
+                                        </td>
+                                        <td><input class="form-control form-control-sm" @bind="line.Description" /></td>
+                                        <td><input type="number" min="1" class="form-control form-control-sm text-end" @bind="line.Quantity" /></td>
+                                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" @bind="line.UnitPrice" /></td>
+                                        <td><input type="number" step="0.5" min="0" max="100" class="form-control form-control-sm text-end" @bind="line.DiscountPct" /></td>
+                                        <td><input type="number" step="0.5" min="0" class="form-control form-control-sm text-end" @bind="line.VatRate" /></td>
+                                        <td class="text-end align-middle">@LineTotal(line).ToString("N2") €</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => editLines.Remove(line)">×</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
             <datalist id="quoteAllergenList">
                 @foreach (var a in allergens)
                 {
@@ -450,7 +459,8 @@ else
                 }
             </datalist>
             <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                <button class="btn btn-sm btn-outline-primary" @onclick="AddLine">+ Γραμμή</button>
+                <button class="btn btn-sm btn-outline-success" @onclick="AddTypeGroup"
+                        title="Προσθέτει νέα ομάδα γραμμών με άλλον τύπο προϊόντος">+ Τύπος</button>
                 <span class="ms-3 small text-muted">Εισαγωγή από Excel:</span>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadImportTemplate">Πρότυπο</button>
                 <InputFile OnChange="OnImportFileSelected" accept=".xlsx" class="form-control form-control-sm" style="max-width:280px;" />
@@ -888,16 +898,42 @@ else
         productTypes = await Service.GetProductTypes(editCompany);
     }
 
-    private void AddLine()
+    private void AddLine() => AddLineToGroup("");
+
+    private void AddLineToGroup(string productTypeCode)
     {
-        editLines.Add(new SaveQuoteLineRequest
+        var line = new SaveQuoteLineRequest
         {
             CodePrick = "",
-            ProductTypeCode = "",
+            ProductTypeCode = productTypeCode,
             Quantity = 1,
             Unit = "τεμ.",
             VatRate = DefaultVatRate
-        });
+        };
+        // Προσυμπλήρωση τιμής από τον τύπο της ομάδας, όπως όταν άλλαζε ο τύπος στη γραμμή.
+        var product = productTypes.FirstOrDefault(p => p.ProductTypeCode == productTypeCode);
+        if (product != null)
+            line.UnitPrice = product.ExFactoryPrice ?? product.PublicPrice ?? 0;
+        // Μπαίνει μετά την τελευταία γραμμή της ίδιας ομάδας για να μείνει μαζί της.
+        var lastIdx = editLines.FindLastIndex(l => (l.ProductTypeCode ?? "") == productTypeCode);
+        if (lastIdx >= 0) editLines.Insert(lastIdx + 1, line);
+        else editLines.Add(line);
+    }
+
+    // «+ Τύπος»: νέα ομάδα χωρίς τύπο ακόμα — αν υπάρχει ήδη ομάδα χωρίς τύπο,
+    // απλώς προσθέτει γραμμή εκεί (δεν γίνεται να συνυπάρχουν δύο κενές ομάδες).
+    private void AddTypeGroup() => AddLineToGroup("");
+
+    private void OnGroupTypeChanged(List<SaveQuoteLineRequest> groupLines, string? code)
+    {
+        var newCode = code ?? "";
+        var product = productTypes.FirstOrDefault(p => p.ProductTypeCode == newCode);
+        foreach (var line in groupLines)
+        {
+            line.ProductTypeCode = newCode;
+            if (product != null && line.UnitPrice == 0)
+                line.UnitPrice = product.ExFactoryPrice ?? product.PublicPrice ?? 0;
+        }
     }
 
     // Προσυμπλήρωση τιμής από τον τύπο προϊόντος (χονδρική αν υπάρχει, αλλιώς λιανική).
@@ -945,14 +981,6 @@ else
             allergenTexts[line] = $"{match.CodePrick} - {match.AllergenDescription}";
         else
             allergenTexts[line] = t;
-    }
-
-    private void OnProductTypeChanged(SaveQuoteLineRequest line, string? code)
-    {
-        line.ProductTypeCode = code ?? "";
-        var product = productTypes.FirstOrDefault(p => p.ProductTypeCode == code);
-        if (product != null && line.UnitPrice == 0)
-            line.UnitPrice = product.ExFactoryPrice ?? product.PublicPrice ?? 0;
     }
 
     // Live υπολογισμοί -- ίδια λογική με τον server (QuoteCalculator).
