@@ -79,13 +79,13 @@ else
                 <tr>
                     <th class="sortable" @onclick='() => SortBy("code")'>Κωδικός<span>@SortArrow("code")</span></th>
                     <th class="sortable" @onclick='() => SortBy("title")'>Τίτλος<span>@SortArrow("title")</span></th>
-                    <th class="sortable" @onclick='() => SortBy("regarding")'>Αφορά<span>@SortArrow("regarding")</span></th>
-                    <th class="sortable" @onclick='() => SortBy("createdby")'>Άνοιξε<span>@SortArrow("createdby")</span></th>
-                    <th class="sortable" @onclick='() => SortBy("created")'>Ημερομηνία<span>@SortArrow("created")</span></th>
-                    <th class="sortable" @onclick='() => SortBy("due")'>Προθεσμία<span>@SortArrow("due")</span></th>
+                    <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("regarding")'>Αφορά<span>@SortArrow("regarding")</span></th>
+                    <th class="sortable d-none d-lg-table-cell" @onclick='() => SortBy("createdby")'>Άνοιξε<span>@SortArrow("createdby")</span></th>
+                    <th class="sortable d-none d-lg-table-cell" @onclick='() => SortBy("created")'>Ημερομηνία<span>@SortArrow("created")</span></th>
+                    <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("due")'>Προθεσμία<span>@SortArrow("due")</span></th>
                     <th class="sortable" @onclick='() => SortBy("status")'>Στάτους<span>@SortArrow("status")</span></th>
-                    <th class="sortable" @onclick='() => SortBy("priority")'>Προτ/τητα<span>@SortArrow("priority")</span></th>
-                    <th title="Σχόλια / Συνημμένα">💬 / 📎</th>
+                    <th class="sortable d-none d-lg-table-cell" @onclick='() => SortBy("priority")'>Προτ/τητα<span>@SortArrow("priority")</span></th>
+                    <th class="d-none d-lg-table-cell" title="Σχόλια / Συνημμένα">💬 / 📎</th>
                 </tr>
             </thead>
             <tbody>
@@ -94,13 +94,13 @@ else
                     <tr class="issue-row" @onclick="() => OpenDetails(i.IssueID)">
                         <td><strong>@i.IssueCode</strong></td>
                         <td>@i.Title</td>
-                        <td>@(string.IsNullOrEmpty(i.RegardingName) ? "—" : i.RegardingName)</td>
-                        <td>@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : i.CreatedByName)</td>
-                        <td>@i.CreatedAt.ToString("dd/MM/yyyy")</td>
-                        <td>@(i.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td>
+                        <td class="d-none d-md-table-cell">@(string.IsNullOrEmpty(i.RegardingName) ? "—" : i.RegardingName)</td>
+                        <td class="d-none d-lg-table-cell">@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : i.CreatedByName)</td>
+                        <td class="d-none d-lg-table-cell">@i.CreatedAt.ToString("dd/MM/yyyy")</td>
+                        <td class="d-none d-md-table-cell">@(i.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td>
                         <td><span class="badge @StatusBadge(i.Status)">@StatusLabel(i.Status)</span></td>
-                        <td>@PriorityLabel(i.Priority)</td>
-                        <td class="text-muted small">@i.CommentCount / @i.AttachmentCount</td>
+                        <td class="d-none d-lg-table-cell">@PriorityLabel(i.Priority)</td>
+                        <td class="d-none d-lg-table-cell text-muted small">@i.CommentCount / @i.AttachmentCount</td>
                     </tr>
                 }
             </tbody>
@@ -112,7 +112,7 @@ else
 @if (showEdit)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-lg modal-fullscreen-md-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title">@(editId == null ? "Νέο Θέμα" : $"Επεξεργασία {editCode}")</h5>
@@ -224,7 +224,7 @@ else
 {
     var iss = details.Issue;
     <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseDetails">
-        <div class="modal-dialog modal-xl" @onclick:stopPropagation="true">
+        <div class="modal-dialog modal-xl modal-fullscreen-lg-down" @onclick:stopPropagation="true">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title d-flex align-items-center gap-2 flex-wrap">
@@ -318,7 +318,7 @@ else
 @if (previewAtt != null)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.7); z-index:1070;" @onclick="ClosePreview">
-        <div class="modal-dialog modal-xl" @onclick:stopPropagation="true">
+        <div class="modal-dialog modal-xl modal-fullscreen-lg-down" @onclick:stopPropagation="true">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h6 class="modal-title">📄 @previewAtt.FileName</h6>
