@@ -44,5 +44,8 @@ namespace StallmedManager.Client
 
         public async Task<List<IssueUserDto>> GetUsers()
             => await dataService.Get<List<IssueUserDto>>("api/issues/users") ?? new();
+
+        public async Task<List<DoctorOptionDto>> GetDoctors()
+            => await dataService.Get<List<DoctorOptionDto>>("api/issues/doctors") ?? new();
     }
 }

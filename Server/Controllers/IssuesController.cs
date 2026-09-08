@@ -242,5 +242,18 @@ namespace StallmedManager.Server.Controllers
                 }).ToListAsync();
             return Ok(users);
         }
+
+        // ---- Ενεργοί γιατροί για το dropdown «Αφορά» (όλοι, χωρίς Take(50)
+        // όπως στο PrickDoctorOrder, γιατί εδώ δεν υπάρχει search-as-you-type) ----
+        [HttpGet("doctors")]
+        public async Task<ActionResult<List<DoctorOptionDto>>> GetDoctors()
+        {
+            var list = await _context.Doctors
+                .Where(d => d.IsActive)
+                .OrderBy(d => d.FullName)
+                .Select(d => new DoctorOptionDto { DoctorID = d.DoctorID, FullName = d.FullName })
+                .ToListAsync();
+            return Ok(list);
+        }
     }
 }

@@ -135,13 +135,21 @@ else
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
-                            <label class="form-label mb-1">Αφορά (πωλητή / υπάλληλο)</label>
-                            <select class="form-select" @bind="editRegardingUserId">
+                            <label class="form-label mb-1">Αφορά (υπάλληλο / γιατρό)</label>
+                            <select class="form-select" @bind="editRegardingKey">
                                 <option value="">— επιλογή —</option>
-                                @foreach (var u in users)
-                                {
-                                    <option value="@u.IdUser">@u.FullName@(string.IsNullOrEmpty(u.Role) ? "" : $" ({u.Role})")</option>
-                                }
+                                <optgroup label="Πωλητές / Υπάλληλοι">
+                                    @foreach (var u in users)
+                                    {
+                                        <option value="@($"u:{u.IdUser}")">@u.FullName@(string.IsNullOrEmpty(u.Role) ? "" : $" ({u.Role})")</option>
+                                    }
+                                </optgroup>
+                                <optgroup label="Γιατροί">
+                                    @foreach (var d in doctors)
+                                    {
+                                        <option value="@($"d:{d.DoctorID}")">@d.FullName</option>
+                                    }
+                                </optgroup>
                             </select>
                         </div>
                         <div class="col-md-6">
@@ -390,6 +398,7 @@ else
         }
     }
     private List<IssueUserDto> users = new();
+    private List<DoctorOptionDto> doctors = new();
     private bool loading = true;
     private bool busy = false;
     private string searchText = "";
@@ -401,7 +410,10 @@ else
     private string editCode = "";
     private string editTitle = "";
     private string? editDescription;
-    private int? editRegardingUserId;
+    // «Αφορά»: μία τιμή για δύο πηγές — "u:<IdUser>" για χρήστη, "d:<DoctorID>"
+    // για γιατρό. Ο γιατρός αποθηκεύεται μόνο ως όνομα (RegardingName snapshot,
+    // RegardingUserID = null), όπως προβλέπει το σχήμα του issues_module.sql.
+    private string editRegardingKey = "";
     private int? editAssignedUserId;
     private string editPriority = "Normal";
     private string editStatus = "Open";
@@ -421,6 +433,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         users = await Service.GetUsers();
+        doctors = await Service.GetDoctors();
         await Load();
     }
 
@@ -451,7 +464,7 @@ else
         editTitle = "";
         editDescription = null;
         // Προεπιλογή: το θέμα αφορά αυτόν που το γράφει (αλλάζεται ελεύθερα).
-        editRegardingUserId = userManager.User?.IdUser;
+        editRegardingKey = userManager.User?.IdUser is int uid ? $"u:{uid}" : "";
         editAssignedUserId = null;
         editPriority = "Normal";
         editStatus = "Open";
@@ -470,13 +483,31 @@ else
         editCode = iss.IssueCode;
         editTitle = iss.Title;
         editDescription = iss.Description;
-        editRegardingUserId = iss.RegardingUserID;
+        if (iss.RegardingUserID != null)
+        {
+            editRegardingKey = $"u:{iss.RegardingUserID}";
+        }
+        else
+        {
+            // Γιατρός: κρατιέται μόνο το όνομα, οπότε το ξαναβρίσκουμε στη λίστα.
+            var doc = doctors.FirstOrDefault(d => d.FullName == iss.RegardingName);
+            editRegardingKey = doc != null ? $"d:{doc.DoctorID}" : "";
+        }
         editAssignedUserId = iss.AssignedUserID;
         editPriority = iss.Priority;
         editStatus = iss.Status;
         editDueDate = iss.DueDate;
         editMessage = "";
         showEdit = true;
+    }
+
+    private (int? userId, string? name) ResolveRegarding()
+    {
+        if (editRegardingKey.StartsWith("u:") && int.TryParse(editRegardingKey[2..], out var uid))
+            return (uid, users.FirstOrDefault(u => u.IdUser == uid)?.FullName);
+        if (editRegardingKey.StartsWith("d:") && int.TryParse(editRegardingKey[2..], out var did))
+            return (null, doctors.FirstOrDefault(d => d.DoctorID == did)?.FullName);
+        return (null, null);
     }
 
     private void CloseEdit()
@@ -493,13 +524,14 @@ else
             return;
         }
         busy = true;
+        var (regUserId, regName) = ResolveRegarding();
         var result = await Service.SaveIssue(new SaveIssueRequest
         {
             IssueID = editId,
             Title = editTitle,
             Description = editDescription,
-            RegardingUserID = editRegardingUserId,
-            RegardingName = users.FirstOrDefault(u => u.IdUser == editRegardingUserId)?.FullName,
+            RegardingUserID = regUserId,
+            RegardingName = regName,
             AssignedUserID = editAssignedUserId,
             AssignedName = users.FirstOrDefault(u => u.IdUser == editAssignedUserId)?.FullName,
             Status = editStatus,
