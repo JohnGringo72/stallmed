@@ -526,6 +526,28 @@
                                         </div>
                                     </div>
                                 }
+                                @if (order.OrderStatus == "Fulfilled")
+                                {
+                                    @* Απεσταλμένη παραγγελία: μας ενδιαφέρει μόνο τι στάλθηκε --
+                                       Ζητ./Ακυρ./Εκκρεμές/Διαθέσιμο/Αλλού δεν έχουν πια νόημα. *@
+                                    <table class="table table-sm mb-2" style="max-width:560px;">
+                                        <thead>
+                                            <tr><th>Κωδικός</th><th>Τύπος</th><th>Απεστάλη</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var line in order.Lines.Where(l => l.QuantityAllocated > 0))
+                                            {
+                                                <tr>
+                                                    <td>@line.CodePrick <small class="text-muted">@line.AllergenDescription</small></td>
+                                                    <td>@line.ProductTypeCode</td>
+                                                    <td><strong>@line.QuantityAllocated</strong> τεμ.</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                                else
+                                {
                                 <table class="table table-sm mb-2">
                                     <thead>
                                         <tr>
@@ -636,6 +658,7 @@
                                 @if (!string.IsNullOrEmpty(addLineMessage))
                                 {
                                     <div class="alert alert-warning py-1 px-2 small">@addLineMessage</div>
+                                }
                                 }
 
                                 <div class="mb-2">
