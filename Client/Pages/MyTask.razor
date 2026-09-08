@@ -1,134 +1,274 @@
-﻿@page "/mytasks"
+@page "/mytasks"
 @using Microsoft.AspNetCore.Components.Forms
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+@inject IJSRuntime JS
 
-<PageTitle>MyTask</PageTitle>
+<PageTitle>Tasks / Issues</PageTitle>
+
+<style>
+    .issue-row { cursor: pointer; }
+    .chat-box {
+        max-height: 320px;
+        overflow-y: auto;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 12px;
+    }
+    .chat-msg { display: flex; gap: 8px; margin-bottom: 10px; align-items: flex-start; }
+    .chat-msg.mine { flex-direction: row-reverse; }
+    .chat-avatar {
+        width: 34px; height: 34px; border-radius: 50%;
+        background: #6c757d; color: white; font-weight: 700; font-size: 0.8rem;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .chat-msg.mine .chat-avatar { background: #0d6efd; }
+    .chat-bubble {
+        background: white; border: 1px solid #dee2e6; border-radius: 10px;
+        padding: 6px 10px; max-width: 75%;
+    }
+    .chat-msg.mine .chat-bubble { background: #e7f1ff; border-color: #b6d4fe; }
+    .chat-meta { font-size: 0.72rem; color: #6c757d; margin-bottom: 2px; }
+    .chat-text { white-space: pre-wrap; word-break: break-word; }
+</style>
 
 <div class="sbt-page-header">
     <img src="images/icons/icon-mytask.svg" alt="" class="sbt-page-icon" />
-    <h3 class="mb-3">MyTask</h3>
+    <h3 class="mb-3">Tasks / Issues</h3>
 </div>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-        <strong>Ενεργές Εργασίες</strong>
+<div class="row g-2 mb-3 align-items-end">
+    <div class="col-12 col-md-4">
+        <input class="form-control" placeholder="Αναζήτηση τίτλου, κωδικού, ονόματος..."
+               value="@searchText" @oninput="e => searchText = e.Value?.ToString() ?? string.Empty" @onkeyup="OnSearchKeyUp" />
     </div>
-    <button class="btn btn-primary" @onclick="OpenNewTaskPopup" title="@Hint("Δημιουργία νέας εργασίας")">+ Νέα Εργασία</button>
+    <div class="col-auto">
+        <select class="form-select" value="@filterStatus" @onchange="OnFilterStatusChanged">
+            <option value="">Όλα τα στάτους</option>
+            <option value="Open">Ανοιχτά</option>
+            <option value="InProgress">Σε εξέλιξη</option>
+            <option value="Done">Ολοκληρωμένα</option>
+            <option value="Cancelled">Ακυρωμένα</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-outline-primary" @onclick="Load" title="@Hint("Ανανέωση της λίστας")">🔄</button>
+    </div>
+    <div class="col-auto ms-auto">
+        <button class="btn btn-primary" @onclick="OpenNew" title="@Hint("Δημιουργία νέου θέματος/εργασίας")">+ Νέο Θέμα</button>
+    </div>
 </div>
 
-@if (showPopup)
+@if (loading)
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (issues.Count == 0)
+{
+    <div class="alert alert-light border">Δεν υπάρχουν θέματα.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped table-hover table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Κωδικός</th>
+                    <th>Τίτλος</th>
+                    <th>Αφορά</th>
+                    <th>Άνοιξε</th>
+                    <th>Ημερομηνία</th>
+                    <th>Προθεσμία</th>
+                    <th>Στάτους</th>
+                    <th>Προτ/τητα</th>
+                    <th title="Σχόλια / Συνημμένα">💬 / 📎</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in issues)
+                {
+                    <tr class="issue-row" @onclick="() => OpenDetails(i.IssueID)">
+                        <td><strong>@i.IssueCode</strong></td>
+                        <td>@i.Title</td>
+                        <td>@(string.IsNullOrEmpty(i.RegardingName) ? "—" : i.RegardingName)</td>
+                        <td>@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : i.CreatedByName)</td>
+                        <td>@i.CreatedAt.ToString("dd/MM/yyyy")</td>
+                        <td>@(i.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td>
+                        <td><span class="badge @StatusBadge(i.Status)">@StatusLabel(i.Status)</span></td>
+                        <td>@PriorityLabel(i.Priority)</td>
+                        <td class="text-muted small">@i.CommentCount / @i.AttachmentCount</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@* ===== Modal: Νέο / Επεξεργασία ===== *@
+@if (showEdit)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Νέα Εργασία</h5>
-                    <button type="button" class="btn-close" @onclick="CloseNewTaskPopup" title="@Hint("Κλείσιμο χωρίς αποθήκευση")"></button>
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">@(editId == null ? "Νέο Θέμα" : $"Επεξεργασία {editCode}")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseEdit"></button>
                 </div>
-
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Τίτλος</label>
-                        <input class="form-control" @bind="newTaskTitle" />
+                    <div class="mb-2">
+                        <label class="form-label mb-1">Τίτλος *</label>
+                        <input class="form-control" @bind="editTitle" />
                     </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Περιγραφή</label>
-                        <textarea class="form-control" rows="4" @bind="newTaskDescription"></textarea>
+                    <div class="mb-2">
+                        <label class="form-label mb-1">Περιγραφή</label>
+                        <textarea class="form-control" rows="3" @bind="editDescription"></textarea>
                     </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Ανάθεση σε</label>
-                        <select class="form-select" @bind="newTaskAssignedTo">
-                            <option value="">Επιλογή χρήστη</option>
-                            <option value="Μαρία">Μαρία</option>
-                            <option value="Γιώργος">Γιώργος</option>
-                            <option value="Νίκος">Νίκος</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Προθεσμία</label>
-                        <InputDate @bind-Value="newTaskDueDate" class="form-control" />
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Αρχείο</label>
-                        <InputFile OnChange="HandleFileSelected" class="form-control" />
-                    </div>
-
-                    @if (!string.IsNullOrWhiteSpace(selectedFileName))
-                    {
-                        <div class="alert alert-secondary py-2">
-                            Επιλεγμένο αρχείο: <strong>@selectedFileName</strong>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label mb-1">Αφορά (πωλητή / υπάλληλο)</label>
+                            <select class="form-select" @bind="editRegardingUserId">
+                                <option value="">— επιλογή —</option>
+                                @foreach (var u in users)
+                                {
+                                    <option value="@u.IdUser">@u.FullName@(string.IsNullOrEmpty(u.Role) ? "" : $" ({u.Role})")</option>
+                                }
+                            </select>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label mb-1">Ανάθεση σε</label>
+                            <select class="form-select" @bind="editAssignedUserId">
+                                <option value="">— κανείς —</option>
+                                @foreach (var u in users)
+                                {
+                                    <option value="@u.IdUser">@u.FullName@(string.IsNullOrEmpty(u.Role) ? "" : $" ({u.Role})")</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Προτεραιότητα</label>
+                            <select class="form-select" @bind="editPriority">
+                                <option value="Low">Χαμηλή</option>
+                                <option value="Normal">Κανονική</option>
+                                <option value="High">Υψηλή</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label mb-1">Προθεσμία</label>
+                            <InputDate @bind-Value="editDueDate" class="form-control" />
+                        </div>
+                        @if (editId != null)
+                        {
+                            <div class="col-md-4">
+                                <label class="form-label mb-1">Στάτους</label>
+                                <select class="form-select" @bind="editStatus">
+                                    <option value="Open">Ανοιχτό</option>
+                                    <option value="InProgress">Σε εξέλιξη</option>
+                                    <option value="Done">Ολοκληρωμένο</option>
+                                    <option value="Cancelled">Ακυρωμένο</option>
+                                </select>
+                            </div>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(editMessage))
+                    {
+                        <div class="alert alert-warning py-2 mb-0">@editMessage</div>
                     }
                 </div>
-
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="CloseNewTaskPopup" title="@Hint("Κλείσιμο χωρίς αποθήκευση")">Ακύρωση</button>
-                    <button class="btn btn-primary" @onclick="SaveTask" title="@Hint("Αποθήκευση της νέας εργασίας")">Δημιουργία</button>
+                <div class="modal-footer py-2">
+                    <button class="btn btn-secondary" @onclick="CloseEdit">Ακύρωση</button>
+                    <button class="btn btn-primary" @onclick="SaveEdit" disabled="@busy">@(editId == null ? "Δημιουργία" : "Αποθήκευση")</button>
                 </div>
             </div>
         </div>
     </div>
 }
 
-@if (tasks.Count == 0)
+@* ===== Modal: Λεπτομέρειες + Συνομιλία + Συνημμένα ===== *@
+@if (details != null)
 {
-    <div class="alert alert-light border">
-        Δεν υπάρχουν ακόμα εργασίες.
-    </div>
-}
-else
-{
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Κωδικός</th>
-                <th>Τίτλος</th>
-                <th>Υπεύθυνος</th>
-                <th>Κατάσταση</th>
-                <th>Προθεσμία</th>
-                <th>Αρχείο</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var task in tasks)
-            {
-                <tr style="cursor:pointer" @onclick="() => OpenTask(task)">
-                    <td>@task.TaskNo</td>
-                    <td>@task.Title</td>
-                    <td>@task.AssignedTo</td>
-                    <td>@task.Status</td>
-                    <td>@(task.DueDate?.ToString("dd/MM/yyyy") ?? "-")</td>
-                    <td>@(string.IsNullOrWhiteSpace(task.FileName) ? "-" : task.FileName)</td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
+    var iss = details.Issue;
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseDetails">
+        <div class="modal-dialog modal-xl" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">@iss.IssueCode — @iss.Title <span class="badge @StatusBadge(iss.Status) ms-2">@StatusLabel(iss.Status)</span></h5>
+                    <button type="button" class="btn-close" @onclick="CloseDetails"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-lg-5">
+                            <table class="table table-sm mb-2">
+                                <tbody>
+                                    <tr><th style="width:130px">Αφορά</th><td>@(string.IsNullOrEmpty(iss.RegardingName) ? "—" : iss.RegardingName)</td></tr>
+                                    <tr><th>Άνοιξε</th><td>@(string.IsNullOrEmpty(iss.CreatedByName) ? "—" : iss.CreatedByName) · @iss.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
+                                    <tr><th>Ανάθεση</th><td>@(string.IsNullOrEmpty(iss.AssignedName) ? "—" : iss.AssignedName)</td></tr>
+                                    <tr><th>Προθεσμία</th><td>@(iss.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td></tr>
+                                    <tr><th>Προτεραιότητα</th><td>@PriorityLabel(iss.Priority)</td></tr>
+                                    <tr><th>Τελ. ενημέρωση</th><td>@iss.UpdatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
+                                </tbody>
+                            </table>
+                            @if (!string.IsNullOrWhiteSpace(iss.Description))
+                            {
+                                <div class="border rounded p-2 mb-2" style="white-space:pre-wrap">@iss.Description</div>
+                            }
+                            <button class="btn btn-sm btn-outline-primary mb-3" @onclick="() => OpenEditFromDetails()">✏️ Επεξεργασία / Αλλαγή στάτους</button>
 
-@if (selectedTask != null)
-{
-    <div class="card mt-4 p-3">
-        <h5>@selectedTask.TaskNo - @selectedTask.Title</h5>
-
-        <p><strong>Υπεύθυνος:</strong> @selectedTask.AssignedTo</p>
-        <p><strong>Κατάσταση:</strong> @selectedTask.Status</p>
-        <p><strong>Προθεσμία:</strong> @(selectedTask.DueDate?.ToString("dd/MM/yyyy") ?? "-")</p>
-
-        <hr />
-
-        <p>@selectedTask.Description</p>
-
-        @if (!string.IsNullOrWhiteSpace(selectedTask.FileName))
-        {
-            <p><strong>Αρχείο:</strong> @selectedTask.FileName</p>
-        }
-
-        <button class="btn btn-sm btn-secondary mt-2" @onclick="CloseTask" title="@Hint("Κλείσιμο προβολής εργασίας")">
-            Κλείσιμο
-        </button>
+                            <h6>📎 Συνημμένα (@details.Attachments.Count)</h6>
+                            @if (details.Attachments.Any())
+                            {
+                                <ul class="list-group mb-2">
+                                    @foreach (var att in details.Attachments)
+                                    {
+                                        <li class="list-group-item d-flex justify-content-between align-items-center py-1">
+                                            <a href="javascript:void(0)" @onclick="() => ViewAttachment(att)" title="@Hint("Άνοιγμα σε νέα καρτέλα (εικόνες/PDF εμφανίζονται απευθείας)")">@att.FileName</a>
+                                            <span class="d-flex align-items-center gap-1">
+                                                <span class="text-muted small">@att.UploadedByName @att.CreatedAt.ToString("dd/MM")</span>
+                                                <button class="btn btn-sm btn-outline-secondary py-0" @onclick="() => DownloadAttachment(att)" title="@Hint("Κατέβασμα του αρχείου")">⬇</button>
+                                                <button class="btn btn-sm btn-outline-danger py-0" @onclick="() => DeleteAttachment(att)" title="@Hint("Διαγραφή συνημμένου")">×</button>
+                                            </span>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            <InputFile OnChange="OnAttachmentSelected" class="form-control form-control-sm" />
+                            @if (busy)
+                            {
+                                <em class="small text-muted">Επεξεργάζομαι...</em>
+                            }
+                        </div>
+                        <div class="col-lg-7">
+                            <h6>💬 Συνομιλία (@details.Comments.Count)</h6>
+                            <div class="chat-box mb-2" id="issueChatBox">
+                                @if (!details.Comments.Any())
+                                {
+                                    <p class="text-muted mb-0"><em>Κανένα σχόλιο ακόμα.</em></p>
+                                }
+                                @foreach (var c in details.Comments)
+                                {
+                                    var mine = c.UserID != null && c.UserID == userManager.User?.IdUser;
+                                    <div class="chat-msg @(mine ? "mine" : "")">
+                                        <div class="chat-avatar" title="@c.UserName">@Initials(c.UserName)</div>
+                                        <div class="chat-bubble">
+                                            <div class="chat-meta">@c.UserName · @c.CreatedAt.ToString("dd/MM/yyyy HH:mm")</div>
+                                            <div class="chat-text">@c.CommentText</div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            <div class="d-flex gap-2">
+                                <textarea class="form-control" rows="2" placeholder="Γράψε σχόλιο... (π.χ. «Κάνε αυτό», «Το έκανα, θέλω 2»)"
+                                          @bind="newComment" @bind:event="oninput"></textarea>
+                                <button class="btn btn-primary" @onclick="SendComment" disabled="@(busy || string.IsNullOrWhiteSpace(newComment))">Αποστολή</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 }
 
@@ -136,89 +276,235 @@ else
     [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
     private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
 
-    private bool showPopup = false;
+    private IssuesService Service => new IssuesService(dataService);
 
-    private string newTaskTitle = "";
-    private string newTaskDescription = "";
-    private string newTaskAssignedTo = "";
-    private DateTime? newTaskDueDate;
-    private string selectedFileName = "";
+    private List<IssueListItemDto> issues = new();
+    private List<IssueUserDto> users = new();
+    private bool loading = true;
+    private bool busy = false;
+    private string searchText = "";
+    private string filterStatus = "";
 
-    private int taskCounter = 1;
+    // Νέο/Επεξεργασία
+    private bool showEdit = false;
+    private long? editId;
+    private string editCode = "";
+    private string editTitle = "";
+    private string? editDescription;
+    private int? editRegardingUserId;
+    private int? editAssignedUserId;
+    private string editPriority = "Normal";
+    private string editStatus = "Open";
+    private DateTime? editDueDate;
+    private string editMessage = "";
 
-    private List<MyTaskItem> tasks = new();
-    private MyTaskItem? selectedTask;
+    // Λεπτομέρειες
+    private IssueDetailsDto? details;
+    private string newComment = "";
 
-    private void OpenNewTaskPopup()
+    protected override async Task OnInitializedAsync()
     {
-        showPopup = true;
+        users = await Service.GetUsers();
+        await Load();
     }
 
-    private void CloseNewTaskPopup()
+    private async Task Load()
     {
-        showPopup = false;
-        ClearForm();
+        loading = true;
+        issues = await Service.GetIssues(string.IsNullOrEmpty(filterStatus) ? null : filterStatus,
+                                         string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim());
+        loading = false;
     }
 
-    private void SaveTask()
+    private async Task OnFilterStatusChanged(ChangeEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(newTaskTitle) || string.IsNullOrWhiteSpace(newTaskAssignedTo))
+        filterStatus = e.Value?.ToString() ?? "";
+        await Load();
+    }
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Load();
+    }
+
+    // ---- Νέο / Επεξεργασία ----
+    private void OpenNew()
+    {
+        editId = null;
+        editCode = "";
+        editTitle = "";
+        editDescription = null;
+        editRegardingUserId = null;
+        editAssignedUserId = null;
+        editPriority = "Normal";
+        editStatus = "Open";
+        editDueDate = null;
+        editMessage = "";
+        showEdit = true;
+    }
+
+    private void OpenEditFromDetails()
+    {
+        if (details == null) return;
+        var iss = details.Issue;
+        editId = iss.IssueID;
+        editCode = iss.IssueCode;
+        editTitle = iss.Title;
+        editDescription = iss.Description;
+        editRegardingUserId = iss.RegardingUserID;
+        editAssignedUserId = iss.AssignedUserID;
+        editPriority = iss.Priority;
+        editStatus = iss.Status;
+        editDueDate = iss.DueDate;
+        editMessage = "";
+        showEdit = true;
+    }
+
+    private void CloseEdit()
+    {
+        showEdit = false;
+        editMessage = "";
+    }
+
+    private async Task SaveEdit()
+    {
+        if (string.IsNullOrWhiteSpace(editTitle))
+        {
+            editMessage = "Ο τίτλος είναι υποχρεωτικός.";
             return;
-
-        tasks.Insert(0, new MyTaskItem
-        {
-            TaskNo = $"TSK-{taskCounter:0000}",
-            Title = newTaskTitle,
-            Description = newTaskDescription,
-            AssignedTo = newTaskAssignedTo,
-            Status = "Νέα",
-            DueDate = newTaskDueDate,
-            FileName = selectedFileName
-        });
-
-        taskCounter++;
-        showPopup = false;
-        ClearForm();
-    }
-
-    private void ClearForm()
-    {
-        newTaskTitle = "";
-        newTaskDescription = "";
-        newTaskAssignedTo = "";
-        newTaskDueDate = null;
-        selectedFileName = "";
-    }
-
-    private void HandleFileSelected(InputFileChangeEventArgs e)
-    {
-        if (e.FileCount > 0)
-        {
-            selectedFileName = e.File.Name;
         }
+        busy = true;
+        var result = await Service.SaveIssue(new SaveIssueRequest
+        {
+            IssueID = editId,
+            Title = editTitle,
+            Description = editDescription,
+            RegardingUserID = editRegardingUserId,
+            RegardingName = users.FirstOrDefault(u => u.IdUser == editRegardingUserId)?.FullName,
+            AssignedUserID = editAssignedUserId,
+            AssignedName = users.FirstOrDefault(u => u.IdUser == editAssignedUserId)?.FullName,
+            Status = editStatus,
+            Priority = editPriority,
+            DueDate = editDueDate,
+            ActingUserID = userManager.User?.IdUser,
+            ActingUserName = UserFullName()
+        });
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            editMessage = result?.Message ?? "Η αποθήκευση απέτυχε.";
+            return;
+        }
+        showEdit = false;
+        await Load();
+        // Αν η επεξεργασία έγινε από τα details, φρεσκάρισμα του ανοιχτού παραθύρου.
+        if (details != null && editId != null)
+            details = await Service.GetIssue(editId.Value);
     }
 
-    private void OpenTask(MyTaskItem task)
+    // ---- Λεπτομέρειες / Συνομιλία / Συνημμένα ----
+    private async Task OpenDetails(long id)
     {
-        selectedTask = task;
+        details = await Service.GetIssue(id);
+        newComment = "";
     }
 
-    private void CloseTask()
+    private void CloseDetails()
     {
-        selectedTask = null;
+        details = null;
+        newComment = "";
     }
 
-
-
-
-    private class MyTaskItem
+    private async Task SendComment()
     {
-        public string TaskNo { get; set; } = "";
-        public string Title { get; set; } = "";
-        public string Description { get; set; } = "";
-        public string AssignedTo { get; set; } = "";
-        public string Status { get; set; } = "";
-        public DateTime? DueDate { get; set; }
-        public string FileName { get; set; } = "";
+        if (details == null || string.IsNullOrWhiteSpace(newComment)) return;
+        busy = true;
+        await Service.AddComment(new AddIssueCommentRequest
+        {
+            IssueID = details.Issue.IssueID,
+            UserID = userManager.User?.IdUser,
+            UserName = UserFullName(),
+            CommentText = newComment.Trim()
+        });
+        newComment = "";
+        details = await Service.GetIssue(details.Issue.IssueID);
+        busy = false;
+        await Load();
     }
+
+    private async Task OnAttachmentSelected(InputFileChangeEventArgs e)
+    {
+        if (details == null || e.File == null) return;
+        using var ms = new MemoryStream();
+        await e.File.OpenReadStream(maxAllowedSize: 15 * 1024 * 1024).CopyToAsync(ms);
+        busy = true;
+        await Service.UploadAttachment(details.Issue.IssueID, ms.ToArray(), e.File.Name,
+            userManager.User?.IdUser, UserFullName());
+        details = await Service.GetIssue(details.Issue.IssueID);
+        busy = false;
+        await Load();
+    }
+
+    private async Task ViewAttachment(IssueAttachmentDto att)
+    {
+        var bytes = await Service.DownloadAttachment(att.AttachmentID);
+        if (bytes != null && bytes.Length > 0)
+            await JS.InvokeVoidAsync("openFileFromBytes", att.FileName ?? "file", att.ContentType ?? "", bytes);
+    }
+
+    private async Task DownloadAttachment(IssueAttachmentDto att)
+    {
+        var bytes = await Service.DownloadAttachment(att.AttachmentID);
+        if (bytes != null && bytes.Length > 0)
+            await JS.InvokeVoidAsync("downloadFileFromBytes", att.FileName ?? "attachment", bytes);
+    }
+
+    private async Task DeleteAttachment(IssueAttachmentDto att)
+    {
+        if (details == null) return;
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Διαγραφή του συνημμένου «{att.FileName}»;");
+        if (!ok) return;
+        await Service.DeleteAttachment(att.AttachmentID);
+        details = await Service.GetIssue(details.Issue.IssueID);
+        await Load();
+    }
+
+    // ---- Helpers ----
+    private string UserFullName()
+        => $"{userManager.User?.Firstname} {userManager.User?.Lastname}".Trim();
+
+    // Αρχικά χρήστη για το avatar της συνομιλίας (π.χ. "Γιάννης Γρηγοριάδης" -> ΓΓ).
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var initials = string.Concat(parts.Take(2).Select(p => char.ToUpper(p[0])));
+        return initials.Length > 0 ? initials : "?";
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "Open" => "Ανοιχτό",
+        "InProgress" => "Σε εξέλιξη",
+        "Done" => "Ολοκληρωμένο",
+        "Cancelled" => "Ακυρωμένο",
+        _ => status
+    };
+
+    private static string StatusBadge(string status) => status switch
+    {
+        "Open" => "bg-primary",
+        "InProgress" => "bg-warning text-dark",
+        "Done" => "bg-success",
+        "Cancelled" => "bg-secondary",
+        _ => "bg-light text-dark"
+    };
+
+    private static string PriorityLabel(string priority) => priority switch
+    {
+        "Low" => "Χαμηλή",
+        "Normal" => "Κανονική",
+        "High" => "🔴 Υψηλή",
+        _ => priority
+    };
 }

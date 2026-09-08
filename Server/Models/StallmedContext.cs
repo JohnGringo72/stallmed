@@ -31,6 +31,11 @@ namespace StallmedManager.Server.Models
         public virtual DbSet<QuoteEvent> QuoteEvents { get; set; }
         public virtual DbSet<QuoteAttachment> QuoteAttachments { get; set; }
 
+        // ---- Issues/Tasks Module (Εργασίες-Θέματα) ----
+        public virtual DbSet<IssueTask> IssueTasks { get; set; }
+        public virtual DbSet<IssueComment> IssueComments { get; set; }
+        public virtual DbSet<IssueAttachment> IssueAttachments { get; set; }
+
         public StallmedContext(DbContextOptions<StallmedContext> options) : base(options)
         {
         }
