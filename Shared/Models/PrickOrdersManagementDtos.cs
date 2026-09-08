@@ -39,6 +39,13 @@ namespace StallmedManager.Shared.Models
         public int? UserID { get; set; }
     }
 
+    // ---- Ακύρωση ολόκληρης παραγγελίας ----
+    public class CancelOrderRequest
+    {
+        public long OrderID { get; set; }
+        public int? UserID { get; set; }
+    }
+
     // ---- Απλή ανάκληση όλων των ενεργών δεσμεύσεων μιας γραμμής ----
     public class ReverseLineRequest
     {

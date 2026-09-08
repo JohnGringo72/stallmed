@@ -505,6 +505,12 @@
                                             ⚠️
                                         </button>
                                     }
+                                    @if (order.OrderStatus != "Fulfilled" && order.OrderStatus != "Cancelled")
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmCancelOrder(order)" @onclick:stopPropagation="true" title="@Hint("Ακύρωση ΟΛΗΣ της παραγγελίας -- οι δεσμεύσεις ανακαλούνται και τα φιαλίδια επιστρέφουν στο stock")">
+                                            🗑️ Ακύρωση
+                                        </button>
+                                    }
                                 </div>
                             </div>
                             @if (isOrderOpen)
@@ -1102,6 +1108,26 @@
 
     private void ConfirmSplitPending(DoctorOrderViewDto order) =>
         ShowConfirm($"Θέλεις να διαχωρίσεις την παραγγελία {order.OrderCode}; Θα δημιουργηθεί νέα παραγγελία για το εκκρεμές υπόλοιπο.", () => DoSplitPending(order));
+
+    private void ConfirmCancelOrder(DoctorOrderViewDto order)
+    {
+        var allocated = order.Lines.Sum(l => l.QuantityAllocated);
+        var msg = $"Θέλεις να ακυρώσεις ΟΛΗ την παραγγελία {order.OrderCode};";
+        if (allocated > 0)
+            msg += $" Οι δεσμεύσεις ({allocated} τεμ.) θα ανακληθούν και τα φιαλίδια θα επιστρέψουν στο stock.";
+        ShowConfirm(msg, () => DoCancelOrder(order));
+    }
+
+    private async Task DoCancelOrder(DoctorOrderViewDto order)
+    {
+        await new PrickDoctorOrderService(dataService).CancelOrder(new CancelOrderRequest
+        {
+            OrderID = order.OrderID,
+            UserID = userManager.User?.IdUser
+        });
+        topBannerMessage = $"🗑️ Η παραγγελία {order.OrderCode} ακυρώθηκε.";
+        await LoadData();
+    }
 
     private void ConfirmCancelLine(DoctorOrderViewDto order, DoctorOrderLineViewDto line, int pending) =>
         ShowConfirm($"Θέλεις να ακυρώσεις το εκκρεμές υπόλοιπο του {line.CodePrick} ({pending} τεμ.);", () =>

@@ -91,6 +91,12 @@ namespace StallmedManager.Client
             return true;
         }
 
+        public async Task<bool> CancelOrder(CancelOrderRequest req)
+        {
+            await dataService.Post<CancelOrderRequest, object>("api/prickdoctororder/cancel-order", req);
+            return true;
+        }
+
         public async Task<bool> UncancelLine(UncancelLineRequest req)
         {
             await dataService.Post<UncancelLineRequest, object>("api/prickdoctororder/uncancel-line", req);

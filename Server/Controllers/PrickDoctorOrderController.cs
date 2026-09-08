@@ -600,6 +600,60 @@ namespace StallmedManager.Server.Controllers
             return Ok();
         }
 
+        // ---- Ακύρωση ΟΛΗΣ της παραγγελίας: ανακαλεί όλες τις ενεργές δεσμεύσεις
+        // (τα φιαλίδια επιστρέφουν στο stock μέσω sp_ReverseAllocation) και
+        // ακυρώνει όλα τα υπόλοιπα, οπότε η παραγγελία καταλήγει Cancelled ----
+        [HttpPost("cancel-order")]
+        public async Task<ActionResult> CancelOrder([FromBody] CancelOrderRequest req)
+        {
+            var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+            if (order == null) return NotFound();
+            if (order.OrderStatus == "Fulfilled")
+                return BadRequest("Η παραγγελία έχει ήδη αποσταλεί και δεν μπορεί να ακυρωθεί.");
+
+            var lines = await _context.DoctorOrderLines
+                .Where(l => l.OrderID == req.OrderID)
+                .ToListAsync();
+            var lineIds = lines.Select(l => l.OrderLineID).ToList();
+
+            var activeAllocs = await _context.OrderAllocations
+                .Where(a => lineIds.Contains(a.OrderLineID) && a.AllocationStatus == "Active")
+                .ToListAsync();
+
+            var connection = (MySqlConnector.MySqlConnection)_context.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+                await connection.OpenAsync();
+
+            foreach (var alloc in activeAllocs)
+            {
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = "sp_ReverseAllocation";
+                cmd.CommandType = System.Data.CommandType.StoredProcedure;
+                cmd.Parameters.Add(new MySqlConnector.MySqlParameter("p_AllocationID", MySqlConnector.MySqlDbType.Int64) { Value = alloc.AllocationID });
+                cmd.Parameters.Add(new MySqlConnector.MySqlParameter("p_UserID", MySqlConnector.MySqlDbType.Int32) { Value = (object?)req.UserID ?? DBNull.Value });
+                cmd.Parameters.Add(new MySqlConnector.MySqlParameter("p_Reason", MySqlConnector.MySqlDbType.VarChar) { Value = "Ακύρωση παραγγελίας" });
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            // Οι ποσότητες των γραμμών άλλαξαν από το stored procedure,
+            // οπότε ξαναδιαβάζονται πριν την ακύρωση των υπολοίπων.
+            foreach (var line in lines)
+            {
+                await _context.Entry(line).ReloadAsync();
+                var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
+                if (pending > 0)
+                    line.QuantityCancelled += pending;
+                line.LineStatus = RecomputeLineStatus(line);
+                line.UpdatedAt = DateTime.Now;
+            }
+            await _context.SaveChangesAsync();
+
+            await RecomputeOrderStatus(order);
+            await _context.SaveChangesAsync();
+
+            return Ok();
+        }
+
         // ---- Αναίρεση ακύρωσης: επαναφέρει την ακυρωμένη ποσότητα σε εκκρεμές ----
         [HttpPost("uncancel-line")]
         public async Task<ActionResult> UncancelLine([FromBody] UncancelLineRequest req)
