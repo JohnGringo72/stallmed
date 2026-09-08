@@ -168,6 +168,7 @@
                 </div>
                 <div class="d-flex gap-2">
                     <button class="btn btn-outline-secondary" @onclick="() => PrintOrder(order)" @onclick:stopPropagation="true" title="@Hint("Εκτύπωση φύλλου προετοιμασίας παραγγελίας")">🖨️</button>
+                    <button class="btn btn-outline-danger" @onclick="() => cancelOrder = order" @onclick:stopPropagation="true" title="@Hint("Ακύρωση ΟΛΗΣ της παραγγελίας -- οι δεσμεύσεις ανακαλούνται και τα φιαλίδια επιστρέφουν στο stock")">🗑️</button>
                     <button class="btn btn-primary" @onclick="() => OpenShipPopup(order)" @onclick:stopPropagation="true" title="@Hint("Καταχώρηση στοιχείων αποστολής και κλείσιμο της παραγγελίας")">📦 Αποστολή</button>
                 </div>
             </div>
@@ -306,6 +307,24 @@
     </div>
 }
 
+@* ===== Popup επιβεβαίωσης ακύρωσης παραγγελίας ===== *@
+@if (cancelOrder != null)
+{
+    <div class="popup-overlay" @onclick="() => cancelOrder = null">
+        <div class="popup-box" style="max-width:420px;" @onclick:stopPropagation="true">
+            <p class="mb-3">
+                Θέλεις να ακυρώσεις ΟΛΗ την παραγγελία <strong>@cancelOrder.OrderCode</strong> (@cancelOrder.DoctorName);
+                Οι δεσμεύσεις (@(cancelOrder.Lines.Sum(l => l.QuantityAllocated)) τεμ.) θα ανακληθούν
+                και τα φιαλίδια θα επιστρέψουν στο stock.
+            </p>
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary flex-fill" @onclick="() => cancelOrder = null" title="@Hint("Κλείσιμο χωρίς ακύρωση της παραγγελίας")">Πίσω</button>
+                <button class="btn btn-danger flex-fill" @onclick="DoCancelOrder" title="@Hint("Οριστική ακύρωση της παραγγελίας")">Ναι, ακύρωσέ την</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
     private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
@@ -330,6 +349,21 @@
     private bool showAddDeliveryPerson = false;
     private string newDeliveryPersonName = "";
     private string? expandedOrderCode = null;
+    private DoctorOrderViewDto? cancelOrder;
+
+    private async Task DoCancelOrder()
+    {
+        if (cancelOrder == null) return;
+        var code = cancelOrder.OrderCode;
+        await new PrickDoctorOrderService(dataService).CancelOrder(new CancelOrderRequest
+        {
+            OrderID = cancelOrder.OrderID,
+            UserID = userManager.User?.IdUser
+        });
+        cancelOrder = null;
+        topBannerMessage = $"🗑️ Η παραγγελία {code} ακυρώθηκε και τα φιαλίδια επέστρεψαν στο stock.";
+        await LoadData();
+    }
 
     private void ToggleExpand(string orderCode)
     {

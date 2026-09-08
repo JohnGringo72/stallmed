@@ -563,6 +563,10 @@
                                                 </td>
                                                 <td><span class="badge bg-secondary">@line.LineStatus</span></td>
                                                 <td>
+                                                    @* Απεσταλμένη παραγγελία: οι γραμμές είναι μόνο για ανάγνωση --
+                                                       μια ανάκληση θα επέστρεφε στο stock φιαλίδια που έχουν φύγει. *@
+                                                    @if (order.OrderStatus != "Fulfilled")
+                                                    {
                                                     <div class="d-flex align-items-center gap-1 flex-wrap">
                                                         @if (pending > 0 && !markedRemove)
                                                         {
@@ -586,6 +590,7 @@
                                                             <button class="btn btn-sm @(markedRemove ? "btn-secondary" : "btn-outline-secondary")" title="@Hint("Αφαίρεση")" @onclick="() => ConfirmRemoveLine(order, line)">✕</button>
                                                         }
                                                     </div>
+                                                    }
                                                 </td>
                                             </tr>
                                         }

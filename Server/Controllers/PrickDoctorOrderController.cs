@@ -575,11 +575,25 @@ namespace StallmedManager.Server.Controllers
             }
         }
 
+        // Guard κοινό για cancel/uncancel/reverse γραμμής: απεσταλμένη παραγγελία
+        // δεν αλλάζει -- μια ανάκληση θα επέστρεφε στο stock φιαλίδια που έχουν
+        // φύγει φυσικά από το ψυγείο.
+        private async Task<bool> IsOrderShipped(long orderId)
+        {
+            var status = await _context.DoctorOrders
+                .Where(o => o.OrderID == orderId)
+                .Select(o => o.OrderStatus)
+                .FirstOrDefaultAsync();
+            return status == "Fulfilled";
+        }
+
         [HttpPost("cancel-line")]
         public async Task<ActionResult> CancelLine([FromBody] CancelLineRequest req)
         {
             var line = await _context.DoctorOrderLines.FindAsync(req.OrderLineID);
             if (line == null) return NotFound();
+            if (await IsOrderShipped(line.OrderID))
+                return BadRequest("Η παραγγελία έχει ήδη αποσταλεί -- οι γραμμές της δεν μπορούν να αλλάξουν.");
 
             var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
             if (pending <= 0)
@@ -660,6 +674,8 @@ namespace StallmedManager.Server.Controllers
         {
             var line = await _context.DoctorOrderLines.FindAsync(req.OrderLineID);
             if (line == null) return NotFound();
+            if (await IsOrderShipped(line.OrderID))
+                return BadRequest("Η παραγγελία έχει ήδη αποσταλεί -- οι γραμμές της δεν μπορούν να αλλάξουν.");
             if (line.QuantityCancelled <= 0)
                 return BadRequest("Δεν υπάρχει ακυρωμένη ποσότητα σε αυτή τη γραμμή για αναίρεση.");
 
@@ -684,6 +700,8 @@ namespace StallmedManager.Server.Controllers
         {
             var line = await _context.DoctorOrderLines.FindAsync(req.OrderLineID);
             if (line == null) return NotFound();
+            if (await IsOrderShipped(line.OrderID))
+                return BadRequest("Η παραγγελία έχει ήδη αποσταλεί -- η δέσμευση δεν ανακαλείται, τα φιαλίδια έχουν φύγει.");
             if (line.QuantityAllocated <= 0)
                 return BadRequest("Δεν υπάρχει ενεργή δέσμευση σε αυτή τη γραμμή για ανάκληση.");
 
@@ -1141,7 +1159,9 @@ namespace StallmedManager.Server.Controllers
                 DoctorID = order.DoctorID,
                 DoctorName = order.DoctorName,
                 Company = order.Company,
-                OrderDate = DateTime.Today,
+                // Η νέα παραγγελία κρατά την ημερομηνία της αρχικής -- ο διαχωρισμός
+                // δεν είναι νέα παραγγελία του γιατρού, μόνο μεταφορά υπολοίπου.
+                OrderDate = order.OrderDate,
                 OrderStatus = "Open",
                 Notes = $"Διαχωρισμός από {order.OrderCode} (εκκρεμές υπόλοιπο)",
                 CreatedBy = req.UserID,
