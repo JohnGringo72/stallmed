@@ -77,14 +77,14 @@ else
         <table class="table table-striped table-hover table-sm align-middle">
             <thead>
                 <tr>
-                    <th class="sortable" @onclick='() => SortBy("code")'>Κωδικός@SortArrow("code")</th>
-                    <th class="sortable" @onclick='() => SortBy("title")'>Τίτλος@SortArrow("title")</th>
-                    <th class="sortable" @onclick='() => SortBy("regarding")'>Αφορά@SortArrow("regarding")</th>
-                    <th class="sortable" @onclick='() => SortBy("createdby")'>Άνοιξε@SortArrow("createdby")</th>
-                    <th class="sortable" @onclick='() => SortBy("created")'>Ημερομηνία@SortArrow("created")</th>
-                    <th class="sortable" @onclick='() => SortBy("due")'>Προθεσμία@SortArrow("due")</th>
-                    <th class="sortable" @onclick='() => SortBy("status")'>Στάτους@SortArrow("status")</th>
-                    <th class="sortable" @onclick='() => SortBy("priority")'>Προτ/τητα@SortArrow("priority")</th>
+                    <th class="sortable" @onclick='() => SortBy("code")'>Κωδικός<span>@SortArrow("code")</span></th>
+                    <th class="sortable" @onclick='() => SortBy("title")'>Τίτλος<span>@SortArrow("title")</span></th>
+                    <th class="sortable" @onclick='() => SortBy("regarding")'>Αφορά<span>@SortArrow("regarding")</span></th>
+                    <th class="sortable" @onclick='() => SortBy("createdby")'>Άνοιξε<span>@SortArrow("createdby")</span></th>
+                    <th class="sortable" @onclick='() => SortBy("created")'>Ημερομηνία<span>@SortArrow("created")</span></th>
+                    <th class="sortable" @onclick='() => SortBy("due")'>Προθεσμία<span>@SortArrow("due")</span></th>
+                    <th class="sortable" @onclick='() => SortBy("status")'>Στάτους<span>@SortArrow("status")</span></th>
+                    <th class="sortable" @onclick='() => SortBy("priority")'>Προτ/τητα<span>@SortArrow("priority")</span></th>
                     <th title="Σχόλια / Συνημμένα">💬 / 📎</th>
                 </tr>
             </thead>
@@ -314,6 +314,39 @@ else
     </div>
 }
 
+@* ===== Modal: Προεπισκόπηση αρχείου (εικόνες/PDF) ===== *@
+@if (previewAtt != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.7); z-index:1070;" @onclick="ClosePreview">
+        <div class="modal-dialog modal-xl" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title">📄 @previewAtt.FileName</h6>
+                    <button type="button" class="btn-close" @onclick="ClosePreview"></button>
+                </div>
+                <div class="modal-body p-1 text-center" style="background:#40444b">
+                    @if (previewUrl == null)
+                    {
+                        <p class="text-white p-3 mb-0"><em>Φορτώνω...</em></p>
+                    }
+                    else if (previewIsImage)
+                    {
+                        <img src="@previewUrl" style="max-width:100%; max-height:75vh" />
+                    }
+                    else
+                    {
+                        <iframe src="@previewUrl" style="width:100%; height:75vh; border:0; background:white"></iframe>
+                    }
+                </div>
+                <div class="modal-footer py-1">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => DownloadAttachment(previewAtt)">⬇ Κατέβασμα</button>
+                    <button class="btn btn-sm btn-secondary" @onclick="ClosePreview">Κλείσιμο</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
     private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
@@ -417,7 +450,8 @@ else
         editCode = "";
         editTitle = "";
         editDescription = null;
-        editRegardingUserId = null;
+        // Προεπιλογή: το θέμα αφορά αυτόν που το γράφει (αλλάζεται ελεύθερα).
+        editRegardingUserId = userManager.User?.IdUser;
         editAssignedUserId = null;
         editPriority = "Normal";
         editStatus = "Open";
@@ -598,11 +632,60 @@ else
         await Load();
     }
 
+    // Προεπισκόπηση: εικόνες και PDF ανοίγουν σε παράθυρο μέσα στη σελίδα·
+    // ό,τι δεν προβάλλεται (π.χ. Excel) κατεβαίνει κατευθείαν.
+    private IssueAttachmentDto? previewAtt;
+    private string? previewUrl;
+    private bool previewIsImage;
+
+    private static string GuessContentType(IssueAttachmentDto att)
+    {
+        if (!string.IsNullOrEmpty(att.ContentType) && att.ContentType != "application/octet-stream")
+            return att.ContentType;
+        var ext = Path.GetExtension(att.FileName ?? "").ToLowerInvariant();
+        return ext switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".pdf" => "application/pdf",
+            _ => "application/octet-stream"
+        };
+    }
+
     private async Task ViewAttachment(IssueAttachmentDto att)
     {
+        var contentType = GuessContentType(att);
+        var isImage = contentType.StartsWith("image/");
+        var isPdf = contentType == "application/pdf";
+        if (!isImage && !isPdf)
+        {
+            await DownloadAttachment(att);
+            return;
+        }
+
+        previewAtt = att;
+        previewUrl = null;
+        previewIsImage = isImage;
+        StateHasChanged();
+
         var bytes = await Service.DownloadAttachment(att.AttachmentID);
-        if (bytes != null && bytes.Length > 0)
-            await JS.InvokeVoidAsync("openFileFromBytes", att.FileName ?? "file", att.ContentType ?? "", bytes);
+        if (bytes == null || bytes.Length == 0)
+        {
+            previewAtt = null;
+            return;
+        }
+        previewUrl = await JS.InvokeAsync<string>("createObjectUrlFromBytes", contentType, bytes);
+    }
+
+    private async Task ClosePreview()
+    {
+        if (previewUrl != null)
+            await JS.InvokeVoidAsync("revokeObjectUrl", previewUrl);
+        previewAtt = null;
+        previewUrl = null;
     }
 
     private async Task DownloadAttachment(IssueAttachmentDto att)

@@ -118,10 +118,20 @@ namespace StallmedManager.Server.Controllers
             }
             else
             {
+                // Αν ο client δεν έστειλε όνομα, βρίσκεται από τη βάση ώστε το
+                // «Ποιος το άνοιξε» να συμπληρώνεται πάντα αυτόματα.
+                var actingName = req.ActingUserName;
+                if (string.IsNullOrWhiteSpace(actingName) && req.ActingUserID.HasValue)
+                {
+                    actingName = await _context.Users
+                        .Where(u => u.IdUser == req.ActingUserID.Value)
+                        .Select(u => (u.Firstname + " " + u.Lastname).Trim())
+                        .FirstOrDefaultAsync();
+                }
                 issue = new IssueTask
                 {
                     CreatedBy = req.ActingUserID,
-                    CreatedByName = req.ActingUserName,
+                    CreatedByName = actingName,
                     CreatedAt = DateTime.Now
                 };
                 _context.IssueTasks.Add(issue);
