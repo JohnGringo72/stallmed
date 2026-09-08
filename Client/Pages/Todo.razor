@@ -1,0 +1,257 @@
+@page "/todo"
+@using Microsoft.AspNetCore.Components.Forms
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+@inject IJSRuntime JS
+
+<PageTitle>Todo</PageTitle>
+
+<style>
+    .todo-done .todo-text { text-decoration: line-through; color: #6c757d; }
+    .todo-overdue { color: #dc3545; font-weight: 600; }
+    .todo-notes { font-size: 0.85rem; color: #6c757d; white-space: pre-wrap; }
+</style>
+
+<div class="sbt-page-header">
+    <img src="images/icons/icon-mytask.svg" alt="" class="sbt-page-icon" />
+    <h3 class="mb-3">Todo @(userManager.IsAdmin ? "— όλων των χρηστών (admin)" : "— προσωπική λίστα")</h3>
+</div>
+
+@* Γρήγορη προσθήκη *@
+<div class="row g-2 mb-3 align-items-end">
+    <div class="col-12 col-md-5">
+        <input class="form-control" placeholder="Τι πρέπει να κάνεις; (Enter για προσθήκη)"
+               value="@newText"
+               @oninput="e => newText = e.Value?.ToString() ?? string.Empty"
+               @onkeyup="OnNewKeyUp" />
+    </div>
+    <div class="col-auto">
+        <select class="form-select" @bind="newPriority" title="@Hint("Προτεραιότητα της νέας εκκρεμότητας")">
+            <option value="Low">Χαμηλή</option>
+            <option value="Normal">Κανονική</option>
+            <option value="High">Υψηλή</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <InputDate @bind-Value="newDueDate" class="form-control" title="@Hint("Προαιρετική προθεσμία")" />
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" @onclick="AddTodo" disabled="@string.IsNullOrWhiteSpace(newText)">+ Προσθήκη</button>
+    </div>
+    <div class="col-auto ms-auto form-check">
+        <input class="form-check-input" type="checkbox" id="showDone" checked="@includeDone" @onchange="OnIncludeDoneChanged" />
+        <label class="form-check-label" for="showDone">Εμφάνιση ολοκληρωμένων</label>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (todos.Count == 0)
+{
+    <div class="alert alert-light border">Καμία εκκρεμότητα — μπράβο! 🎉</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle">
+            <thead>
+                <tr>
+                    <th style="width:36px"></th>
+                    @if (userManager.IsAdmin)
+                    {
+                        <th>Χρήστης</th>
+                    }
+                    <th>Εκκρεμότητα</th>
+                    <th style="width:110px">Προτ/τητα</th>
+                    <th style="width:120px">Προθεσμία</th>
+                    <th style="width:150px">Καταχώρηση</th>
+                    <th style="width:90px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in todos)
+                {
+                    var overdue = !t.IsDone && t.DueDate != null && t.DueDate.Value.Date < DateTime.Today;
+                    <tr class="@(t.IsDone ? "todo-done" : "")">
+                        <td>
+                            <input class="form-check-input" type="checkbox" checked="@t.IsDone"
+                                   @onchange="() => Toggle(t)" title="@Hint(t.IsDone ? "Επαναφορά σε εκκρεμές" : "Σήμανση ως ολοκληρωμένο")" />
+                        </td>
+                        @if (userManager.IsAdmin)
+                        {
+                            <td><small>@t.OwnerName</small></td>
+                        }
+                        <td>
+                            <span class="todo-text">@t.TodoText</span>
+                            @if (!string.IsNullOrWhiteSpace(t.Notes))
+                            {
+                                <div class="todo-notes">@t.Notes</div>
+                            }
+                        </td>
+                        <td>@PriorityLabel(t.Priority)</td>
+                        <td class="@(overdue ? "todo-overdue" : "")">
+                            @(t.DueDate?.ToString("dd/MM/yyyy") ?? "—")@(overdue ? " ⚠" : "")
+                        </td>
+                        <td class="text-muted small">@t.CreatedAt.ToString("dd/MM/yyyy")</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-secondary py-0" @onclick="() => OpenEdit(t)" title="@Hint("Επεξεργασία")">✏️</button>
+                            <button class="btn btn-sm btn-outline-danger py-0" @onclick="() => Delete(t)" title="@Hint("Διαγραφή")">×</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@* Modal επεξεργασίας *@
+@if (editing != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="() => editing = null">
+        <div class="modal-dialog" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">Επεξεργασία</h5>
+                    <button type="button" class="btn-close" @onclick="() => editing = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label mb-1">Κείμενο *</label>
+                        <input class="form-control" @bind="editText" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label mb-1">Σημειώσεις</label>
+                        <textarea class="form-control" rows="3" @bind="editNotes"></textarea>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label mb-1">Προτεραιότητα</label>
+                            <select class="form-select" @bind="editPriority">
+                                <option value="Low">Χαμηλή</option>
+                                <option value="Normal">Κανονική</option>
+                                <option value="High">Υψηλή</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-1">Προθεσμία</label>
+                            <InputDate @bind-Value="editDueDate" class="form-control" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button class="btn btn-secondary" @onclick="() => editing = null">Ακύρωση</button>
+                    <button class="btn btn-primary" @onclick="SaveEdit" disabled="@string.IsNullOrWhiteSpace(editText)">Αποθήκευση</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
+    private PersonalTodosService Service => new PersonalTodosService(dataService);
+    private int UserId => userManager.User?.IdUser ?? 0;
+
+    private List<PersonalTodoViewDto> todos = new();
+    private bool loading = true;
+    private bool includeDone = false;
+
+    private string newText = "";
+    private string newPriority = "Normal";
+    private DateTime? newDueDate;
+
+    private PersonalTodoViewDto? editing;
+    private string editText = "";
+    private string? editNotes;
+    private string editPriority = "Normal";
+    private DateTime? editDueDate;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        todos = await Service.GetTodos(UserId, includeDone);
+        loading = false;
+    }
+
+    private async Task OnIncludeDoneChanged(ChangeEventArgs e)
+    {
+        includeDone = (bool)(e.Value ?? false);
+        await Load();
+    }
+
+    private async Task OnNewKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(newText))
+            await AddTodo();
+    }
+
+    private async Task AddTodo()
+    {
+        if (string.IsNullOrWhiteSpace(newText)) return;
+        await Service.Save(new SavePersonalTodoRequest
+        {
+            UserID = UserId,
+            TodoText = newText.Trim(),
+            Priority = newPriority,
+            DueDate = newDueDate
+        });
+        newText = "";
+        newDueDate = null;
+        newPriority = "Normal";
+        await Load();
+    }
+
+    private async Task Toggle(PersonalTodoViewDto t)
+    {
+        await Service.ToggleDone(t.TodoID, UserId);
+        await Load();
+    }
+
+    private async Task Delete(PersonalTodoViewDto t)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Διαγραφή της εκκρεμότητας «{t.TodoText}»;");
+        if (!ok) return;
+        await Service.Delete(t.TodoID, UserId);
+        await Load();
+    }
+
+    private void OpenEdit(PersonalTodoViewDto t)
+    {
+        editing = t;
+        editText = t.TodoText;
+        editNotes = t.Notes;
+        editPriority = t.Priority;
+        editDueDate = t.DueDate;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (editing == null || string.IsNullOrWhiteSpace(editText)) return;
+        await Service.Save(new SavePersonalTodoRequest
+        {
+            TodoID = editing.TodoID,
+            UserID = UserId,
+            TodoText = editText.Trim(),
+            Notes = editNotes,
+            Priority = editPriority,
+            DueDate = editDueDate
+        });
+        editing = null;
+        await Load();
+    }
+
+    private static string PriorityLabel(string priority) => priority switch
+    {
+        "Low" => "Χαμηλή",
+        "Normal" => "Κανονική",
+        "High" => "🔴 Υψηλή",
+        _ => priority
+    };
+}

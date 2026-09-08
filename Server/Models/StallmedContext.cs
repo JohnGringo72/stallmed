@@ -36,6 +36,9 @@ namespace StallmedManager.Server.Models
         public virtual DbSet<IssueComment> IssueComments { get; set; }
         public virtual DbSet<IssueAttachment> IssueAttachments { get; set; }
 
+        // ---- Προσωπικά Todo ανά χρήστη ----
+        public virtual DbSet<PersonalTodo> PersonalTodos { get; set; }
+
         public StallmedContext(DbContextOptions<StallmedContext> options) : base(options)
         {
         }

@@ -9,6 +9,8 @@
 
 <style>
     .issue-row { cursor: pointer; }
+    th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    th.sortable:hover { background: #f1f3f5; }
     .chat-box {
         max-height: 320px;
         overflow-y: auto;
@@ -75,19 +77,19 @@ else
         <table class="table table-striped table-hover table-sm align-middle">
             <thead>
                 <tr>
-                    <th>Κωδικός</th>
-                    <th>Τίτλος</th>
-                    <th>Αφορά</th>
-                    <th>Άνοιξε</th>
-                    <th>Ημερομηνία</th>
-                    <th>Προθεσμία</th>
-                    <th>Στάτους</th>
-                    <th>Προτ/τητα</th>
+                    <th class="sortable" @onclick='() => SortBy("code")'>Κωδικός@SortArrow("code")</th>
+                    <th class="sortable" @onclick='() => SortBy("title")'>Τίτλος@SortArrow("title")</th>
+                    <th class="sortable" @onclick='() => SortBy("regarding")'>Αφορά@SortArrow("regarding")</th>
+                    <th class="sortable" @onclick='() => SortBy("createdby")'>Άνοιξε@SortArrow("createdby")</th>
+                    <th class="sortable" @onclick='() => SortBy("created")'>Ημερομηνία@SortArrow("created")</th>
+                    <th class="sortable" @onclick='() => SortBy("due")'>Προθεσμία@SortArrow("due")</th>
+                    <th class="sortable" @onclick='() => SortBy("status")'>Στάτους@SortArrow("status")</th>
+                    <th class="sortable" @onclick='() => SortBy("priority")'>Προτ/τητα@SortArrow("priority")</th>
                     <th title="Σχόλια / Συνημμένα">💬 / 📎</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var i in issues)
+                @foreach (var i in SortedIssues)
                 {
                     <tr class="issue-row" @onclick="() => OpenDetails(i.IssueID)">
                         <td><strong>@i.IssueCode</strong></td>
@@ -117,6 +119,12 @@ else
                     <button type="button" class="btn-close" @onclick="CloseEdit"></button>
                 </div>
                 <div class="modal-body">
+                    @if (editId == null)
+                    {
+                        <div class="mb-2 text-muted small">
+                            Άνοιξε: <strong>@UserFullName()</strong> · @DateTime.Today.ToString("dd/MM/yyyy")
+                        </div>
+                    }
                     <div class="mb-2">
                         <label class="form-label mb-1">Τίτλος *</label>
                         <input class="form-control" @bind="editTitle" />
@@ -173,6 +181,30 @@ else
                             </div>
                         }
                     </div>
+                    @if (editId == null)
+                    {
+                        <hr class="my-2" />
+                        <div class="mb-2">
+                            <label class="form-label mb-1">📎 Αρχεία (π.χ. συνταγή — προαιρετικά, μπορείς πολλά μαζί)</label>
+                            <InputFile OnChange="OnNewFilesSelected" multiple class="form-control form-control-sm" />
+                            @if (pendingFiles.Any())
+                            {
+                                <ul class="list-group mt-1">
+                                    @foreach (var f in pendingFiles)
+                                    {
+                                        <li class="list-group-item d-flex justify-content-between align-items-center py-1">
+                                            <span class="small">@f.Name <span class="text-muted">(@((f.Bytes.Length / 1024.0).ToString("N0")) KB)</span></span>
+                                            <button class="btn btn-sm btn-outline-danger py-0" @onclick="() => pendingFiles.Remove(f)">×</button>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label mb-1">💬 Πρώτο σχόλιο (προαιρετικά)</label>
+                            <textarea class="form-control" rows="2" @bind="firstComment" placeholder="π.χ. «Κάνε αυτό μέχρι Παρασκευή»"></textarea>
+                        </div>
+                    }
                     @if (!string.IsNullOrEmpty(editMessage))
                     {
                         <div class="alert alert-warning py-2 mb-0">@editMessage</div>
@@ -195,7 +227,17 @@ else
         <div class="modal-dialog modal-xl" @onclick:stopPropagation="true">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title">@iss.IssueCode — @iss.Title <span class="badge @StatusBadge(iss.Status) ms-2">@StatusLabel(iss.Status)</span></h5>
+                    <h5 class="modal-title d-flex align-items-center gap-2 flex-wrap">
+                        @iss.IssueCode — @iss.Title
+                        <select class="form-select form-select-sm w-auto @StatusBadge(iss.Status)" style="font-weight:600"
+                                value="@iss.Status" @onchange="e => ChangeStatus(e.Value?.ToString())"
+                                title="@Hint("Αλλαγή στάτους — αποθηκεύεται αμέσως")">
+                            <option value="Open">Ανοιχτό</option>
+                            <option value="InProgress">Σε εξέλιξη</option>
+                            <option value="Done">Ολοκληρωμένο</option>
+                            <option value="Cancelled">Ακυρωμένο</option>
+                        </select>
+                    </h5>
                     <button type="button" class="btn-close" @onclick="CloseDetails"></button>
                 </div>
                 <div class="modal-body">
@@ -279,6 +321,41 @@ else
     private IssuesService Service => new IssuesService(dataService);
 
     private List<IssueListItemDto> issues = new();
+
+    // Ταξινόμηση λίστας με κλικ στις επικεφαλίδες (δεύτερο κλικ = αντίστροφη σειρά).
+    private string sortField = "code";
+    private bool sortAsc = false;   // προεπιλογή: νεότερα πρώτα
+
+    private void SortBy(string field)
+    {
+        if (sortField == field) sortAsc = !sortAsc;
+        else { sortField = field; sortAsc = true; }
+    }
+
+    private string SortArrow(string field)
+        => sortField == field ? (sortAsc ? " ▲" : " ▼") : "";
+
+    private static int PriorityRank(string p) => p switch { "High" => 2, "Normal" => 1, "Low" => 0, _ => -1 };
+    private static int StatusRank(string s) => s switch { "Open" => 0, "InProgress" => 1, "Done" => 2, "Cancelled" => 3, _ => 4 };
+
+    private IEnumerable<IssueListItemDto> SortedIssues
+    {
+        get
+        {
+            IOrderedEnumerable<IssueListItemDto> sorted = sortField switch
+            {
+                "title" => issues.OrderBy(i => i.Title, StringComparer.CurrentCultureIgnoreCase),
+                "regarding" => issues.OrderBy(i => i.RegardingName ?? "", StringComparer.CurrentCultureIgnoreCase),
+                "createdby" => issues.OrderBy(i => i.CreatedByName ?? "", StringComparer.CurrentCultureIgnoreCase),
+                "created" => issues.OrderBy(i => i.CreatedAt),
+                "due" => issues.OrderBy(i => i.DueDate == null).ThenBy(i => i.DueDate), // χωρίς προθεσμία στο τέλος
+                "status" => issues.OrderBy(i => StatusRank(i.Status)),
+                "priority" => issues.OrderBy(i => PriorityRank(i.Priority)),
+                _ => issues.OrderBy(i => i.IssueID)
+            };
+            return sortAsc ? sorted : sorted.Reverse();
+        }
+    }
     private List<IssueUserDto> users = new();
     private bool loading = true;
     private bool busy = false;
@@ -301,6 +378,12 @@ else
     // Λεπτομέρειες
     private IssueDetailsDto? details;
     private string newComment = "";
+
+    // Αρχεία + πρώτο σχόλιο που επιλέχθηκαν στη φόρμα ΠΡΙΝ την αποθήκευση:
+    // ανεβαίνουν αμέσως μετά τη δημιουργία του θέματος.
+    private record PendingFile(string Name, byte[] Bytes);
+    private List<PendingFile> pendingFiles = new();
+    private string firstComment = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -338,8 +421,10 @@ else
         editAssignedUserId = null;
         editPriority = "Normal";
         editStatus = "Open";
-        editDueDate = null;
+        editDueDate = DateTime.Today.AddDays(7);   // προεπιλογή: 1 εβδομάδα
         editMessage = "";
+        pendingFiles.Clear();
+        firstComment = "";
         showEdit = true;
     }
 
@@ -395,11 +480,45 @@ else
             editMessage = result?.Message ?? "Η αποθήκευση απέτυχε.";
             return;
         }
+
+        // Νέο θέμα: ανέβασμα των αρχείων και του πρώτου σχολίου που γράφτηκαν στη φόρμα.
+        if (editId == null)
+        {
+            busy = true;
+            foreach (var f in pendingFiles)
+                await Service.UploadAttachment(result.IssueID, f.Bytes, f.Name,
+                    userManager.User?.IdUser, UserFullName());
+            if (!string.IsNullOrWhiteSpace(firstComment))
+                await Service.AddComment(new AddIssueCommentRequest
+                {
+                    IssueID = result.IssueID,
+                    UserID = userManager.User?.IdUser,
+                    UserName = UserFullName(),
+                    CommentText = firstComment.Trim()
+                });
+            pendingFiles.Clear();
+            firstComment = "";
+            busy = false;
+        }
+
         showEdit = false;
         await Load();
-        // Αν η επεξεργασία έγινε από τα details, φρεσκάρισμα του ανοιχτού παραθύρου.
+        // Αν η επεξεργασία έγινε από τα details, φρεσκάρισμα του ανοιχτού παραθύρου·
+        // αλλιώς άνοιγμα του νέου θέματος για άμεσο έλεγχο.
         if (details != null && editId != null)
             details = await Service.GetIssue(editId.Value);
+        else if (editId == null)
+            details = await Service.GetIssue(result.IssueID);
+    }
+
+    private async Task OnNewFilesSelected(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 15 * 1024 * 1024).CopyToAsync(ms);
+            pendingFiles.Add(new PendingFile(file.Name, ms.ToArray()));
+        }
     }
 
     // ---- Λεπτομέρειες / Συνομιλία / Συνημμένα ----
@@ -413,6 +532,40 @@ else
     {
         details = null;
         newComment = "";
+    }
+
+    // Γρήγορη αλλαγή στάτους από την κορυφή του παραθύρου — αποθηκεύεται αμέσως
+    // και γράφεται στη συνομιλία ώστε να φαίνεται ποιος την έκανε και πότε.
+    private async Task ChangeStatus(string? newStatus)
+    {
+        if (details == null || string.IsNullOrEmpty(newStatus) || newStatus == details.Issue.Status) return;
+        var iss = details.Issue;
+        busy = true;
+        await Service.SaveIssue(new SaveIssueRequest
+        {
+            IssueID = iss.IssueID,
+            Title = iss.Title,
+            Description = iss.Description,
+            RegardingUserID = iss.RegardingUserID,
+            RegardingName = iss.RegardingName,
+            AssignedUserID = iss.AssignedUserID,
+            AssignedName = iss.AssignedName,
+            Status = newStatus,
+            Priority = iss.Priority,
+            DueDate = iss.DueDate,
+            ActingUserID = userManager.User?.IdUser,
+            ActingUserName = UserFullName()
+        });
+        await Service.AddComment(new AddIssueCommentRequest
+        {
+            IssueID = iss.IssueID,
+            UserID = userManager.User?.IdUser,
+            UserName = UserFullName(),
+            CommentText = $"⏩ Άλλαξε το στάτους σε «{StatusLabel(newStatus)}»"
+        });
+        details = await Service.GetIssue(iss.IssueID);
+        busy = false;
+        await Load();
     }
 
     private async Task SendComment()
@@ -470,8 +623,12 @@ else
     }
 
     // ---- Helpers ----
+    // Ονοματεπώνυμο του συνδεδεμένου χρήστη· αν λείπει, πέφτει στο username.
     private string UserFullName()
-        => $"{userManager.User?.Firstname} {userManager.User?.Lastname}".Trim();
+    {
+        var name = $"{userManager.User?.Firstname} {userManager.User?.Lastname}".Trim();
+        return string.IsNullOrEmpty(name) ? (userManager.User?.Username ?? "—") : name;
+    }
 
     // Αρχικά χρήστη για το avatar της συνομιλίας (π.χ. "Γιάννης Γρηγοριάδης" -> ΓΓ).
     private static string Initials(string? name)
