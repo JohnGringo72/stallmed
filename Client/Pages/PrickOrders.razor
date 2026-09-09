@@ -1,0 +1,72 @@
+@page "/prick-orders"
+@inject UserManager userManager
+
+@* Hub «Παραγγελίες»: όλος ο κύκλος προς τον γιατρό/πελάτη σε καρτέλες.
+   Οι υπάρχουσες σελίδες φορτώνονται ΩΣ ΕΧΟΥΝ ως components -- καμία αλλαγή
+   στη λογική τους. Τα παλιά routes (/prick-doctor-orders κ.λπ.) παραμένουν
+   ενεργά για bookmarks. Προαιρετικό ?tab=ship|quotes|catalog για deep link. *@
+
+<style>
+    .hub-tabs {
+        margin-bottom: 16px;
+    }
+
+        .hub-tabs .nav-link {
+            cursor: pointer;
+            font-weight: 600;
+        }
+</style>
+
+<ul class="nav nav-tabs hub-tabs">
+    <li class="nav-item">
+        <a class="nav-link @(activeTab == "doctors" ? "active" : "")" @onclick='() => activeTab = "doctors"'>👨‍⚕️ Παραγγελίες Γιατρών</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(activeTab == "ship" ? "active" : "")" @onclick='() => activeTab = "ship"'>🚚 Αποστολές</a>
+    </li>
+    @if (!userManager.IsWarehouse)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "quotes" ? "active" : "")" @onclick='() => activeTab = "quotes"'>📄 Προσφορές</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "catalog" ? "active" : "")" @onclick='() => activeTab = "catalog"'>👥 Κατάλογος Γιατρών</a>
+        </li>
+    }
+</ul>
+
+@switch (activeTab)
+{
+    case "ship":
+        <Shipments />
+        break;
+    case "quotes":
+        @if (!userManager.IsWarehouse)
+        {
+            <Quotes />
+        }
+        break;
+    case "catalog":
+        @if (!userManager.IsWarehouse)
+        {
+            <PrickDoctors />
+        }
+        break;
+    default:
+        <DoctorOrders />
+        break;
+}
+
+@code {
+    private string activeTab = "doctors";
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "tab")]
+    public string? Tab { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(Tab))
+            activeTab = Tab;
+    }
+}

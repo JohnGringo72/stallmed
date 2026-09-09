@@ -1,0 +1,76 @@
+@page "/prick-supply"
+@inject UserManager userManager
+
+@* Hub «Εφοδιασμός»: η ροή προς την παραγωγή σε καρτέλες -- παραγγέλνεις στοκ,
+   παραλαμβάνεις, (admin) διαχειρίζεσαι το μητρώο προϊόντων. Οι υπάρχουσες
+   σελίδες φορτώνονται ΩΣ ΕΧΟΥΝ ως components. Τα παλιά routes παραμένουν.
+   Προαιρετικό ?tab=bulk|receiving|products για deep link. *@
+
+<style>
+    .hub-tabs {
+        margin-bottom: 16px;
+    }
+
+        .hub-tabs .nav-link {
+            cursor: pointer;
+            font-weight: 600;
+        }
+</style>
+
+<ul class="nav nav-tabs hub-tabs">
+    @if (userManager.IsAdmin)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "bulk" ? "active" : "")" @onclick='() => activeTab = "bulk"'>🛒 Παραγγελίες Στοκ</a>
+        </li>
+    }
+    <li class="nav-item">
+        <a class="nav-link @(activeTab == "receiving" ? "active" : "")" @onclick='() => activeTab = "receiving"'>📥 Παραλαβές</a>
+    </li>
+    @if (userManager.IsAdmin)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "products" ? "active" : "")" @onclick='() => activeTab = "products"'>🏷️ Προϊόντα</a>
+        </li>
+    }
+</ul>
+
+@switch (activeTab)
+{
+    case "bulk":
+        @if (userManager.IsAdmin)
+        {
+            <ProductionOrders />
+        }
+        break;
+    case "products":
+        @if (userManager.IsAdmin)
+        {
+            <CatalogAdmin />
+        }
+        break;
+    default:
+        <Receiving />
+        break;
+}
+
+@code {
+    // Ο admin προσγειώνεται στις Παραγγελίες Στοκ, οι υπόλοιποι στις Παραλαβές.
+    private string activeTab = "receiving";
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "tab")]
+    public string? Tab { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (userManager.IsAdmin)
+            activeTab = "bulk";
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(Tab))
+            activeTab = Tab;
+    }
+}
