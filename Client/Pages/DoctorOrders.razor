@@ -577,7 +577,9 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var line in order.Lines)
+                                        @* Οι μηδενικές Cancelled γραμμές που αφήνει πίσω ο Διαχωρισμός
+                                           (μένουν στη βάση μόνο λόγω FK ιστορικού δεσμεύσεων) δεν εμφανίζονται. *@
+                                        @foreach (var line in order.Lines.Where(l => !(l.LineStatus == "Cancelled" && l.QuantityRequested == 0)))
                                         {
                                             var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
                                             var markedRemove = pendingForOrder.RemoveLines.Contains(line.OrderLineID);
