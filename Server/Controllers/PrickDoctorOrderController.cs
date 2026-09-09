@@ -1232,6 +1232,110 @@ namespace StallmedManager.Server.Controllers
             return Ok(new ShipResult { Success = true, NewOrderCode = newOrderCode });
         }
 
+        // ---- Συγχώνευση ανοιχτών παραγγελιών ίδιου γιατρού σε ένα νούμερο ----
+        // Η παλαιότερη κρατάει τον κωδικό της και απορροφά γραμμές + συνημμένα
+        // των υπολοίπων· οι απορροφημένες ΔΙΑΓΡΑΦΟΝΤΑΙ (απόφαση χρήστη 09/2026).
+        // Στις σημειώσεις της τελικής καταγράφεται από ποιες προήλθε και πότε
+        // είχε γίνει η καθεμία (μαζί με τυχόν δικές τους σημειώσεις).
+        [HttpPost("merge-orders")]
+        public async Task<ActionResult<ShipResult>> MergeOrders([FromBody] MergeOrdersRequest req)
+        {
+            var ids = (req.OrderIDs ?? new()).Distinct().ToList();
+            if (ids.Count < 2)
+                return Ok(new ShipResult { Success = false, Message = "Επίλεξε τουλάχιστον δύο παραγγελίες για συγχώνευση." });
+
+            var orders = await _context.DoctorOrders.Where(o => ids.Contains(o.OrderID)).ToListAsync();
+            if (orders.Count != ids.Count)
+                return Ok(new ShipResult { Success = false, Message = "Κάποια παραγγελία δεν βρέθηκε -- ανανέωσε τη λίστα και δοκίμασε ξανά." });
+
+            if (orders.Any(o => o.OrderStatus != "Open"))
+                return Ok(new ShipResult { Success = false, Message = "Μόνο ανοιχτές (Open) παραγγελίες μπορούν να συγχωνευθούν." });
+
+            if (orders.Select(o => o.Company).Distinct().Count() > 1)
+                return Ok(new ShipResult { Success = false, Message = "Οι παραγγελίες πρέπει να είναι όλες της ίδιας εταιρείας." });
+
+            // Ίδιος γιατρός: μέσω DoctorID όπου υπάρχει, αλλιώς (legacy) μέσω ονόματος.
+            if (orders.Select(o => o.DoctorID?.ToString() ?? $"name:{o.DoctorName}").Distinct().Count() > 1)
+                return Ok(new ShipResult { Success = false, Message = "Οι παραγγελίες πρέπει να είναι όλες του ίδιου γιατρού." });
+
+            var target = orders.OrderBy(o => o.OrderDate).ThenBy(o => o.OrderID).First();
+            var sources = orders.Where(o => o.OrderID != target.OrderID).ToList();
+            var sourceIds = sources.Select(s => s.OrderID).ToList();
+
+            var targetLines = await _context.DoctorOrderLines.Where(l => l.OrderID == target.OrderID).ToListAsync();
+            var sourceLines = await _context.DoctorOrderLines.Where(l => sourceIds.Contains(l.OrderID)).ToListAsync();
+
+            // Γραμμές με ιστορικό δεσμεύσεων (έστω αναιρεμένων) δεν διαγράφονται --
+            // το FK των OrderAllocations δείχνει πάνω τους· απλώς αλλάζουν παραγγελία.
+            var srcLineIds = sourceLines.Select(l => l.OrderLineID).ToList();
+            var lineIdsWithAllocHistory = (await _context.OrderAllocations
+                .Where(a => srcLineIds.Contains(a.OrderLineID))
+                .Select(a => a.OrderLineID)
+                .Distinct()
+                .ToListAsync()).ToHashSet();
+
+            using var mergeTx = await _context.Database.BeginTransactionAsync();
+
+            foreach (var sl in sourceLines)
+            {
+                var matchingTargetLine = targetLines.FirstOrDefault(t =>
+                    t.CodePrick == sl.CodePrick && t.ProductTypeCode == sl.ProductTypeCode &&
+                    (t.LineStatus == "Pending" || t.LineStatus == "PartiallyAllocated"));
+
+                var isPurePending = sl.QuantityAllocated == 0 && sl.QuantityCancelled == 0
+                                    && !lineIdsWithAllocHistory.Contains(sl.OrderLineID);
+
+                if (isPurePending && matchingTargetLine != null)
+                {
+                    // Καθαρά εκκρεμής γραμμή ίδιου κωδικού+τύπου: αθροίζεται στη γραμμή της τελικής.
+                    matchingTargetLine.QuantityRequested += sl.QuantityRequested;
+                    matchingTargetLine.UpdatedAt = DateTime.Now;
+                    _context.DoctorOrderLines.Remove(sl);
+                }
+                else
+                {
+                    // Γραμμή με δεσμεύσεις/ακυρώσεις/ιστορικό: μεταφέρεται ως έχει --
+                    // οι δεσμεύσεις δείχνουν στο OrderLineID και ακολουθούν τη γραμμή.
+                    sl.OrderID = target.OrderID;
+                    sl.UpdatedAt = DateTime.Now;
+                    targetLines.Add(sl); // επόμενες όμοιες pending γραμμές αθροίζονται πάνω της
+                }
+            }
+
+            // Συνημμένα: μεταφέρονται στην τελική.
+            var attachments = await _context.DoctorOrderAttachments
+                .Where(a => sourceIds.Contains(a.OrderID)).ToListAsync();
+            foreach (var att in attachments)
+                att.OrderID = target.OrderID;
+
+            // Προσφορές που είχαν μετατραπεί σε απορροφημένη παραγγελία: το link
+            // ξαναδείχνει στην τελική (αλλιώς το FK μπλοκάρει τη διαγραφή).
+            var linkedQuotes = await _context.Quotes
+                .Where(q => q.ConvertedOrderID != null && sourceIds.Contains(q.ConvertedOrderID.Value))
+                .ToListAsync();
+            foreach (var q in linkedQuotes)
+                q.ConvertedOrderID = target.OrderID;
+
+            // Σημειώσεις: πότε είχε γίνει η κάθε απορροφημένη + τυχόν σημειώσεις της.
+            var mergeNoteParts = sources
+                .OrderBy(s => s.OrderDate).ThenBy(s => s.OrderID)
+                .Select(s => $"{s.OrderCode} (παραγγελία {s.OrderDate:dd/MM/yyyy}" +
+                             (string.IsNullOrWhiteSpace(s.Notes) ? ")" : $", σημ.: {s.Notes.Trim()})"));
+            var mergeNote = $"🧲 Συγχώνευση {DateTime.Now:dd/MM/yyyy}: απορροφήθηκαν {string.Join(", ", mergeNoteParts)}";
+            target.Notes = string.IsNullOrWhiteSpace(target.Notes) ? mergeNote : $"{target.Notes.Trim()}\n{mergeNote}";
+            target.UpdatedAt = DateTime.Now;
+
+            // Πρώτα οι μεταφορές (γραμμές/συνημμένα/quotes), μετά η διαγραφή των
+            // άδειων παραγγελιών -- σε δύο SaveChanges ώστε τα FKs να μη δουν ποτέ
+            // ορφανές εγγραφές, όλα μέσα στο ίδιο transaction.
+            await _context.SaveChangesAsync();
+            _context.DoctorOrders.RemoveRange(sources);
+            await _context.SaveChangesAsync();
+            await mergeTx.CommitAsync();
+
+            return Ok(new ShipResult { Success = true, NewOrderCode = target.OrderCode });
+        }
+
         private static bool HasLetterSuffix(string code) =>
             code.Length >= 2 && code[^2] == '-' && char.IsUpper(code[^1]);
 

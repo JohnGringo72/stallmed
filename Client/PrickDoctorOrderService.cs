@@ -74,6 +74,11 @@ namespace StallmedManager.Client
             return await dataService.Post<ShipOrderRequest, ShipResult>("api/prickdoctororder/split-pending", req);
         }
 
+        public async Task<ShipResult> MergeOrders(MergeOrdersRequest req)
+        {
+            return await dataService.Post<MergeOrdersRequest, ShipResult>("api/prickdoctororder/merge-orders", req);
+        }
+
         public async Task<List<ElsewhereAllocationDto>> GetElsewhere(string codePrick, string productTypeCode, long excludeOrderLineId)
         {
             var query = $"?codePrick={Uri.EscapeDataString(codePrick)}&productTypeCode={Uri.EscapeDataString(productTypeCode)}&excludeOrderLineId={excludeOrderLineId}";

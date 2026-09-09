@@ -393,6 +393,19 @@
         <span class="summary-pill">✅ Διαθ. @summary.TotalAvailable</span>
         <span class="summary-pill">⏳ Εκκρεμές @summary.TotalPending</span>
         <span class="summary-pill">🔴 Χωρίς stock @summary.NoStock</span>
+        @if (mergeSelection.Count >= 2)
+        {
+            <button class="btn btn-sm btn-primary" @onclick="ConfirmMergeSelected"
+                    title="@Hint("Συγχώνευση των επιλεγμένων ανοιχτών παραγγελιών σε ένα νούμερο -- η παλαιότερη κρατάει τον κωδικό της")">
+                🧲 Συγχώνευση (@mergeSelection.Count)
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => mergeSelection.Clear()"
+                    title="@Hint("Καθαρισμός επιλογής συγχώνευσης")">✕</button>
+        }
+        else if (mergeSelection.Count == 1)
+        {
+            <span class="summary-pill">🧲 Επίλεξε τουλάχιστον 2 παραγγελίες για συγχώνευση</span>
+        }
         <div class="form-check form-switch ms-auto mb-0">
             <input class="form-check-input" type="checkbox" id="groupByDoctorToggle"
                    checked="@groupByDoctor" @onchange='e => groupByDoctor = (bool)e.Value!' />
@@ -451,6 +464,14 @@
                             <div class="sub-order-header" @onclick="() => ToggleOrderExpand(order.OrderCode)">
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <span class="expand-arrow @(isOrderOpen ? "open" : "")">▶</span>
+                                    @if (order.OrderStatus == "Open")
+                                    {
+                                        <input type="checkbox" class="form-check-input m-0"
+                                               checked="@mergeSelection.Contains(order.OrderID)"
+                                               @onchange="e => ToggleMergeSelect(order.OrderID, e)"
+                                               @onclick:stopPropagation="true"
+                                               title="@Hint("Επιλογή για συγχώνευση με άλλες ανοιχτές παραγγελίες του ίδιου γιατρού σε ένα νούμερο")" />
+                                    }
                                     <strong>@order.OrderCode</strong>
                                     @if (!groupByDoctor)
                                     {
@@ -1136,6 +1157,70 @@
 
     private void ConfirmSplitPending(DoctorOrderViewDto order) =>
         ShowConfirm($"Θέλεις να διαχωρίσεις την παραγγελία {order.OrderCode}; Θα δημιουργηθεί νέα παραγγελία για το εκκρεμές υπόλοιπο.", () => DoSplitPending(order));
+
+    // ---- Συγχώνευση επιλεγμένων ανοιχτών παραγγελιών σε ένα νούμερο ----
+    private HashSet<long> mergeSelection = new();
+
+    private void ToggleMergeSelect(long orderId, ChangeEventArgs e)
+    {
+        if (e.Value is bool selected && selected)
+            mergeSelection.Add(orderId);
+        else
+            mergeSelection.Remove(orderId);
+    }
+
+    private void ConfirmMergeSelected()
+    {
+        var selected = orders.Where(o => mergeSelection.Contains(o.OrderID)).ToList();
+        if (selected.Count < 2)
+        {
+            topBannerMessage = "⚠️ Επίλεξε τουλάχιστον δύο ανοιχτές παραγγελίες για συγχώνευση.";
+            return;
+        }
+        if (selected.Any(o => o.OrderStatus != "Open"))
+        {
+            topBannerMessage = "⚠️ Μόνο ανοιχτές (Open) παραγγελίες μπορούν να συγχωνευθούν.";
+            return;
+        }
+        if (selected.Select(o => o.DoctorName).Distinct().Count() > 1)
+        {
+            topBannerMessage = "⚠️ Οι επιλεγμένες παραγγελίες πρέπει να είναι όλες του ίδιου γιατρού.";
+            return;
+        }
+        if (selected.Select(o => o.Company).Distinct().Count() > 1)
+        {
+            topBannerMessage = "⚠️ Οι επιλεγμένες παραγγελίες πρέπει να είναι όλες της ίδιας εταιρείας.";
+            return;
+        }
+
+        var target = selected.OrderBy(o => o.OrderDate).ThenBy(o => o.OrderID).First();
+        var absorbed = selected.Where(o => o.OrderID != target.OrderID)
+                               .Select(o => $"{o.OrderCode} ({o.OrderDate:dd/MM/yyyy})").ToList();
+        ShowConfirm(
+            $"Θα συγχωνευθούν {selected.Count} παραγγελίες του {target.DoctorName} στην {target.OrderCode} " +
+            $"(κρατάει αυτό το νούμερο). Οι {string.Join(", ", absorbed)} θα ΔΙΑΓΡΑΦΟΥΝ και οι γραμμές/συνημμένα τους " +
+            $"θα μεταφερθούν -- οι ημερομηνίες τους θα καταγραφούν στις σημειώσεις. Συνέχεια;",
+            DoMergeSelected);
+    }
+
+    private async Task DoMergeSelected()
+    {
+        var result = await new PrickDoctorOrderService(dataService).MergeOrders(new MergeOrdersRequest
+        {
+            OrderIDs = mergeSelection.ToList()
+        });
+
+        if (result?.Success == true)
+        {
+            topBannerMessage = $"🧲 Οι παραγγελίες συγχωνεύθηκαν στην {result.NewOrderCode}.";
+            mergeSelection.Clear();
+            await LoadData();
+        }
+        else
+        {
+            topBannerMessage = $"⚠️ {(!string.IsNullOrEmpty(result?.Message) ? result.Message : "Η συγχώνευση απέτυχε, δοκίμασε ξανά.")}";
+        }
+    }
 
     private void ConfirmCancelOrder(DoctorOrderViewDto order)
     {

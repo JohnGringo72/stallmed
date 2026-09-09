@@ -83,6 +83,11 @@ namespace StallmedManager.Shared.Models
         public string? Message { get; set; }
     }
 
+    public class MergeOrdersRequest
+    {
+        public List<long> OrderIDs { get; set; } = new();
+    }
+
     public class QuickAddDoctorRequest
     {
         public string FullName { get; set; }
