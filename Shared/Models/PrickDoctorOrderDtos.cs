@@ -36,6 +36,9 @@ namespace StallmedManager.Shared.Models
         public string? InvoiceType { get; set; }
         public string? InvoiceNote { get; set; }
         public int AttachmentCount { get; set; }
+        // Ποιος πέρασε την παραγγελία -- NULL στις παλιές παραγγελίες του migration.
+        public int? CreatedBy { get; set; }
+        public string? CreatedByName { get; set; }
         public List<DoctorOrderLineViewDto> Lines { get; set; } = new();
     }
 

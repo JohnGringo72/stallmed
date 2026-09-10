@@ -86,6 +86,19 @@ namespace StallmedManager.Server.Controllers
                 .Select(g => new { OrderID = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.OrderID, x => x.Count);
 
+            // Ποιος πέρασε κάθε παραγγελία -- οι παλιές (migration) έχουν CreatedBy NULL
+            var creatorIds = orders.Where(o => o.CreatedBy.HasValue)
+                .Select(o => o.CreatedBy!.Value).Distinct().ToList();
+            var creators = await _context.Users
+                .Where(u => creatorIds.Contains(u.IdUser))
+                .Select(u => new { u.IdUser, u.Firstname, u.Lastname, u.Username })
+                .ToListAsync();
+            var creatorLookup = creators.ToDictionary(
+                u => u.IdUser,
+                u => string.IsNullOrWhiteSpace($"{u.Firstname} {u.Lastname}".Trim())
+                    ? u.Username
+                    : $"{u.Firstname} {u.Lastname}".Trim());
+
             var result = orders.Select(o => new DoctorOrderViewDto
             {
                 OrderID = o.OrderID,
@@ -105,6 +118,10 @@ namespace StallmedManager.Server.Controllers
                 InvoiceType = o.InvoiceType,
                 InvoiceNote = o.InvoiceNote,
                 AttachmentCount = attachmentCounts.TryGetValue(o.OrderID, out var cnt) ? cnt : 0,
+                CreatedBy = o.CreatedBy,
+                CreatedByName = o.CreatedBy.HasValue && creatorLookup.TryGetValue(o.CreatedBy.Value, out var creatorName)
+                    ? creatorName
+                    : null,
                 Lines = lines.Where(l => l.OrderID == o.OrderID).Select(l =>
                 {
                     allergenLookup.TryGetValue(l.CodePrick, out var allergen);

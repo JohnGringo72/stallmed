@@ -361,7 +361,17 @@
                 <option value="All">Όλες</option>
             </select>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Καταχώρηση από</label>
+            <select class="form-control" @bind="selectedCreator" title="@Hint("Φιλτράρει τις παραγγελίες βάσει του χρήστη που τις πέρασε")">
+                <option value="">Όλοι</option>
+                @foreach (var c in CreatorOptions)
+                {
+                    <option value="@c.Value">@c.Label</option>
+                }
+            </select>
+        </div>
+        <div class="col-6 col-md-4">
             <label class="form-label mb-1">Αναζήτηση (γιατρός/κωδικός)</label>
             <input class="form-control" placeholder="π.χ. Παπαδόπουλος ή SM2607..." @bind="searchOrderCode" @bind:event="oninput" />
         </div>
@@ -480,6 +490,7 @@
                                     <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
                                     <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
                                     <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
+                                    <span class="summary-pill" title="@Hint("Ποιος πέρασε την παραγγελία")">👤 @(order.CreatedByName ?? "—")</span>
                                     <span class="summary-pill">🧪 @typeDescription</span>
                                     @if (order.OrderStatus == "ReadyToShip")
                                     {
@@ -1100,6 +1111,8 @@
     private string selectedCompany = "";
     private string selectedStatus = "Open";
     private string searchOrderCode = "";
+    // Φίλτρο "ποιος πέρασε την παραγγελία": "" = όλοι, αλλιώς το IdUser του χρήστη.
+    private string selectedCreator = "";
     private string status = "idle";
     private string topBannerMessage = "";
     private List<DoctorOrderViewDto> orders = new();
@@ -1620,9 +1633,50 @@
             .Where(o => string.IsNullOrEmpty(searchOrderCode) ||
                         o.OrderCode.Contains(searchOrderCode, StringComparison.OrdinalIgnoreCase) ||
                         (o.DoctorName?.Contains(searchOrderCode, StringComparison.OrdinalIgnoreCase) ?? false))
+            .Where(MatchesCreator)
             .GroupBy(o => o.DoctorName ?? "—")
             .Select(g => new DoctorGroup { DoctorName = g.Key, Orders = g.ToList() })
             .ToList();
+
+    // "" = όλοι, "none" = παλιές παραγγελίες χωρίς καταχωρητή (migration), αλλιώς IdUser
+    private bool MatchesCreator(DoctorOrderViewDto o) => selectedCreator switch
+    {
+        "" => true,
+        "none" => o.CreatedBy == null,
+        var id => o.CreatedBy?.ToString() == id
+    };
+
+    private class CreatorOption
+    {
+        public string Value { get; set; } = "";
+        public string Label { get; set; } = "";
+    }
+
+    // Οι επιλογές βγαίνουν από τις φορτωμένες παραγγελίες -- δεν έχει νόημα να
+    // εμφανίζεται χρήστης χωρίς παραγγελίες στην τρέχουσα κατάσταση/εταιρεία.
+    private List<CreatorOption> CreatorOptions
+    {
+        get
+        {
+            var me = userManager.User?.IdUser;
+            var list = orders
+                .Where(o => o.CreatedBy.HasValue)
+                .GroupBy(o => o.CreatedBy!.Value)
+                .Select(g => new CreatorOption
+                {
+                    Value = g.Key.ToString(),
+                    Label = $"{g.First().CreatedByName ?? $"#{g.Key}"}{(g.Key == me ? " (εγώ)" : "")} ({g.Count()})"
+                })
+                .OrderBy(x => x.Label)
+                .ToList();
+
+            var unknown = orders.Count(o => o.CreatedBy == null);
+            if (unknown > 0)
+                list.Add(new CreatorOption { Value = "none", Label = $"Χωρίς καταχώρηση ({unknown})" });
+
+            return list;
+        }
+    }
 
     private class OrdersSummaryStats
     {
