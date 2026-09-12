@@ -1,0 +1,268 @@
+@page "/treatment-stats"
+@using System.Globalization
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject IJSRuntime JS
+
+<PageTitle>Μείγματα ανά είδος</PageTitle>
+
+<div class="mix-page">
+
+    <div class="page-header">
+        <h2>Μείγματα ανά είδος</h2>
+        <p>Ποσότητες μειγμάτων BELTA / STALORAL ανά είδος -- χωρίς ακυρωμένες και παραγγελίες αποθήκης (A A)</p>
+    </div>
+
+    <div class="filter-card">
+        <div class="filter-row">
+
+            <div class="filter-group">
+                <label class="flabel">Από</label>
+                <input id="fromDatePickerMix" class="form-control fselect" placeholder="Από..." />
+            </div>
+
+            <div class="filter-group">
+                <label class="flabel">Έως</label>
+                <input id="toDatePickerMix" class="form-control fselect" placeholder="Έως..." />
+            </div>
+
+            <div class="filter-group">
+                <label class="flabel">Εταιρεία</label>
+                <div class="ctoggle">
+                    <button class="@CmpClass("")"  @onclick='() => SetCompany("")' title="@Hint("Και οι δύο εταιρείες")">Όλες</button>
+                    <button class="@CmpClass("1")" @onclick='() => SetCompany("1")' title="@Hint("Μόνο StallMedicals")">SM</button>
+                    <button class="@CmpClass("2")" @onclick='() => SetCompany("2")' title="@Hint("Μόνο BeltaMed")">BM</button>
+                </div>
+            </div>
+
+            <div class="filter-group fg-end ms-auto">
+                <label class="flabel">&nbsp;</label>
+                <button class="btn btn-success sbtn" @onclick="ExportExcel"
+                        disabled="@(isLoading || isExporting || !groups.Any())"
+                        title="@Hint("Κατεβάζει τη λίστα σε Excel")">
+                    @if (isExporting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-file-earmark-excel me-1"></i>
+                    }
+                    Excel
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger py-2">@errorMessage</div>
+    }
+
+    @if (isLoading)
+    {
+        <div class="state-box">
+            <div class="spinner-border text-primary"></div>
+            <span>Φόρτωση δεδομένων...</span>
+        </div>
+    }
+    else if (!groups.Any())
+    {
+        <div class="state-box muted">
+            <i class="bi bi-inbox fs-2"></i>
+            <p>Δεν βρέθηκαν παραγγελίες στο διάστημα.</p>
+        </div>
+    }
+    else
+    {
+        <div class="results-meta">
+            <span><strong>@groups.Count</strong> είδη</span>
+            <span class="ms-3"><strong>@groups.Sum(g => g.Mixes.Count)</strong> μείγματα</span>
+            <span class="ms-3">Συνολική ποσότητα: <strong>@groups.Sum(g => g.TotalQNT)</strong></span>
+        </div>
+
+        @foreach (var g in groups)
+        {
+            <div class="mix-card">
+                <div class="mix-card-header">
+                    <span class="mix-treatment">@g.Treatment</span>
+                    <span class="mix-total">@g.TotalQNT</span>
+                </div>
+                <table class="table table-sm mix-table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Μείγμα</th>
+                            <th class="text-end col-qnt">Ποσότητα</th>
+                            <th class="col-share">%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in g.Mixes)
+                        {
+                            var pct = g.TotalQNT > 0 ? (double)m.QNT / g.TotalQNT * 100 : 0;
+                            <tr>
+                                <td class="@(m.Allergen == TreatmentMixRow.NoMixLabel ? "text-muted fst-italic" : "")" style="white-space: pre-line">@m.Allergen</td>
+                                <td class="text-end fw-bold col-qnt">@m.QNT</td>
+                                <td class="col-share">
+                                    <div class="share-wrap">
+                                        <div class="share-bar" style="width:@(pct.ToString("0.#", CultureInfo.InvariantCulture))%"></div>
+                                        <span class="share-pct">@pct.ToString("0.#")%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .mix-page { padding: 1.5rem; max-width: 1200px; }
+
+    .page-header { margin-bottom: 1.5rem; }
+    .page-header h2 { font-size: 1.4rem; font-weight: 700; color: #1a2e4a; margin-bottom: 0.2rem; }
+    .page-header p  { color: #6c757d; font-size: 0.85rem; margin: 0; }
+
+    .filter-card {
+        background: #fff; border: 1px solid #e2e8f0;
+        border-radius: 10px; padding: 1.2rem 1.5rem;
+        margin-bottom: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .filter-row   { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; }
+    .filter-group { display: flex; flex-direction: column; gap: 0.35rem; min-width: 140px; }
+    .fg-end       { justify-content: flex-end; }
+
+    .flabel { font-size: 0.72rem; font-weight: 700; color: #4a5568; text-transform: uppercase; letter-spacing: 0.05em; }
+    .fselect { border-radius: 8px; border: 1px solid #d1d5db; height: 38px; font-size: 0.875rem; }
+
+    .ctoggle { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid #d1d5db; height: 38px; }
+    .ctoggle button {
+        flex: 1; border: none; background: #f9fafb; color: #374151;
+        font-size: 0.85rem; font-weight: 500; cursor: pointer; padding: 0 0.9rem;
+    }
+    .ctoggle button:not(:last-child) { border-right: 1px solid #d1d5db; }
+    .ctoggle button.cactive-all { background: #1a2e4a; color: #fff; }
+    .ctoggle button.cactive-sm  { background: #1e6bb8; color: #fff; }
+    .ctoggle button.cactive-bm  { background: #2e7d4f; color: #fff; }
+
+    .sbtn { height: 38px; padding: 0 1.2rem; border-radius: 8px; font-weight: 500; white-space: nowrap; }
+
+    .state-box {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 0.75rem; padding: 3.5rem; color: #6c757d;
+    }
+    .state-box.muted { color: #adb5bd; }
+    .state-box p { margin: 0; font-size: 0.9rem; }
+
+    .results-meta { font-size: 0.85rem; color: #4a5568; margin-bottom: 0.75rem; padding: 0 0.25rem; }
+
+    .mix-card {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+        overflow: hidden; margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .mix-card-header {
+        display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+        background: #1a2e4a; color: #fff; padding: 0.6rem 1rem;
+    }
+    .mix-treatment { font-weight: 600; font-size: 0.9rem; word-break: break-word; }
+    .mix-total {
+        background: #fff; color: #1a2e4a; font-weight: 700; font-size: 0.85rem;
+        border-radius: 20px; padding: 0.15em 0.75em; white-space: nowrap;
+    }
+
+    .mix-table { font-size: 0.85rem; }
+    .mix-table thead th {
+        background: #f8fafc; color: #374151; font-size: 0.72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.04em; padding: 0.5rem 1rem;
+    }
+    .mix-table td { padding: 0.4rem 1rem; vertical-align: middle; word-break: break-word; }
+    .col-qnt   { width: 110px; }
+    .col-share { width: 180px; }
+
+    .share-wrap { position: relative; background: #eef2f7; border-radius: 4px; height: 18px; }
+    .share-bar  { position: absolute; left: 0; top: 0; bottom: 0; background: #9cc3e8; border-radius: 4px; }
+    .share-pct  { position: relative; font-size: 0.72rem; font-weight: 600; color: #1a2e4a; padding-left: 0.4rem; line-height: 18px; }
+</style>
+
+@code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
+    private DateTime fromDate = new DateTime(2026, 1, 1);
+    private DateTime toDate = DateTime.Today;
+    private string selectedCompany = "";
+    private List<TreatmentMixGroup> groups = new();
+    private bool isLoading = true;
+    private bool isExporting = false;
+    private string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("initDatePicker", "fromDatePickerMix", dotNetRef, fromDate.ToString("dd/MM/yyyy"));
+            await JS.InvokeVoidAsync("initDatePicker", "toDatePickerMix", dotNetRef, toDate.ToString("dd/MM/yyyy"));
+        }
+    }
+
+    [JSInvokable]
+    public async Task SetDate(string elementId, string dateStr)
+    {
+        if (DateTime.TryParseExact(dateStr, "d/M/yyyy",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        {
+            if (elementId == "fromDatePickerMix") fromDate = date;
+            if (elementId == "toDatePickerMix") toDate = date;
+            await Load();
+        }
+    }
+
+    private string CmpClass(string val) => selectedCompany == val
+        ? (val == ""  ? "cactive-all"
+         : val == "1" ? "cactive-sm"
+                      : "cactive-bm")
+        : "";
+
+    private async Task SetCompany(string val)
+    {
+        selectedCompany = val;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        isLoading = true;
+        errorMessage = "";
+        StateHasChanged();
+        groups = await new OrdersService(dataService).GetTreatmentMixStats(fromDate, toDate, selectedCompany);
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task ExportExcel()
+    {
+        isExporting = true;
+        errorMessage = "";
+        var bytes = await new OrdersService(dataService).DownloadTreatmentMixStatsExcel(fromDate, toDate, selectedCompany);
+        isExporting = false;
+
+        if (bytes == null)
+        {
+            errorMessage = "Σφάλμα δημιουργίας Excel.";
+            return;
+        }
+
+        var cmp = selectedCompany == "1" ? "_SM" : selectedCompany == "2" ? "_BM" : "";
+        await JS.InvokeVoidAsync("downloadFileFromBytes",
+            $"Μείγματα_ανά_είδος{cmp}_{fromDate:dd-MM-yyyy}_{toDate:dd-MM-yyyy}.xlsx", bytes);
+    }
+}

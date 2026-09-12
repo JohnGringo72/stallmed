@@ -58,5 +58,22 @@ namespace StallmedManager.Client
                       $"&toDate={toDate:yyyy-MM-dd}";
             return await dataService.Get<CompanyStats>(url);
         }
+
+        public async Task<List<TreatmentMixGroup>> GetTreatmentMixStats(DateTime fromDate, DateTime toDate, string company)
+        {
+            return await dataService.Get<List<TreatmentMixGroup>>(
+                TreatmentMixUrl("treatment-mix-stats", fromDate, toDate, company)) ?? new();
+        }
+
+        public async Task<byte[]> DownloadTreatmentMixStatsExcel(DateTime fromDate, DateTime toDate, string company)
+        {
+            return await dataService.GetBytes(
+                TreatmentMixUrl("treatment-mix-stats-excel", fromDate, toDate, company));
+        }
+
+        private static string TreatmentMixUrl(string action, DateTime fromDate, DateTime toDate, string company) =>
+            $"/people/{action}?fromDate={fromDate:yyyy-MM-dd}" +
+            $"&toDate={toDate:yyyy-MM-dd}" +
+            $"&company={Uri.EscapeDataString(company ?? "")}";
     }
 }
