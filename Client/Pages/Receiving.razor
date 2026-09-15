@@ -207,7 +207,7 @@
                 Η πρώτη γραμμή είναι επικεφαλίδες.
             </p>
             <div class="mb-3">
-                <InputFile OnChange="OnImportFileSelected" accept=".xlsx" class="form-control" />
+                <InputFile OnChange="OnImportFileSelected" accept=".xlsx" class="form-control" disabled="@importSaving" />
             </div>
 
             @if (importLoading)
@@ -243,17 +243,29 @@
                 {
                     <div class="alert alert-info py-2">@importMessage</div>
                 }
+                @if (!string.IsNullOrEmpty(importFailureMessage))
+                {
+                    <div class="alert alert-warning py-2 small" style="white-space:pre-line;">@importFailureMessage</div>
+                }
                 <div class="d-flex gap-2">
-                    <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup" title="@Hint("Κλείσιμο χωρίς καταχώρηση")">Ακύρωση</button>
+                    <button class="btn btn-secondary flex-fill" @onclick="CloseImportPopup" disabled="@importSaving" title="@Hint("Κλείσιμο χωρίς καταχώρηση")">Ακύρωση</button>
                     <button class="btn btn-success flex-fill" @onclick="SubmitImport"
-                            disabled="@(!importPreviewRows.Any(r => r.Valid))" title="@Hint("Καταχωρεί όλες τις έγκυρες παραλαβές από το αρχείο")">
-                        📥 Καταχώρηση (@importPreviewRows.Count(r => r.Valid) γραμμές)
+                            disabled="@(importSaving || !importPreviewRows.Any(r => r.Valid))" title="@Hint("Καταχωρεί όλες τις έγκυρες παραλαβές από το αρχείο")">
+                        @if (importSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                            <span>Καταχώρηση… @importDone/@importTotal</span>
+                        }
+                        else
+                        {
+                            <span>📥 Καταχώρηση (@importPreviewRows.Count(r => r.Valid) γραμμές)</span>
+                        }
                     </button>
                 </div>
             }
             else if (!importLoading)
             {
-                <button class="btn btn-secondary" @onclick="CloseImportPopup" title="@Hint("Κλείσιμο του παραθύρου")">Κλείσιμο</button>
+                <button class="btn btn-secondary" @onclick="CloseImportPopup" disabled="@importSaving" title="@Hint("Κλείσιμο του παραθύρου")">Κλείσιμο</button>
             }
         </div>
     </div>
@@ -274,6 +286,12 @@
     private bool showImportPopup = false;
     private bool importLoading = false;
     private string importMessage = "";
+    // Κλείδωμα κατά την καταχώρηση: αποτρέπει δεύτερο παράλληλο loop από διπλό κλικ
+    // (11/09/2026: διπλά StockReceipts από δύο πατήματα του κουμπιού).
+    private bool importSaving = false;
+    private int importDone = 0;
+    private int importTotal = 0;
+    private string importFailureMessage = "";
 
     private class ImportPreviewRow
     {
@@ -405,18 +423,25 @@
     // ===================== Import Excel =====================
     private void OpenImportPopup()
     {
+        if (importSaving) return;
         showImportPopup = true;
         importPreviewRows = new();
         importMessage = "";
+        importFailureMessage = "";
         importLoading = false;
     }
-    private void CloseImportPopup() => showImportPopup = false;
+    private void CloseImportPopup()
+    {
+        if (importSaving) return;
+        showImportPopup = false;
+    }
 
     private async Task OnImportFileSelected(InputFileChangeEventArgs e)
     {
         importLoading = true;
         importPreviewRows = new();
         importMessage = "";
+        importFailureMessage = "";
         StateHasChanged();
 
         try
@@ -448,26 +473,82 @@
 
     private async Task SubmitImport()
     {
+        // Ο έλεγχος και το κλείδωμα γίνονται πριν από το πρώτο await, οπότε
+        // δεύτερο κλικ (ή δεύτερο confirm) δεν μπορεί να περάσει.
+        if (importSaving) return;
+
         var validRows = importPreviewRows.Where(r => r.Valid).ToList();
         if (!validRows.Any()) return;
 
-        int success = 0;
-        foreach (var row in validRows)
-        {
-            var req = new ReceiveStockRequest
-            {
-                CodePrick = row.CodePrick,
-                ProductTypeCode = row.ProductTypeCode,
-                ReceivedDate = DateTime.Today,
-                Quantity = row.Quantity,
-                CreatedBy = userManager.User?.IdUser
-            };
-            var result = await new PrickProductionService(dataService).ReceiveStock(req);
-            if (result != null) success++;
-        }
+        importSaving = true;
+        importDone = 0;
+        importTotal = validRows.Count;
+        importFailureMessage = "";
+        StateHasChanged();
 
-        topBannerMessage = $"✅ Καταχωρήθηκαν {success} παραλαβές από Excel.";
-        showImportPopup = false;
-        await LoadData();
+        try
+        {
+            var confirmed = await JS.InvokeAsync<bool>("confirm",
+                $"Καταχώρηση {validRows.Count} γραμμών ({validRows.Sum(r => r.Quantity)} τεμάχια); Η ενέργεια δεν αναιρείται.");
+            if (!confirmed) return;
+
+            var succeeded = new List<ImportPreviewRow>();
+            var failed = new List<string>();      // ο server απάντησε με σφάλμα
+            var uncertain = new List<string>();   // exception (δίκτυο/timeout): ίσως γράφτηκε
+
+            foreach (var row in validRows)
+            {
+                var label = $"{row.CodePrick} [{row.ProductTypeCode}] x{row.Quantity}";
+                var req = new ReceiveStockRequest
+                {
+                    CodePrick = row.CodePrick,
+                    ProductTypeCode = row.ProductTypeCode,
+                    ReceivedDate = DateTime.Today,
+                    Quantity = row.Quantity,
+                    CreatedBy = userManager.User?.IdUser
+                };
+
+                try
+                {
+                    var result = await new PrickProductionService(dataService).ReceiveStock(req);
+                    if (result != null) succeeded.Add(row);
+                    else failed.Add(label);
+                }
+                catch (Exception)
+                {
+                    uncertain.Add(label);
+                }
+
+                importDone++;
+                StateHasChanged();
+            }
+
+            if (failed.Count == 0 && uncertain.Count == 0)
+            {
+                topBannerMessage = $"✅ Καταχωρήθηκαν {succeeded.Count} παραλαβές από Excel.";
+                showImportPopup = false;
+                await LoadData();
+                return;
+            }
+
+            // Μερική αποτυχία: μένουν στο popup μόνο όσες δεν επιβεβαιώθηκαν,
+            // ώστε νέο πάτημα να μη στείλει ξανά τις επιτυχημένες.
+            importPreviewRows = importPreviewRows.Except(succeeded).ToList();
+
+            var msg = $"⚠ Καταχωρήθηκαν {succeeded.Count} από {validRows.Count}.";
+            if (failed.Count > 0)
+                msg += $"\nΔΕΝ επιβεβαιώθηκαν (σφάλμα server): {string.Join(", ", failed)}";
+            if (uncertain.Count > 0)
+                msg += $"\nΑβέβαιες (σφάλμα σύνδεσης -- ίσως καταχωρήθηκαν): {string.Join(", ", uncertain)}";
+            msg += "\nΜην ξαναπεράσεις όλο το αρχείο. Έλεγξε πρώτα τη λίστα παραλαβών πριν τις ξαναπεράσεις.";
+            importFailureMessage = msg;
+
+            await LoadData();
+        }
+        finally
+        {
+            importSaving = false;
+            StateHasChanged();
+        }
     }
 }
