@@ -450,13 +450,19 @@ namespace StallmedManager.Server.Controllers
         public async Task<ActionResult> ExportSmartStockProposalExcel(
             [FromQuery] string company, [FromQuery] string productTypeCode, [FromBody] List<SmartStockProposalDto> items)
         {
-            var typeName = items.Select(i => i.ProductDescription)
-                                .FirstOrDefault(d => !string.IsNullOrWhiteSpace(d));
-            if (string.IsNullOrWhiteSpace(typeName))
-                typeName = await _context.ProductTypes
-                    .Where(p => p.ProductTypeCode == productTypeCode)
-                    .Select(p => p.Description)
-                    .FirstOrDefaultAsync();
+            // Για το Excel χρησιμοποιείται η εμπορική ονομασία (DescriptionOther:
+            // "Prick Test 2ml", "TPN", "IDR"), όχι η ελληνική περιγραφή. Αν λείπει,
+            // πέφτουμε στη Description και τελευταία στο ό,τι έστειλε ο client.
+            var productType = await _context.ProductTypes
+                .FirstOrDefaultAsync(p => p.ProductTypeCode == productTypeCode);
+
+            var typeName = new[]
+                {
+                    productType?.DescriptionOther,
+                    productType?.Description,
+                    items.Select(i => i.ProductDescription).FirstOrDefault(d => !string.IsNullOrWhiteSpace(d))
+                }
+                .FirstOrDefault(d => !string.IsNullOrWhiteSpace(d));
             typeName = (typeName ?? "").Trim();
 
             var label = string.IsNullOrWhiteSpace(typeName)
@@ -475,9 +481,7 @@ namespace StallmedManager.Server.Controllers
             {
                 ws.Cell(row, 1).Value = item.CodePrick;
                 ws.Cell(row, 2).Value = item.OrderQuantity;
-                ws.Cell(row, 3).Value = string.IsNullOrWhiteSpace(item.ProductDescription)
-                    ? typeName
-                    : item.ProductDescription;
+                ws.Cell(row, 3).Value = typeName;
                 row++;
             }
             ws.Columns().AdjustToContents();
