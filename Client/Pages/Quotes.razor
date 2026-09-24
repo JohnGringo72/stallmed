@@ -117,8 +117,8 @@ else if (quotes.Count == 0)
 }
 else
 {
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
+    <div class="table-responsive list-window">
+        <table class="table table-hover align-middle sticky-head">
             <thead>
                 <tr>
                     <th>Αριθμός</th>
@@ -226,7 +226,7 @@ else
                 </div>
             </div>
 
-            <table class="table table-sm">
+            <table class="table table-sm sticky-head">
                 <thead>
                     <tr>
                         <th>#</th>
@@ -411,8 +411,8 @@ else
                         <button class="btn btn-sm btn-outline-primary" @onclick="() => AddLineToGroup(groupType)">+ Γραμμή</button>
                         <span class="small text-muted ms-auto">@groupLines.Count γραμμές</span>
                     </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm lines-table mb-0">
+                    <div class="table-responsive list-window">
+                        <table class="table table-sm lines-table mb-0 sticky-head">
                             <thead>
                                 <tr>
                                     <th style="min-width:220px">Κωδικός Πρικ</th>

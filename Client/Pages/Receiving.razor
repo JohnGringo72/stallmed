@@ -87,7 +87,7 @@
     @if (stockCheckResults.Count > 0)
     {
         <div class="stock-check-results">
-            <table class="table table-sm mb-0">
+            <table class="table table-sm mb-0 sticky-head">
                 <thead><tr><th>Κωδικός</th><th>Περιγραφή</th><th>Τύπος</th><th>Εταιρεία</th><th>Διαθέσιμο</th></tr></thead>
                 <tbody>
                     @foreach (var s in stockCheckResults)
@@ -218,7 +218,7 @@
             @if (importPreviewRows.Count > 0)
             {
                 <div style="max-height:280px; overflow-y:auto;">
-                    <table class="table table-sm">
+                    <table class="table table-sm sticky-head">
                         <thead>
                             <tr><th>Είδος</th><th>Κωδικός</th><th>Τεμάχια</th><th>Κατάσταση</th></tr>
                         </thead>

@@ -317,7 +317,7 @@
     @if (stockCheckResults.Count > 0)
     {
         <div class="stock-check-results">
-            <table class="table table-sm mb-0">
+            <table class="table table-sm mb-0 sticky-head">
                 <thead><tr><th>Κωδικός</th><th>Περιγραφή</th><th>Τύπος</th><th>Εταιρεία</th><th>Διαθέσιμο</th></tr></thead>
                 <tbody>
                     @foreach (var s in stockCheckResults)
@@ -562,7 +562,7 @@
                                 {
                                     @* Απεσταλμένη παραγγελία: μας ενδιαφέρει μόνο τι στάλθηκε --
                                        Ζητ./Ακυρ./Εκκρεμές/Διαθέσιμο/Αλλού δεν έχουν πια νόημα. *@
-                                    <table class="table table-sm mb-2" style="max-width:560px;">
+                                    <table class="table table-sm mb-2 sticky-head below-bar" style="max-width:560px;">
                                         <thead>
                                             <tr><th>Κωδικός</th><th>Τύπος</th><th>Απεστάλη</th></tr>
                                         </thead>
@@ -580,7 +580,7 @@
                                 }
                                 else
                                 {
-                                <table class="table table-sm mb-2">
+                                <table class="table table-sm mb-2 sticky-head below-bar">
                                     <thead>
                                         <tr>
                                             <th>Κωδικός</th><th>Τύπος</th><th>Ζητ.</th><th>Δεσμ.</th><th>Ακυρ.</th><th>Εκκρεμές</th>
