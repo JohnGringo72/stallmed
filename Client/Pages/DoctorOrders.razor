@@ -562,7 +562,8 @@
                                 {
                                     @* Απεσταλμένη παραγγελία: μας ενδιαφέρει μόνο τι στάλθηκε --
                                        Ζητ./Ακυρ./Εκκρεμές/Διαθέσιμο/Αλλού δεν έχουν πια νόημα. *@
-                                    <table class="table table-sm mb-2 sticky-head below-bar" style="max-width:560px;">
+                                    <div class="list-window">
+                                    <table class="table table-sm mb-2 sticky-head" style="max-width:560px;">
                                         <thead>
                                             <tr><th>Κωδικός</th><th>Τύπος</th><th>Απεστάλη</th></tr>
                                         </thead>
@@ -577,10 +578,12 @@
                                             }
                                         </tbody>
                                     </table>
+                                    </div>
                                 }
                                 else
                                 {
-                                <table class="table table-sm mb-2 sticky-head below-bar">
+                                <div class="list-window">
+                                <table class="table table-sm mb-2 sticky-head">
                                     <thead>
                                         <tr>
                                             <th>Κωδικός</th><th>Τύπος</th><th>Ζητ.</th><th>Δεσμ.</th><th>Ακυρ.</th><th>Εκκρεμές</th>
@@ -661,6 +664,7 @@
                                         }
                                     </tbody>
                                 </table>
+                                </div>
 
                                 <div class="d-flex align-items-center gap-2 mb-2">
                                     @if (!showAddLineFor.Contains(order.OrderID))
