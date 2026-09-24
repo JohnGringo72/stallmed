@@ -25,6 +25,20 @@ namespace StallmedManager.Shared.Models
         public string Urgency => StockDashboardLogic.Urgency(Available, Committed, ToOrder);
     }
 
+    // Ανάλυση του "Δεσμευμένου": ποιες παραγγελίες γιατρών το κρατάνε.
+    // Ίδιο φίλτρο με το Committed του stock-dashboard (όχι Fulfilled/Cancelled).
+    public class CommittedOrderDto
+    {
+        public string? DoctorName { get; set; }
+        public string OrderCode { get; set; }
+        public string Company { get; set; }
+        public DateTime OrderDate { get; set; }
+        public string OrderStatus { get; set; }
+        public int Committed { get; set; }
+        public int Allocated { get; set; }
+        public int Pending => Committed - Allocated;
+    }
+
     public class SetReorderPointRequest
     {
         public string CodePrick { get; set; }

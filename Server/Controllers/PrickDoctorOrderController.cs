@@ -62,11 +62,15 @@ namespace StallmedManager.Server.Controllers
                 .ToListAsync();
             var stockDict = stockAgg.ToDictionary(x => (x.CodePrick, x.ProductTypeCode), x => x.Total);
 
-            // "Δεσμευμένο αλλού": ενεργές δεσμεύσεις σε ΑΛΛΕΣ γραμμές, ίδιου κωδικού+τύπου
+            // "Δεσμευμένο αλλού": ενεργές δεσμεύσεις σε ΑΛΛΕΣ γραμμές, ίδιου κωδικού+τύπου.
+            // ΜΟΝΟ από παραγγελίες που δεν έχουν σταλεί/ακυρωθεί: οι απεσταλμένες κρατούν
+            // επίτηδες Active δεσμεύσεις ως ιστορικό του stock που καταναλώθηκε, οπότε αν
+            // μετρηθούν εδώ εμφανίζονται σαν να κρατάνε ακόμα εμπόρευμα.
             var activeAllocs = await _context.OrderAllocations
                 .Where(a => a.AllocationStatus == "Active")
                 .ToListAsync();
             var allLineCodes = await _context.DoctorOrderLines
+                .Where(l => l.Order!.OrderStatus != "Fulfilled" && l.Order.OrderStatus != "Cancelled")
                 .Select(l => new { l.OrderLineID, l.CodePrick, l.ProductTypeCode })
                 .ToListAsync();
             var lineCodeLookup = allLineCodes.ToDictionary(l => l.OrderLineID, l => (l.CodePrick, l.ProductTypeCode));
@@ -462,8 +466,11 @@ namespace StallmedManager.Server.Controllers
         public async Task<ActionResult<List<ElsewhereAllocationDto>>> GetElsewhere(
             [FromQuery] string codePrick, [FromQuery] string productTypeCode, [FromQuery] long excludeOrderLineId)
         {
+            // Ίδιο φίλτρο με το ElsewhereFor: εκτός οι απεσταλμένες/ακυρωμένες παραγγελίες,
+            // που κρατούν Active δεσμεύσεις ως ιστορικό καταναλωμένου stock.
             var otherLineIds = await _context.DoctorOrderLines
-                .Where(l => l.CodePrick == codePrick && l.ProductTypeCode == productTypeCode && l.OrderLineID != excludeOrderLineId)
+                .Where(l => l.CodePrick == codePrick && l.ProductTypeCode == productTypeCode && l.OrderLineID != excludeOrderLineId
+                            && l.Order!.OrderStatus != "Fulfilled" && l.Order.OrderStatus != "Cancelled")
                 .Select(l => l.OrderLineID)
                 .ToListAsync();
 
@@ -502,19 +509,33 @@ namespace StallmedManager.Server.Controllers
         [HttpPost("steal")]
         public async Task<ActionResult<StealResult>> Steal([FromBody] StealRequest req)
         {
-            var connection = (MySqlConnector.MySqlConnection)_context.Database.GetDbConnection();
-            if (connection.State != System.Data.ConnectionState.Open)
-                await connection.OpenAsync();
-
             var alloc = await _context.OrderAllocations.FindAsync(req.SourceAllocationID);
             if (alloc == null || alloc.AllocationStatus != "Active")
                 return BadRequest(new StealResult { Success = false, Message = "Η δέσμευση δεν είναι πλέον ενεργή." });
+
+            // Προστασία: μετακίνηση από απεσταλμένη/ακυρωμένη παραγγελία θα καλούσε
+            // sp_ReverseAllocation και θα επέστρεφε στο stock εμπόρευμα που έχει ήδη φύγει.
+            var sourceOrderStatus = await _context.DoctorOrderLines
+                .Where(l => l.OrderLineID == alloc.OrderLineID)
+                .Select(l => l.Order!.OrderStatus)
+                .FirstOrDefaultAsync();
+            if (sourceOrderStatus == "Fulfilled" || sourceOrderStatus == "Cancelled")
+                return BadRequest(new StealResult
+                {
+                    Success = false,
+                    Message = "Η παραγγελία από την οποία προσπαθείς να μετακινήσεις έχει ήδη κλείσει -- το εμπόρευμα δεν είναι πια εδώ."
+                });
 
             if (req.Quantity <= 0 || req.Quantity > alloc.QuantityAllocated)
                 return BadRequest(new StealResult { Success = false, Message = "Μη έγκυρη ποσότητα." });
 
             var sourceLineId = alloc.OrderLineID;
             var originalQuantity = alloc.QuantityAllocated;
+
+            // Η σύνδεση ανοίγει μόνο αφού περάσουν όλοι οι έλεγχοι.
+            var connection = (MySqlConnector.MySqlConnection)_context.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+                await connection.OpenAsync();
 
             using (var cmd1 = connection.CreateCommand())
             {

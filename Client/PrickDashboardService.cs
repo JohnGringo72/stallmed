@@ -52,6 +52,12 @@ namespace StallmedManager.Client
             return await dataService.Get<List<StockDashboardItemDto>>("api/prickdashboard/stock-dashboard") ?? new();
         }
 
+        public async Task<List<CommittedOrderDto>> GetCommittedOrders(string codePrick, string productTypeCode)
+        {
+            return await dataService.Get<List<CommittedOrderDto>>(
+                $"api/prickdashboard/stock-dashboard/committed-orders?codePrick={Uri.EscapeDataString(codePrick)}&productTypeCode={Uri.EscapeDataString(productTypeCode)}") ?? new();
+        }
+
         public async Task<SetReorderPointResult> SetReorderPoint(SetReorderPointRequest req)
         {
             return await dataService.Post<SetReorderPointRequest, SetReorderPointResult>("api/prickdashboard/reorder-point", req);

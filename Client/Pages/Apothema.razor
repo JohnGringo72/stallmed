@@ -194,7 +194,17 @@ else if (status == "loaded")
                                         <td><strong>@item.CodePrick</strong></td>
                                         <td><small>@item.Description</small></td>
                                         <td>@item.OnHand</td>
-                                        <td>@item.Committed</td>
+                                        <td>
+                                            @if (item.Committed > 0)
+                                            {
+                                                <button class="btn btn-sm btn-link p-0" @onclick="() => ShowCommittedOrders(item)"
+                                                        title="@Hint("Δες ποιοι γιατροί κρατάνε δεσμευμένη αυτή την ποσότητα")">@item.Committed 🔍</button>
+                                            }
+                                            else
+                                            {
+                                                @item.Committed
+                                            }
+                                        </td>
                                         <td>@item.OnOrder</td>
                                         <td><strong>@item.Available</strong></td>
                                         <td>
@@ -491,6 +501,78 @@ else if (status == "loaded")
     </div>
 }
 
+@if (committedItem != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseCommittedOrders">
+        <div class="modal-dialog modal-lg" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">
+                        👥 Δεσμευμένα — @committedItem.CodePrick @committedItem.ProductTypeCode
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseCommittedOrders"></button>
+                </div>
+                <div class="modal-body p-0">
+                    @if (committedStatus == "loading")
+                    {
+                        <p class="p-3 mb-0"><em>Φορτώνω...</em></p>
+                    }
+                    else if (committedOrders == null || !committedOrders.Any())
+                    {
+                        <p class="p-3 mb-0">Δεν βρέθηκαν ανοιχτές παραγγελίες για τον κωδικό.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Γιατρός</th>
+                                        <th>Ημερομηνία</th>
+                                        <th>Παραγγελία</th>
+                                        <th>Κατάσταση</th>
+                                        <th class="text-end" title="Ζητήθηκαν μείον ακυρωμένα">Δεσμ.</th>
+                                        <th class="text-end" title="Έχει ήδη δεσμευτεί stock">Πήρε</th>
+                                        <th class="text-end" title="Περιμένει ακόμα stock">Εκκρεμές</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var c in committedOrders)
+                                    {
+                                        <tr>
+                                            <td>@(string.IsNullOrEmpty(c.DoctorName) ? "—" : c.DoctorName)</td>
+                                            <td>@c.OrderDate.ToString("dd/MM/yyyy")</td>
+                                            <td>
+                                                <small>@c.OrderCode</small>
+                                                <span class="company-badge ms-1" style="background-color:@(c.Company == "SM" ? "#0d6efd" : "#6f42c1")">@c.Company</span>
+                                            </td>
+                                            <td><small>@CommittedStatusLabel(c.OrderStatus)</small></td>
+                                            <td class="text-end"><strong>@c.Committed</strong></td>
+                                            <td class="text-end">@c.Allocated</td>
+                                            <td class="text-end">@c.Pending</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="4"><strong>Σύνολο</strong></td>
+                                        <td class="text-end"><strong>@committedOrders.Sum(x => x.Committed)</strong></td>
+                                        <td class="text-end"><strong>@committedOrders.Sum(x => x.Allocated)</strong></td>
+                                        <td class="text-end"><strong>@committedOrders.Sum(x => x.Pending)</strong></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer py-1">
+                    <button class="btn btn-secondary btn-sm" @onclick="CloseCommittedOrders">Κλείσιμο</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
     private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
@@ -656,6 +738,36 @@ else if (status == "loaded")
         pendingDoctors = null;
         pendingDoctorsStatus = "idle";
     }
+
+    // --- Φακός στο "Δεσμευμένο": ποιες παραγγελίες γιατρών το κρατάνε ---
+    private StockDashboardItemDto? committedItem;
+    private List<CommittedOrderDto>? committedOrders;
+    private string committedStatus = "idle";
+
+    private async Task ShowCommittedOrders(StockDashboardItemDto item)
+    {
+        committedItem = item;
+        committedStatus = "loading";
+        committedOrders = null;
+        StateHasChanged();
+        committedOrders = await new PrickDashboardService(dataService)
+            .GetCommittedOrders(item.CodePrick, item.ProductTypeCode);
+        committedStatus = "loaded";
+    }
+
+    private void CloseCommittedOrders()
+    {
+        committedItem = null;
+        committedOrders = null;
+        committedStatus = "idle";
+    }
+
+    private static string CommittedStatusLabel(string status) => status switch
+    {
+        "Open" => "Ανοιχτή",
+        "ReadyToShip" => "Προς Αποστολή",
+        _ => status
+    };
 
     private void ChangeSmartProposalQty(SmartStockProposalDto item, int delta)
     {

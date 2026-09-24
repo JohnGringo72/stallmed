@@ -306,6 +306,33 @@ namespace StallmedManager.Server.Controllers
             return Ok(lines.Where(x => x.QuantityPending > 0).ToList());
         }
 
+        // Ανάλυση του "Δεσμευμένου" μιας γραμμής του dashboard: ποιες παραγγελίες
+        // γιατρών κρατάνε την ποσότητα. Ίδιο φίλτρο με το Committed παρακάτω
+        // (παραγγελίες που δεν έχουν σταλεί/ακυρωθεί), χωρίς διαχωρισμό εταιρείας.
+        [HttpGet("stock-dashboard/committed-orders")]
+        public async Task<ActionResult<List<CommittedOrderDto>>> GetCommittedOrders(
+            [FromQuery] string codePrick, [FromQuery] string productTypeCode)
+        {
+            var lines = await _context.DoctorOrderLines
+                .Where(l => l.CodePrick == codePrick
+                    && l.ProductTypeCode == productTypeCode
+                    && l.Order!.OrderStatus != "Fulfilled" && l.Order.OrderStatus != "Cancelled")
+                .OrderBy(l => l.Order!.OrderDate)
+                .Select(l => new CommittedOrderDto
+                {
+                    DoctorName = l.Order!.Doctor != null ? l.Order.Doctor.FullName : l.Order.DoctorName,
+                    OrderCode = l.Order.OrderCode,
+                    Company = l.Order.Company,
+                    OrderDate = l.Order.OrderDate,
+                    OrderStatus = l.Order.OrderStatus,
+                    Committed = l.QuantityRequested - l.QuantityCancelled,
+                    Allocated = l.QuantityAllocated
+                })
+                .ToListAsync();
+
+            return Ok(lines.Where(x => x.Committed > 0).ToList());
+        }
+
         // ---- Dashboard Αποθέματος (§8β): μία γραμμή ανά κωδικό+τύπο ----
         // Φυσικό (OnHand)      = ελεύθερο υπόλοιπο παραλαβών + allocated τεμάχια
         //                        μη απεσταλμένων παραγγελιών (είναι ακόμα στην αποθήκη)
