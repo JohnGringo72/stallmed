@@ -565,10 +565,14 @@
                                     <div class="list-window">
                                     <table class="table table-sm mb-2 sticky-head" style="max-width:560px;">
                                         <thead>
-                                            <tr><th>Κωδικός</th><th>Τύπος</th><th>Απεστάλη</th></tr>
+                                            <tr>
+                                                <th class="sortable" @onclick='() => LineSortBy("code")'>Κωδικός<span>@LineArrow("code")</span></th>
+                                                <th class="sortable" @onclick='() => LineSortBy("type")'>Τύπος<span>@LineArrow("type")</span></th>
+                                                <th class="sortable" @onclick='() => LineSortBy("alloc")'>Απεστάλη<span>@LineArrow("alloc")</span></th>
+                                            </tr>
                                         </thead>
                                         <tbody>
-                                            @foreach (var line in order.Lines.Where(l => l.QuantityAllocated > 0))
+                                            @foreach (var line in SortLines(order.Lines.Where(l => l.QuantityAllocated > 0)))
                                             {
                                                 <tr>
                                                     <td>@line.CodePrick <small class="text-muted">@line.AllergenDescription</small></td>
@@ -586,14 +590,22 @@
                                 <table class="table table-sm mb-2 sticky-head">
                                     <thead>
                                         <tr>
-                                            <th>Κωδικός</th><th>Τύπος</th><th>Ζητ.</th><th>Δεσμ.</th><th>Ακυρ.</th><th>Εκκρεμές</th>
-                                            <th>Διαθέσιμο</th><th>Αλλού</th><th>Status</th><th></th>
+                                            <th class="sortable" @onclick='() => LineSortBy("code")'>Κωδικός<span>@LineArrow("code")</span></th>
+                                            <th class="sortable" @onclick='() => LineSortBy("type")'>Τύπος<span>@LineArrow("type")</span></th>
+                                            <th class="sortable" @onclick='() => LineSortBy("req")'>Ζητ.<span>@LineArrow("req")</span></th>
+                                            <th class="sortable" @onclick='() => LineSortBy("alloc")'>Δεσμ.<span>@LineArrow("alloc")</span></th>
+                                            <th class="sortable" @onclick='() => LineSortBy("canc")'>Ακυρ.<span>@LineArrow("canc")</span></th>
+                                            <th class="sortable" @onclick='() => LineSortBy("pending")'>Εκκρεμές<span>@LineArrow("pending")</span></th>
+                                            <th class="sortable" @onclick='() => LineSortBy("avail")'>Διαθέσιμο<span>@LineArrow("avail")</span></th>
+                                            <th class="sortable" @onclick='() => LineSortBy("elsewhere")'>Αλλού<span>@LineArrow("elsewhere")</span></th>
+                                            <th class="sortable" @onclick='() => LineSortBy("status")'>Status<span>@LineArrow("status")</span></th>
+                                            <th></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @* Οι μηδενικές Cancelled γραμμές που αφήνει πίσω ο Διαχωρισμός
                                            (μένουν στη βάση μόνο λόγω FK ιστορικού δεσμεύσεων) δεν εμφανίζονται. *@
-                                        @foreach (var line in order.Lines.Where(l => !(l.LineStatus == "Cancelled" && l.QuantityRequested == 0)))
+                                        @foreach (var line in SortLines(order.Lines.Where(l => !(l.LineStatus == "Cancelled" && l.QuantityRequested == 0))))
                                         {
                                             var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
                                             var markedRemove = pendingForOrder.RemoveLines.Contains(line.OrderLineID);
@@ -1641,6 +1653,40 @@
             .GroupBy(o => o.DoctorName ?? "—")
             .Select(g => new DoctorGroup { DoctorName = g.Key, Orders = g.ToList() })
             .ToList();
+
+    // --- Ταξινόμηση των γραμμών με κλικ στην επικεφαλίδα ---
+    // Ισχύει για όλες τις παραγγελίες: η ομαδοποίηση ανά γιατρό/παραγγελία μένει,
+    // ταξινομούνται οι γραμμές μέσα σε κάθε παραγγελία. "" = σειρά καταχώρησης.
+    private string lineSortField = "";
+    private bool lineSortAsc = true;
+
+    private void LineSortBy(string field)
+    {
+        if (lineSortField == field) lineSortAsc = !lineSortAsc;
+        else { lineSortField = field; lineSortAsc = true; }
+    }
+
+    private string LineArrow(string field)
+        => lineSortField == field ? (lineSortAsc ? " ▲" : " ▼") : "";
+
+    private IEnumerable<DoctorOrderLineViewDto> SortLines(IEnumerable<DoctorOrderLineViewDto> lines)
+    {
+        if (string.IsNullOrEmpty(lineSortField)) return lines;
+
+        IEnumerable<DoctorOrderLineViewDto> sorted = lineSortField switch
+        {
+            "type" => lines.OrderBy(l => l.ProductTypeCode),
+            "req" => lines.OrderBy(l => l.QuantityRequested),
+            "alloc" => lines.OrderBy(l => l.QuantityAllocated),
+            "canc" => lines.OrderBy(l => l.QuantityCancelled),
+            "pending" => lines.OrderBy(l => l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled),
+            "avail" => lines.OrderBy(l => l.AvailableStock),
+            "elsewhere" => lines.OrderBy(l => l.ElsewhereQuantity),
+            "status" => lines.OrderBy(l => l.LineStatus),
+            _ => lines.OrderBy(l => l.CodePrick)
+        };
+        return lineSortAsc ? sorted : sorted.Reverse();
+    }
 
     // "" = όλοι, "none" = παλιές παραγγελίες χωρίς καταχωρητή (migration), αλλιώς IdUser
     private bool MatchesCreator(DoctorOrderViewDto o) => selectedCreator switch

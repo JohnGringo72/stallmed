@@ -193,11 +193,15 @@
                     <table class="table table-sm mb-0 sticky-head">
                         <thead>
                             <tr>
-                                <th>Κωδικός</th><th>Αλλεργιογόνο</th><th>Τύπος</th><th>Ζητ.</th><th>Δεσμ.</th>
+                                <th class="sortable" @onclick='() => LineSortBy("code")'>Κωδικός<span>@LineArrow("code")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("desc")'>Αλλεργιογόνο<span>@LineArrow("desc")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("type")'>Τύπος<span>@LineArrow("type")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("req")'>Ζητ.<span>@LineArrow("req")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("alloc")'>Δεσμ.<span>@LineArrow("alloc")</span></th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var line in shipLines)
+                            @foreach (var line in SortLines(shipLines))
                             {
                                 <tr>
                                     <td>@line.CodePrick</td>
@@ -333,6 +337,34 @@
 
     private string selectedCompany = "";
     private string searchQuery = "";
+
+    // --- Ταξινόμηση γραμμών με κλικ στην επικεφαλίδα (μέσα σε κάθε αποστολή) ---
+    private string lineSortField = "";
+    private bool lineSortAsc = true;
+
+    private void LineSortBy(string field)
+    {
+        if (lineSortField == field) lineSortAsc = !lineSortAsc;
+        else { lineSortField = field; lineSortAsc = true; }
+    }
+
+    private string LineArrow(string field)
+        => lineSortField == field ? (lineSortAsc ? " ▲" : " ▼") : "";
+
+    private IEnumerable<DoctorOrderLineViewDto> SortLines(IEnumerable<DoctorOrderLineViewDto> lines)
+    {
+        if (string.IsNullOrEmpty(lineSortField)) return lines;
+
+        IEnumerable<DoctorOrderLineViewDto> sorted = lineSortField switch
+        {
+            "desc" => lines.OrderBy(l => l.AllergenDescription),
+            "type" => lines.OrderBy(l => l.ProductTypeCode),
+            "req" => lines.OrderBy(l => l.QuantityRequested),
+            "alloc" => lines.OrderBy(l => l.QuantityAllocated),
+            _ => lines.OrderBy(l => l.CodePrick)
+        };
+        return lineSortAsc ? sorted : sorted.Reverse();
+    }
     private string status = "idle";
     private string topBannerMessage = "";
     private string loadError = "";

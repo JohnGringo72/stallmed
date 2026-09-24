@@ -233,17 +233,17 @@
                     <table class="table table-sm mb-0 sticky-head">
                         <thead>
                             <tr>
-                                <th>Κωδικός</th>
-                                <th>Περιγραφή</th>
-                                <th>Τύπος</th>
-                                <th>Παραγγέλθηκαν</th>
-                                <th>Παραλήφθηκαν</th>
-                                <th>Εκκρεμές</th>
-                                <th>Status</th>
+                                <th class="sortable" @onclick='() => LineSortBy("code")'>Κωδικός<span>@LineArrow("code")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("desc")'>Περιγραφή<span>@LineArrow("desc")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("type")'>Τύπος<span>@LineArrow("type")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("ordered")'>Παραγγέλθηκαν<span>@LineArrow("ordered")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("received")'>Παραλήφθηκαν<span>@LineArrow("received")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("pending")'>Εκκρεμές<span>@LineArrow("pending")</span></th>
+                                <th class="sortable" @onclick='() => LineSortBy("status")'>Status<span>@LineArrow("status")</span></th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var line in order.Lines)
+                            @foreach (var line in SortLines(order.Lines))
                             {
                                 <tr>
                                     <td>@line.CodePrick</td>
@@ -425,6 +425,36 @@
     private string selectedCompany = "";
     private string selectedStatus = "";
     private string searchOrderCode = "";
+
+    // --- Ταξινόμηση γραμμών με κλικ στην επικεφαλίδα (μέσα σε κάθε παραγγελία) ---
+    private string lineSortField = "";
+    private bool lineSortAsc = true;
+
+    private void LineSortBy(string field)
+    {
+        if (lineSortField == field) lineSortAsc = !lineSortAsc;
+        else { lineSortField = field; lineSortAsc = true; }
+    }
+
+    private string LineArrow(string field)
+        => lineSortField == field ? (lineSortAsc ? " ▲" : " ▼") : "";
+
+    private IEnumerable<ProductionOrderLineDto> SortLines(IEnumerable<ProductionOrderLineDto> lines)
+    {
+        if (string.IsNullOrEmpty(lineSortField)) return lines;
+
+        IEnumerable<ProductionOrderLineDto> sorted = lineSortField switch
+        {
+            "desc" => lines.OrderBy(l => l.AllergenDescription),
+            "type" => lines.OrderBy(l => l.ProductTypeCode),
+            "ordered" => lines.OrderBy(l => l.QuantityOrdered),
+            "received" => lines.OrderBy(l => l.QuantityReceived),
+            "pending" => lines.OrderBy(l => l.QuantityOrdered - l.QuantityReceived),
+            "status" => lines.OrderBy(l => l.LineStatus),
+            _ => lines.OrderBy(l => l.CodePrick)
+        };
+        return lineSortAsc ? sorted : sorted.Reverse();
+    }
     private string status = "idle";
     private List<ProductionOrderDto> orders = new();
     private HashSet<long> expandedOrderIds = new();

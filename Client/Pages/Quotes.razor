@@ -121,18 +121,18 @@ else
         <table class="table table-hover align-middle sticky-head">
             <thead>
                 <tr>
-                    <th>Αριθμός</th>
-                    <th>Ημ/νία</th>
-                    <th>Πελάτης</th>
-                    <th>Εταιρεία</th>
-                    <th>Ισχύς έως</th>
-                    <th class="text-end">Σύνολο</th>
-                    <th>Κατάσταση</th>
+                    <th class="sortable" @onclick='() => QuoteSortBy("number")'>Αριθμός<span>@QuoteArrow("number")</span></th>
+                    <th class="sortable" @onclick='() => QuoteSortBy("date")'>Ημ/νία<span>@QuoteArrow("date")</span></th>
+                    <th class="sortable" @onclick='() => QuoteSortBy("customer")'>Πελάτης<span>@QuoteArrow("customer")</span></th>
+                    <th class="sortable" @onclick='() => QuoteSortBy("company")'>Εταιρεία<span>@QuoteArrow("company")</span></th>
+                    <th class="sortable" @onclick='() => QuoteSortBy("valid")'>Ισχύς έως<span>@QuoteArrow("valid")</span></th>
+                    <th class="sortable text-end" @onclick='() => QuoteSortBy("total")'>Σύνολο<span>@QuoteArrow("total")</span></th>
+                    <th class="sortable" @onclick='() => QuoteSortBy("status")'>Κατάσταση<span>@QuoteArrow("status")</span></th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var q in quotes)
+                @foreach (var q in SortedQuotes)
                 {
                     <tr style="cursor:pointer" @onclick="() => OpenDetails(q)">
                         <td class="fw-bold">@q.QuoteNumber</td>
@@ -561,6 +561,39 @@ else
     private bool messageIsError;
 
     private List<QuoteViewDto> quotes = new();
+
+    // --- Ταξινόμηση της λίστας προσφορών με κλικ στην επικεφαλίδα ---
+    private string quoteSortField = "";
+    private bool quoteSortAsc = true;
+
+    private void QuoteSortBy(string field)
+    {
+        if (quoteSortField == field) quoteSortAsc = !quoteSortAsc;
+        else { quoteSortField = field; quoteSortAsc = true; }
+    }
+
+    private string QuoteArrow(string field)
+        => quoteSortField == field ? (quoteSortAsc ? " ▲" : " ▼") : "";
+
+    private IEnumerable<QuoteViewDto> SortedQuotes
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(quoteSortField)) return quotes;
+
+            IEnumerable<QuoteViewDto> sorted = quoteSortField switch
+            {
+                "date" => quotes.OrderBy(q => q.IssueDate),
+                "customer" => quotes.OrderBy(q => q.CustomerName),
+                "company" => quotes.OrderBy(q => q.Company),
+                "valid" => quotes.OrderBy(q => q.ValidUntil),
+                "total" => quotes.OrderBy(q => q.Total),
+                "status" => quotes.OrderBy(q => q.Status),
+                _ => quotes.OrderBy(q => q.QuoteNumber)
+            };
+            return quoteSortAsc ? sorted : sorted.Reverse();
+        }
+    }
     private string filterCompany = "";
     private string filterStatus = "All";
     private DateTime? filterFrom;

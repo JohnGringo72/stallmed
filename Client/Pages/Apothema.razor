@@ -174,18 +174,18 @@ else if (status == "loaded")
                         <table class="table table-hover table-sm mb-0 sticky-head">
                             <thead>
                                 <tr>
-                                    <th>Κωδικός</th>
-                                    <th>Περιγραφή</th>
-                                    <th title="Φυσικό απόθεμα στην αποθήκη">Φυσικό</th>
-                                    <th title="Δεσμευμένο από ανοιχτές παραγγελίες γιατρών">Δεσμευμένο</th>
-                                    <th title="Παραγγελμένα στην παραγωγή, αναμένεται παραλαβή">Παραγγελμένα</th>
-                                    <th title="Διαθέσιμο = Φυσικό - Δεσμευμένο">Διαθέσιμο</th>
-                                    <th title="Όριο (σημείο) αναπαραγγελίας -- επεξεργάσιμο">Όριο</th>
-                                    <th title="Για παραγγελία = max(0, Όριο - (Διαθέσιμο + Παραγγελμένα))">Για παραγγελία</th>
+                                    <th class="sortable" @onclick='() => StockSortBy("code")'>Κωδικός<span>@StockArrow("code")</span></th>
+                                    <th class="sortable" @onclick='() => StockSortBy("desc")'>Περιγραφή<span>@StockArrow("desc")</span></th>
+                                    <th class="sortable" title="Φυσικό απόθεμα στην αποθήκη" @onclick='() => StockSortBy("onhand")'>Φυσικό<span>@StockArrow("onhand")</span></th>
+                                    <th class="sortable" title="Δεσμευμένο από ανοιχτές παραγγελίες γιατρών" @onclick='() => StockSortBy("committed")'>Δεσμευμένο<span>@StockArrow("committed")</span></th>
+                                    <th class="sortable" title="Παραγγελμένα στην παραγωγή, αναμένεται παραλαβή" @onclick='() => StockSortBy("onorder")'>Παραγγελμένα<span>@StockArrow("onorder")</span></th>
+                                    <th class="sortable" title="Διαθέσιμο = Φυσικό - Δεσμευμένο" @onclick='() => StockSortBy("available")'>Διαθέσιμο<span>@StockArrow("available")</span></th>
+                                    <th class="sortable" title="Όριο (σημείο) αναπαραγγελίας -- επεξεργάσιμο" @onclick='() => StockSortBy("rop")'>Όριο<span>@StockArrow("rop")</span></th>
+                                    <th class="sortable" title="Για παραγγελία = max(0, Όριο - (Διαθέσιμο + Παραγγελμένα))" @onclick='() => StockSortBy("toorder")'>Για παραγγελία<span>@StockArrow("toorder")</span></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var item in group.Items)
+                                @foreach (var item in SortItems(group.Items))
                                 {
                                     var rowClass = item.Urgency == StockDashboardLogic.UrgencyUrgent ? "stock-row-danger"
                                                  : item.Urgency == StockDashboardLogic.UrgencyLow ? "stock-row-warn"
@@ -737,6 +737,36 @@ else if (status == "loaded")
         pendingDoctorsItem = null;
         pendingDoctors = null;
         pendingDoctorsStatus = "idle";
+    }
+
+    // --- Ταξινόμηση της λίστας αποθέματος με κλικ στην επικεφαλίδα ---
+    // Η ομαδοποίηση ανά τύπο προϊόντος μένει: ταξινομείται κάθε ομάδα ξεχωριστά.
+    private string stockSortField = "code";
+    private bool stockSortAsc = true;
+
+    private void StockSortBy(string field)
+    {
+        if (stockSortField == field) stockSortAsc = !stockSortAsc;
+        else { stockSortField = field; stockSortAsc = true; }
+    }
+
+    private string StockArrow(string field)
+        => stockSortField == field ? (stockSortAsc ? " ▲" : " ▼") : "";
+
+    private List<StockDashboardItemDto> SortItems(List<StockDashboardItemDto> items)
+    {
+        IEnumerable<StockDashboardItemDto> sorted = stockSortField switch
+        {
+            "desc" => items.OrderBy(x => x.Description),
+            "onhand" => items.OrderBy(x => x.OnHand),
+            "committed" => items.OrderBy(x => x.Committed),
+            "onorder" => items.OrderBy(x => x.OnOrder),
+            "available" => items.OrderBy(x => x.Available),
+            "rop" => items.OrderBy(x => x.ReorderPoint),
+            "toorder" => items.OrderBy(x => x.ToOrder),
+            _ => items.OrderBy(x => x.CodePrick)
+        };
+        return (stockSortAsc ? sorted : sorted.Reverse()).ToList();
     }
 
     // --- Φακός στο "Δεσμευμένο": ποιες παραγγελίες γιατρών το κρατάνε ---

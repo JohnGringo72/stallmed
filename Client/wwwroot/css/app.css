@@ -271,3 +271,14 @@ a, .btn-link {
     max-height: calc(100vh - 230px);
     overflow: auto;
 }
+
+/* Επικεφαλίδες που ταξινομούν με κλικ */
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+    th.sortable:hover {
+        background: #e2e6ea;
+    }
