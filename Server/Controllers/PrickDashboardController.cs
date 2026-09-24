@@ -443,22 +443,41 @@ namespace StallmedManager.Server.Controllers
             return Ok(new SetReorderPointResult { Success = true });
         }
 
-        // ---- Export πρότασης παραγγελίας σε Excel (Κωδικός/Ποσότητα) ----
+        // ---- Export πρότασης παραγγελίας σε Excel (Κωδικός/Ποσότητα/Είδος) ----
+        // Το όνομα φύλλου και αρχείου περιέχει τύπο + περιγραφή (π.χ. 92_Prick 2ml),
+        // ενώ η στήλη "Είδος" μόνο την περιγραφή, χωρίς τον κωδικό.
         [HttpPost("smart-stock-proposal-export")]
-        public ActionResult ExportSmartStockProposalExcel(
+        public async Task<ActionResult> ExportSmartStockProposalExcel(
             [FromQuery] string company, [FromQuery] string productTypeCode, [FromBody] List<SmartStockProposalDto> items)
         {
+            var typeName = items.Select(i => i.ProductDescription)
+                                .FirstOrDefault(d => !string.IsNullOrWhiteSpace(d));
+            if (string.IsNullOrWhiteSpace(typeName))
+                typeName = await _context.ProductTypes
+                    .Where(p => p.ProductTypeCode == productTypeCode)
+                    .Select(p => p.Description)
+                    .FirstOrDefaultAsync();
+            typeName = (typeName ?? "").Trim();
+
+            var label = string.IsNullOrWhiteSpace(typeName)
+                ? productTypeCode
+                : $"{productTypeCode}_{typeName}";
+
             using var workbook = new ClosedXML.Excel.XLWorkbook();
-            var ws = workbook.Worksheets.Add($"StockOrder_{company}_{productTypeCode}");
+            var ws = workbook.Worksheets.Add(SafeSheetName($"StockOrder_{company}_{label}"));
             ws.Cell(1, 1).Value = "Κωδικός";
             ws.Cell(1, 2).Value = "Ποσότητα";
-            ws.Range(1, 1, 1, 2).Style.Font.SetBold();
+            ws.Cell(1, 3).Value = "Είδος";
+            ws.Range(1, 1, 1, 3).Style.Font.SetBold();
 
             int row = 2;
             foreach (var item in items.Where(x => x.OrderQuantity > 0))
             {
                 ws.Cell(row, 1).Value = item.CodePrick;
                 ws.Cell(row, 2).Value = item.OrderQuantity;
+                ws.Cell(row, 3).Value = string.IsNullOrWhiteSpace(item.ProductDescription)
+                    ? typeName
+                    : item.ProductDescription;
                 row++;
             }
             ws.Columns().AdjustToContents();
@@ -467,7 +486,21 @@ namespace StallmedManager.Server.Controllers
             workbook.SaveAs(stream);
             return File(stream.ToArray(),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                $"StockOrder_{company}_{productTypeCode}_{DateTime.Today:yyyyMMdd}.xlsx");
+                SafeFileName($"StockOrder_{company}_{label}_{DateTime.Today:yyyyMMdd}.xlsx"));
+        }
+
+        // Το Excel απαγορεύει τα : \ / ? * [ ] στα ονόματα φύλλων, με όριο 31 χαρακτήρες.
+        private static string SafeSheetName(string name)
+        {
+            var cleaned = new string(name.Where(c => !":\\/?*[]".Contains(c)).ToArray()).Trim();
+            if (string.IsNullOrEmpty(cleaned)) cleaned = "Sheet1";
+            return cleaned.Length > 31 ? cleaned[..31] : cleaned;
+        }
+
+        private static string SafeFileName(string name)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+            return new string(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
         }
     }
 }

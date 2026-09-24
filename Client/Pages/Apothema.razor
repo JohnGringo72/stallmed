@@ -280,10 +280,25 @@ else if (status == "loaded")
                     {
                         @foreach (var grp in smartProposal.GroupBy(x => new { x.ProductTypeCode, x.ProductDescription }).OrderBy(g => g.Key.ProductTypeCode))
                         {
+                            var proposalOpen = IsProposalTypeOpen(grp.Key.ProductTypeCode);
+                            var toOrderBM = grp.Where(x => x.Company == "BM").Sum(x => x.OrderQuantity);
+                            var toOrderSM = grp.Where(x => x.Company == "SM").Sum(x => x.OrderQuantity);
                             <div class="card mb-3">
-                                <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
-                                    <strong>@grp.Key.ProductTypeCode — @grp.Key.ProductDescription</strong>
-                                    <div class="d-flex gap-2 flex-wrap">
+                                <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2"
+                                     style="cursor:pointer;" @onclick="() => ToggleProposalType(grp.Key.ProductTypeCode)">
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <span class="expand-arrow @(proposalOpen ? "open" : "")">▶</span>
+                                        <strong>@grp.Key.ProductTypeCode — @grp.Key.ProductDescription</strong>
+                                        <span class="badge bg-success" title="@Hint("Σύνολο τεμαχίων που θα παραγγελθούν για αυτό το είδος")">
+                                            🛒 Θα παραγγελθούν: @(toOrderBM + toOrderSM) τεμ.
+                                        </span>
+                                        @if (toOrderBM > 0 && toOrderSM > 0)
+                                        {
+                                            <span class="summary-pill">BM @toOrderBM / SM @toOrderSM</span>
+                                        }
+                                        <span class="badge bg-secondary">@grp.Count() είδη</span>
+                                    </div>
+                                    <div class="d-flex gap-2 flex-wrap" @onclick:stopPropagation="true">
                                         @if (grp.Any(x => x.Company == "BM" && x.OrderQuantity > 0))
                                         {
                                             <button class="btn btn-sm btn-success" @onclick='() => CreateSmartStockOrder("BM", grp.Key.ProductTypeCode)' title="@Hint("Δημιουργεί παραγγελία παραγωγής BM με τις ποσότητες της πρότασης")">
@@ -304,6 +319,8 @@ else if (status == "loaded")
                                         }
                                     </div>
                                 </div>
+                                @if (proposalOpen)
+                                {
                                 <div class="card-body p-0">
                                     <div class="table-responsive list-window">
                                         <table class="table table-hover table-sm mb-0 sticky-head">
@@ -365,6 +382,7 @@ else if (status == "loaded")
                                         </table>
                                     </div>
                                 </div>
+                                }
                             </div>
                         }
 
@@ -596,6 +614,17 @@ else if (status == "loaded")
 
     private string proposalCompany = "";
     private string proposalProductType = "";
+
+    // --- Αναδίπλωση της έξυπνης πρότασης ανά είδος (ξεκινούν ανοιχτά) ---
+    private HashSet<string> closedProposalTypes = new();
+
+    private bool IsProposalTypeOpen(string productTypeCode) => !closedProposalTypes.Contains(productTypeCode);
+
+    private void ToggleProposalType(string productTypeCode)
+    {
+        if (!closedProposalTypes.Add(productTypeCode))
+            closedProposalTypes.Remove(productTypeCode);
+    }
     private string smartProposalStatus = "idle";
     private List<SmartStockProposalDto> smartProposal;
     private string smartProposalMessage = "";
