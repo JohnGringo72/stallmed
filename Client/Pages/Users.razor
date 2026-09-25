@@ -1,0 +1,422 @@
+@page "/users"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+@inject NavigationManager nav
+
+<PageTitle>Διαχείριση Χρηστών</PageTitle>
+
+<style>
+    .users-panel {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+
+    .role-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        color: white;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .user-inactive td { color: #9aa0a6; }
+</style>
+
+<div class="sbt-page-header">
+    <h1 class="mb-3">👤 Χρήστες & Ρόλοι</h1>
+</div>
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert @(messageIsError ? "alert-danger" : "alert-success") py-2 alert-dismissible">
+        @message
+        <button type="button" class="btn-close" @onclick="() => message = string.Empty"></button>
+    </div>
+}
+
+<div class="users-panel d-flex gap-2 align-items-center flex-wrap">
+    <button class="btn btn-success" @onclick="OpenNew">➕ Νέος Χρήστης</button>
+    <button class="btn btn-outline-secondary" @onclick="LoadData">↻ Ανανέωση</button>
+    <div class="form-check form-switch ms-auto mb-0">
+        <input class="form-check-input" type="checkbox" id="showInactive" @bind="showInactive" />
+        <label class="form-check-label" for="showInactive">Εμφάνιση ανενεργών</label>
+    </div>
+</div>
+
+@if (status == "loading")
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (status == "loaded")
+{
+    <div class="table-responsive list-window">
+        <table class="table table-hover table-sm sticky-head">
+            <thead>
+                <tr>
+                    <th>Ονοματεπώνυμο</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Ρόλος</th>
+                    <th>Κατάσταση</th>
+                    <th>Κωδικός</th>
+                    <th>Τελευταία σύνδεση</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in VisibleUsers)
+                {
+                    <tr class="@(u.Active ? "" : "user-inactive")">
+                        <td><strong>@(string.IsNullOrWhiteSpace(u.FullName) ? "—" : u.FullName)</strong></td>
+                        <td>@u.Username</td>
+                        <td>@u.Email</td>
+                        <td><span class="role-badge" style="background-color:@RoleColor(u.Role)">@u.Role</span></td>
+                        <td>
+                            @if (u.Active)
+                            {
+                                <span class="badge bg-success">Ενεργός</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Ανενεργός</span>
+                            }
+                        </td>
+                        <td>
+                            @if (u.HasEncryptedPassword)
+                            {
+                                <span title="Κρυπτογραφημένος">🔒</span>
+                            }
+                            else
+                            {
+                                <span class="text-danger" title="Ο κωδικός είναι ακόμη σε απλό κείμενο στη βάση -- πάτα 🔑 για να τον ξαναορίσεις">⚠️ απλό κείμενο</span>
+                            }
+                        </td>
+                        <td>@(u.LastLogin?.ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenEdit(u)" title="Επεξεργασία στοιχείων και ρόλου">✏️</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenPassword(u)" title="Ορισμός νέου κωδικού">🔑</button>
+                            @if (u.Active)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ToggleActive(u, false)" title="Απενεργοποίηση -- δεν θα μπορεί να συνδεθεί">⛔</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-success" @onclick="() => ToggleActive(u, true)" title="Ενεργοποίηση">✅</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (!VisibleUsers.Any())
+    {
+        <div class="alert alert-info">Δεν υπάρχουν χρήστες με αυτά τα κριτήρια.</div>
+    }
+}
+
+@* ===== Modal: Νέος / Επεξεργασία ===== *@
+@if (editUser != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">@(editUser.IdUser == null ? "Νέος Χρήστης" : $"Επεξεργασία: {editUser.Username}")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseEdit"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label mb-1">Όνομα</label>
+                            <input class="form-control" @bind="editUser.Firstname" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-1">Επώνυμο</label>
+                            <input class="form-control" @bind="editUser.Lastname" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label mb-1">Username <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="editUser.Username" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label mb-1">Email</label>
+                            <input class="form-control" type="email" @bind="editUser.Email" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-1">ΑΜΚΑ</label>
+                            <input class="form-control" @bind="editUser.AMKA" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-1">Ρόλος <span class="text-danger">*</span></label>
+                            <select class="form-control" @bind="roleChoice">
+                                @foreach (var r in roles)
+                                {
+                                    <option value="@r">@r</option>
+                                }
+                                <option value="@NewRoleOption">-- νέος ρόλος --</option>
+                            </select>
+                        </div>
+                        @if (roleChoice == NewRoleOption)
+                        {
+                            <div class="col-12">
+                                <label class="form-label mb-1">Όνομα νέου ρόλου</label>
+                                <input class="form-control" @bind="newRoleName" placeholder="π.χ. sales" />
+                                <div class="form-text">Προσοχή: νέος ρόλος δεν ξεκλειδώνει από μόνος του δικαιώματα. Τα δικαιώματα ορίζονται στον κώδικα (σήμερα: admin, warehouse).</div>
+                            </div>
+                        }
+                        @if (editUser.IdUser == null)
+                        {
+                            <div class="col-6">
+                                <label class="form-label mb-1">Αρχικός κωδικός <span class="text-danger">*</span></label>
+                                <input class="form-control" type="password" @bind="newPassword" autocomplete="new-password" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label mb-1">Επανάληψη</label>
+                                <input class="form-control" type="password" @bind="newPasswordRepeat" autocomplete="new-password" />
+                            </div>
+                        }
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="activeSwitch" @bind="editUser.Active" />
+                                <label class="form-check-label" for="activeSwitch">Ενεργός</label>
+                            </div>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(modalMessage))
+                    {
+                        <div class="alert alert-warning py-2 mt-2 mb-0">@modalMessage</div>
+                    }
+                </div>
+                <div class="modal-footer py-1">
+                    <button class="btn btn-secondary btn-sm" @onclick="CloseEdit">Ακύρωση</button>
+                    <button class="btn btn-success btn-sm" @onclick="SaveUser" disabled="@busy">Αποθήκευση</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Modal: Κωδικός ===== *@
+@if (passwordUser != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">🔑 Κωδικός: @passwordUser.Username</h5>
+                    <button type="button" class="btn-close" @onclick="ClosePassword"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label mb-1">Νέος κωδικός</label>
+                    <input class="form-control mb-2" type="password" @bind="newPassword" autocomplete="new-password" />
+                    <label class="form-label mb-1">Επανάληψη</label>
+                    <input class="form-control" type="password" @bind="newPasswordRepeat" autocomplete="new-password" />
+                    @if (!string.IsNullOrEmpty(modalMessage))
+                    {
+                        <div class="alert alert-warning py-2 mt-2 mb-0">@modalMessage</div>
+                    }
+                </div>
+                <div class="modal-footer py-1">
+                    <button class="btn btn-secondary btn-sm" @onclick="ClosePassword">Ακύρωση</button>
+                    <button class="btn btn-success btn-sm" @onclick="SavePassword" disabled="@busy">Αποθήκευση</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string NewRoleOption = "__new__";
+
+    private UsersService Service => new UsersService(dataService);
+
+    private string status = "idle";
+    private string message = "";
+    private bool messageIsError;
+    private bool busy;
+    private bool showInactive = true;
+
+    private List<UserAdminDto> users = new();
+    private List<string> roles = new();
+
+    private SaveUserRequest? editUser;
+    private UserAdminDto? passwordUser;
+    private string roleChoice = "";
+    private string newRoleName = "";
+    private string newPassword = "";
+    private string newPasswordRepeat = "";
+    private string modalMessage = "";
+
+    private IEnumerable<UserAdminDto> VisibleUsers => showInactive ? users : users.Where(u => u.Active);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Ο ίδιος έλεγχος υπάρχει και στον server (policy AdminOnly) -- εδώ μόνο
+        // για να μη φορτώνει καν η σελίδα σε μη-admin.
+        if (!userManager.IsAdmin)
+        {
+            nav.NavigateTo("/");
+            return;
+        }
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        status = "loading";
+        StateHasChanged();
+        users = await Service.GetUsers();
+        roles = await Service.GetRoles();
+        status = "loaded";
+    }
+
+    private static string RoleColor(string? role) => (role ?? "").Trim().ToLowerInvariant() switch
+    {
+        "admin" => "#dc3545",
+        "warehouse" => "#fd7e14",
+        "vendor" => "#0d6efd",
+        _ => "#6c757d"
+    };
+
+    private void OpenNew()
+    {
+        editUser = new SaveUserRequest { Active = true };
+        roleChoice = roles.FirstOrDefault() ?? NewRoleOption;
+        newRoleName = "";
+        newPassword = newPasswordRepeat = "";
+        modalMessage = "";
+    }
+
+    private void OpenEdit(UserAdminDto u)
+    {
+        editUser = new SaveUserRequest
+        {
+            IdUser = u.IdUser,
+            Username = u.Username,
+            Email = u.Email,
+            Firstname = u.Firstname,
+            Lastname = u.Lastname,
+            AMKA = u.AMKA,
+            Role = u.Role,
+            Active = u.Active
+        };
+        roleChoice = roles.Contains(u.Role) ? u.Role : NewRoleOption;
+        newRoleName = roles.Contains(u.Role) ? "" : u.Role;
+        modalMessage = "";
+    }
+
+    private void CloseEdit()
+    {
+        editUser = null;
+        newPassword = newPasswordRepeat = "";
+        modalMessage = "";
+    }
+
+    private async Task SaveUser()
+    {
+        if (editUser == null) return;
+        modalMessage = "";
+
+        editUser.Role = roleChoice == NewRoleOption ? (newRoleName ?? "").Trim() : roleChoice;
+        if (string.IsNullOrWhiteSpace(editUser.Role))
+        {
+            modalMessage = "Δώσε ρόλο.";
+            return;
+        }
+
+        if (editUser.IdUser == null)
+        {
+            if (newPassword != newPasswordRepeat)
+            {
+                modalMessage = "Οι δύο κωδικοί δεν ταιριάζουν.";
+                return;
+            }
+            editUser.Password = newPassword;
+        }
+
+        busy = true;
+        var result = await Service.Save(editUser);
+        busy = false;
+
+        if (result == null)
+        {
+            modalMessage = "Κάτι πήγε στραβά. Δοκίμασε ξανά.";
+            return;
+        }
+        if (!result.Success)
+        {
+            modalMessage = result.Message ?? "Η αποθήκευση απέτυχε.";
+            return;
+        }
+
+        ShowMessage(result.Message ?? "Αποθηκεύτηκε.", false);
+        CloseEdit();
+        await LoadData();
+    }
+
+    private void OpenPassword(UserAdminDto u)
+    {
+        passwordUser = u;
+        newPassword = newPasswordRepeat = "";
+        modalMessage = "";
+    }
+
+    private void ClosePassword()
+    {
+        passwordUser = null;
+        newPassword = newPasswordRepeat = "";
+        modalMessage = "";
+    }
+
+    private async Task SavePassword()
+    {
+        if (passwordUser == null) return;
+        if (newPassword != newPasswordRepeat)
+        {
+            modalMessage = "Οι δύο κωδικοί δεν ταιριάζουν.";
+            return;
+        }
+
+        busy = true;
+        var result = await Service.SetPassword(new SetUserPasswordRequest
+        {
+            IdUser = passwordUser.IdUser,
+            Password = newPassword
+        });
+        busy = false;
+
+        if (result == null || !result.Success)
+        {
+            modalMessage = result?.Message ?? "Κάτι πήγε στραβά. Δοκίμασε ξανά.";
+            return;
+        }
+
+        ShowMessage(result.Message ?? "Ο κωδικός ενημερώθηκε.", false);
+        ClosePassword();
+        await LoadData();
+    }
+
+    private async Task ToggleActive(UserAdminDto u, bool active)
+    {
+        var result = await Service.SetActive(new SetUserActiveRequest { IdUser = u.IdUser, Active = active });
+        if (result == null || !result.Success)
+        {
+            ShowMessage(result?.Message ?? "Κάτι πήγε στραβά.", true);
+            return;
+        }
+        ShowMessage(result.Message ?? "Έγινε.", false);
+        await LoadData();
+    }
+
+    private void ShowMessage(string text, bool isError)
+    {
+        message = text;
+        messageIsError = isError;
+    }
+}

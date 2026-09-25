@@ -21,6 +21,11 @@ namespace StallmedManager.Client
             return await dataService.Get<List<DoctorOrderViewDto>>($"api/prickdoctororder/orders{query}");
         }
 
+        public async Task<ShipResult> SetPrepared(SetPreparedRequest req)
+        {
+            return await dataService.Post<SetPreparedRequest, ShipResult>("api/prickdoctororder/set-prepared", req);
+        }
+
         public async Task<List<PrickDoctorSummaryRow>> GetSummaryByDoctor(DateTime fromDate, DateTime toDate)
         {
             var url = $"api/prickdoctororder/summary-by-doctor?fromDate={fromDate:yyyy-MM-dd}" +

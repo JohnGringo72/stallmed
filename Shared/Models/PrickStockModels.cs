@@ -80,6 +80,10 @@ namespace StallmedManager.Shared.Models
         public int? SalesRepUserID { get; set; }
         public string OrderStatus { get; set; }
         public DateTime? ShippedAt { get; set; }
+        // Ετοιμάστηκε και μπήκε σε κουτί, περιμένει παραλαβή (π.χ. από πωλητή).
+        // Ενδιάμεσο βήμα πριν την αποστολή -- δεν αλλάζει το OrderStatus.
+        public DateTime? PreparedAt { get; set; }
+        public int? PreparedBy { get; set; }
         public string? CourierTrackingCode { get; set; }
         public string? ShippingCarrier { get; set; }
         public int? DeliveryUserID { get; set; }

@@ -61,6 +61,19 @@
                     </ul>
                 </div>
             }
+
+            @* Ορατό μόνο σε admin -- τα ίδια endpoints ελέγχονται και στον server. *@
+            @if (userManager.IsAdmin)
+            {
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        ADMIN
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li><a class="dropdown-item" href="/users" @onclick="CloseMenu">Χρήστες</a></li>
+                    </ul>
+                </div>
+            }
         </div>
         @if (userManager.IsLoggedIn)
         {

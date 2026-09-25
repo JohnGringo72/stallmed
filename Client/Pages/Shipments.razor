@@ -130,6 +130,13 @@
         <div class="col-6 col-md-3">
             <button class="btn btn-outline-secondary w-100" @onclick="LoadData" title="@Hint("Επαναφόρτωση της λίστας παραγγελιών προς αποστολή")">Ανανέωση</button>
         </div>
+        <div class="col-12 col-md-2">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="onlyPreparedSwitch" @bind="onlyPrepared" />
+                <label class="form-check-label" for="onlyPreparedSwitch"
+                       title="@Hint("Δείχνει μόνο όσες έχουν ετοιμαστεί και περιμένουν παραλαβή")">✅ Μόνο έτοιμα</label>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -155,7 +162,20 @@
             <div class="ship-card-header" @onclick="() => ToggleExpand(order.OrderCode)">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <span class="expand-arrow @(isOpen ? "open" : "")">▶</span>
+                    <div class="form-check mb-0" @onclick:stopPropagation="true">
+                        <input class="form-check-input" type="checkbox" id="@($"ready-{order.OrderID}")"
+                               checked="@order.IsPrepared" @onchange="e => SetPrepared(order, (bool)e.Value!)" />
+                        <label class="form-check-label" for="@($"ready-{order.OrderID}")"
+                               title="@Hint("Ετοιμάστηκε και μπήκε σε κουτί -- περιμένει παραλαβή")">Έτοιμο</label>
+                    </div>
                     <strong>@order.OrderCode</strong>
+                    @if (order.IsPrepared)
+                    {
+                        <span class="badge bg-success"
+                              title="@($"Ετοιμάστηκε από {order.PreparedByName ?? "—"} στις {order.PreparedAt:dd/MM/yyyy HH:mm}")">
+                            ✅ Έτοιμο@(string.IsNullOrEmpty(order.PreparedByName) ? "" : $" · {order.PreparedByName}")
+                        </span>
+                    }
                     <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
                     <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
                     <span>👨‍⚕️ @order.DoctorName</span>
@@ -175,6 +195,24 @@
             @if (isOpen)
             {
                 <div class="ship-card-body">
+                    <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                        @if (order.IsPrepared)
+                        {
+                            <span class="text-success">
+                                ✅ Ετοιμάστηκε από <strong>@(order.PreparedByName ?? "—")</strong>
+                                στις @order.PreparedAt?.ToString("dd/MM/yyyy HH:mm")
+                            </span>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetPrepared(order, false)"
+                                    title="@Hint("Αναίρεση -- δεν είναι τελικά έτοιμο")">↩️ Αναίρεση</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-success btn-sm" @onclick="() => SetPrepared(order, true)"
+                                    title="@Hint("Σημείωσε ότι ετοιμάστηκε και μπήκε σε κουτί -- περιμένει παραλαβή")">
+                                ✅ Έτοιμο για παραλαβή
+                            </button>
+                        }
+                    </div>
                     <div class="mb-2">
                         <strong>Παραλήπτης:</strong> @(string.IsNullOrWhiteSpace(order.RecipientName) ? "— δεν έχει καταχωρηθεί —" : order.RecipientName)<br />
                         <strong>Διεύθυνση:</strong>
@@ -420,8 +458,32 @@
         orders.Where(o => string.IsNullOrEmpty(searchQuery) ||
                            o.OrderCode.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
                            (o.DoctorName?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false))
+              .Where(o => !onlyPrepared || o.IsPrepared)
               .OrderBy(o => o.OrderDate)
               .ToList();
+
+    // --- "Έτοιμο": ετοιμάστηκε και μπήκε σε κουτί, περιμένει παραλαβή ---
+    private bool onlyPrepared = false;
+
+    private async Task SetPrepared(DoctorOrderViewDto order, bool prepared)
+    {
+        var result = await new PrickDoctorOrderService(dataService).SetPrepared(new SetPreparedRequest
+        {
+            OrderID = order.OrderID,
+            Prepared = prepared,
+            UserID = userManager.User?.IdUser
+        });
+
+        if (result == null || !result.Success)
+        {
+            loadError = result?.Message ?? "Δεν ήταν δυνατή η ενημέρωση. Δοκίμασε ξανά.";
+            await LoadData();
+            return;
+        }
+
+        topBannerMessage = result.Message ?? "";
+        await LoadData();
+    }
 
     protected override async Task OnInitializedAsync()
     {

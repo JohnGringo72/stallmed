@@ -39,6 +39,10 @@ namespace StallmedManager.Shared.Models
         // Ποιος πέρασε την παραγγελία -- NULL στις παλιές παραγγελίες του migration.
         public int? CreatedBy { get; set; }
         public string? CreatedByName { get; set; }
+        // Ετοιμάστηκε/μπήκε σε κουτί και περιμένει παραλαβή
+        public DateTime? PreparedAt { get; set; }
+        public string? PreparedByName { get; set; }
+        public bool IsPrepared => PreparedAt != null;
         public List<DoctorOrderLineViewDto> Lines { get; set; } = new();
     }
 
@@ -76,6 +80,13 @@ namespace StallmedManager.Shared.Models
     public class ShipOrderRequest
     {
         public long OrderID { get; set; }
+        public int? UserID { get; set; }
+    }
+
+    public class SetPreparedRequest
+    {
+        public long OrderID { get; set; }
+        public bool Prepared { get; set; }
         public int? UserID { get; set; }
     }
 

@@ -90,9 +90,11 @@ namespace StallmedManager.Server.Controllers
                 .Select(g => new { OrderID = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.OrderID, x => x.Count);
 
-            // Ποιος πέρασε κάθε παραγγελία -- οι παλιές (migration) έχουν CreatedBy NULL
-            var creatorIds = orders.Where(o => o.CreatedBy.HasValue)
-                .Select(o => o.CreatedBy!.Value).Distinct().ToList();
+            // Ποιος πέρασε κάθε παραγγελία -- οι παλιές (migration) έχουν CreatedBy NULL.
+            // Στο ίδιο lookup μπαίνει και το "ποιος την ετοίμασε" (PreparedBy).
+            var creatorIds = orders.Where(o => o.CreatedBy.HasValue).Select(o => o.CreatedBy!.Value)
+                .Concat(orders.Where(o => o.PreparedBy.HasValue).Select(o => o.PreparedBy!.Value))
+                .Distinct().ToList();
             var creators = await _context.Users
                 .Where(u => creatorIds.Contains(u.IdUser))
                 .Select(u => new { u.IdUser, u.Firstname, u.Lastname, u.Username })
@@ -125,6 +127,10 @@ namespace StallmedManager.Server.Controllers
                 CreatedBy = o.CreatedBy,
                 CreatedByName = o.CreatedBy.HasValue && creatorLookup.TryGetValue(o.CreatedBy.Value, out var creatorName)
                     ? creatorName
+                    : null,
+                PreparedAt = o.PreparedAt,
+                PreparedByName = o.PreparedBy.HasValue && creatorLookup.TryGetValue(o.PreparedBy.Value, out var preparedName)
+                    ? preparedName
                     : null,
                 Lines = lines.Where(l => l.OrderID == o.OrderID).Select(l =>
                 {
@@ -314,6 +320,37 @@ namespace StallmedManager.Server.Controllers
                 _logger.LogError(ex, "Σφάλμα στο SetShipment για OrderID={OrderID}", req.OrderID);
                 return Ok(new ShipResult { Success = false, Message = "Κάτι πήγε στραβά κατά την καταχώρηση αποστολής. Δοκίμασε ξανά." });
             }
+        }
+
+        // ---- "Έτοιμο": ετοιμάστηκε και μπήκε σε κουτί, περιμένει παραλαβή ----
+        // Ενδιάμεσο βήμα ανάμεσα στη δέσμευση και την αποστολή: η αποθήκη το ετοιμάζει
+        // και ο πωλητής το παραλαμβάνει αργότερα. ΔΕΝ αλλάζει το OrderStatus ούτε το stock.
+        [HttpPost("set-prepared")]
+        public async Task<ActionResult<ShipResult>> SetPrepared([FromBody] SetPreparedRequest req)
+        {
+            var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+            if (order == null)
+                return Ok(new ShipResult { Success = false, Message = "Η παραγγελία δεν βρέθηκε." });
+
+            if (order.OrderStatus == "Fulfilled" || order.OrderStatus == "Cancelled")
+                return Ok(new ShipResult
+                {
+                    Success = false,
+                    Message = $"Η παραγγελία {order.OrderCode} έχει ήδη κλείσει."
+                });
+
+            order.PreparedAt = req.Prepared ? DateTime.Now : null;
+            order.PreparedBy = req.Prepared ? req.UserID : null;
+            order.UpdatedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+
+            return Ok(new ShipResult
+            {
+                Success = true,
+                Message = req.Prepared
+                    ? $"Η παραγγελία {order.OrderCode} σημειώθηκε ως έτοιμη."
+                    : $"Η παραγγελία {order.OrderCode} δεν είναι πλέον σημειωμένη ως έτοιμη."
+            });
         }
 
         // ---- Διαχειρίσιμη λίστα τρόπων αποστολής (courier) -- εκτός από το "Salesperson" ----

@@ -18,6 +18,10 @@ namespace StallmedManager.Shared.Models
         public string Role { get; set; }
         public int? IdClient { get; set; }
         public bool Active { get; set; }
+        // Υπάρχουν στον πίνακα Users -- χρειάζονται για τη δημιουργία χρήστη
+        // και για να φαίνεται η τελευταία σύνδεση στη διαχείριση.
+        public DateTime? CreatedAt { get; set; }
+        public DateTime? LastLogin { get; set; }
         [NotMapped]
         public string Token { get; set; }
     }
