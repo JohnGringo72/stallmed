@@ -15,16 +15,23 @@ namespace StallmedManager.Server.Controllers
     public class IssuesController : ControllerBase
     {
         private readonly StallmedContext _context;
+        private readonly StallmedManager.Server.Services.QuoteEmailService _email;
+        private readonly ILogger<IssuesController> _logger;
 
-        public IssuesController(StallmedContext context)
+        public IssuesController(StallmedContext context,
+            StallmedManager.Server.Services.QuoteEmailService email,
+            ILogger<IssuesController> logger)
         {
             _context = context;
+            _email = email;
+            _logger = logger;
         }
 
         // ---- Λίστα με προαιρετικά φίλτρα ----
         [HttpGet]
         public async Task<ActionResult<List<IssueListItemDto>>> GetIssues(
-            [FromQuery] string? status, [FromQuery] string? search, [FromQuery] int? regardingUserId)
+            [FromQuery] string? status, [FromQuery] string? search, [FromQuery] int? regardingUserId,
+            [FromQuery] int? userId)
         {
             var query = _context.IssueTasks.AsQueryable();
             if (!string.IsNullOrEmpty(status))
@@ -51,12 +58,27 @@ namespace StallmedManager.Server.Controllers
                 .Select(g => new { g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.Key, x => x.Count);
 
+            // Τι έχει ήδη ανοίξει ΑΥΤΟΣ ο χρήστης. Χωρίς userId δεν σημαδεύεται τίποτα.
+            var reads = userId.HasValue
+                ? await _context.IssueReads
+                    .Where(r => r.UserID == userId.Value && ids.Contains(r.IssueID))
+                    .ToDictionaryAsync(r => r.IssueID, r => r.ReadAt)
+                : new Dictionary<long, DateTime>();
+
+            bool Unread(IssueTask i)
+            {
+                if (!userId.HasValue) return false;
+                // Νέο = δεν το άνοιξε ποτέ, ή άλλαξε μετά την τελευταία φορά που το είδε.
+                return !reads.TryGetValue(i.IssueID, out var readAt) || i.UpdatedAt > readAt;
+            }
+
             return Ok(issues.Select(i => new IssueListItemDto
             {
                 IssueID = i.IssueID,
                 IssueCode = i.IssueCode,
                 Title = i.Title,
                 RegardingName = i.RegardingName,
+                AssignedUserID = i.AssignedUserID,
                 AssignedName = i.AssignedName,
                 Status = i.Status,
                 Priority = i.Priority,
@@ -65,7 +87,8 @@ namespace StallmedManager.Server.Controllers
                 CreatedAt = i.CreatedAt,
                 UpdatedAt = i.UpdatedAt,
                 CommentCount = commentCounts.TryGetValue(i.IssueID, out var cc) ? cc : 0,
-                AttachmentCount = attachmentCounts.TryGetValue(i.IssueID, out var ac) ? ac : 0
+                AttachmentCount = attachmentCounts.TryGetValue(i.IssueID, out var ac) ? ac : 0,
+                IsUnread = Unread(i)
             }).ToList());
         }
 
@@ -111,10 +134,12 @@ namespace StallmedManager.Server.Controllers
                 return Ok(new IssueSaveResult { Success = false, Message = "Ο τίτλος είναι υποχρεωτικός." });
 
             IssueTask issue;
+            int? previousAssignee = null;
             if (req.IssueID.HasValue)
             {
                 issue = await _context.IssueTasks.FindAsync(req.IssueID.Value);
                 if (issue == null) return NotFound();
+                previousAssignee = issue.AssignedUserID;
             }
             else
             {
@@ -157,7 +182,190 @@ namespace StallmedManager.Server.Controllers
                 await _context.SaveChangesAsync();
             }
 
+            // Ό,τι έγραψε ο ίδιος δεν πρέπει να του εμφανίζεται ως αδιάβαστο.
+            if (req.ActingUserID.HasValue)
+                await MarkReadInternal(issue.IssueID, req.ActingUserID.Value);
+
+            // Ειδοποίηση μόνο όταν η ανάθεση είναι καινούργια ή άλλαξε, και ποτέ στον εαυτό σου.
+            if (issue.AssignedUserID.HasValue
+                && issue.AssignedUserID != previousAssignee
+                && issue.AssignedUserID != req.ActingUserID)
+            {
+                await NotifyAssigneeAsync(issue);
+            }
+
             return Ok(new IssueSaveResult { Success = true, IssueID = issue.IssueID, IssueCode = issue.IssueCode });
+        }
+
+        // Το email είναι best-effort: αν το SMTP δεν είναι ρυθμισμένο ή αποτύχει,
+        // το θέμα έχει ήδη αποθηκευτεί -- δεν χαλάει η καταχώρηση.
+        private async Task NotifyAssigneeAsync(IssueTask issue)
+        {
+            try
+            {
+                if (!_email.IsConfigured("SM"))
+                {
+                    _logger.LogInformation("Παράλειψη email ειδοποίησης για {Code}: το SMTP δεν είναι ρυθμισμένο.", issue.IssueCode);
+                    return;
+                }
+
+                var user = await _context.Users
+                    .Where(u => u.IdUser == issue.AssignedUserID!.Value && u.Active)
+                    .Select(u => new { u.Email, Name = (u.Firstname + " " + u.Lastname).Trim() })
+                    .FirstOrDefaultAsync();
+
+                if (user == null || string.IsNullOrWhiteSpace(user.Email))
+                {
+                    _logger.LogInformation("Παράλειψη email ειδοποίησης για {Code}: ο χρήστης δεν έχει email.", issue.IssueCode);
+                    return;
+                }
+
+                // Οι γραμμές ενώνονται με Environment.NewLine -- χωρίς escapes, για καθαρό κείμενο.
+                var parts = new List<string>
+                {
+                    "Σου ανατέθηκε νέο θέμα.",
+                    "",
+                    $"Κωδικός: {issue.IssueCode}",
+                    $"Τίτλος: {issue.Title}",
+                    $"Προτεραιότητα: {issue.Priority}"
+                };
+                if (issue.DueDate.HasValue)
+                    parts.Add($"Προθεσμία: {issue.DueDate:dd/MM/yyyy}");
+                if (!string.IsNullOrWhiteSpace(issue.Description))
+                {
+                    parts.Add("");
+                    parts.Add(issue.Description);
+                }
+                parts.Add("");
+                parts.Add("Άνοιξε την εφαρμογή και δες το στα Tasks.");
+                var body = string.Join(Environment.NewLine, parts);
+
+                await _email.SendPlainAsync("SM", user.Email, user.Name,
+                    $"[{issue.IssueCode}] {issue.Title}", body);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Αποτυχία αποστολής email ειδοποίησης για το θέμα {Code}", issue.IssueCode);
+            }
+        }
+
+        // ---- "Το είδα": καταγράφεται ανά χρήστη όταν ανοίγει το θέμα ----
+        [HttpPost("mark-read")]
+        public async Task<ActionResult> MarkRead([FromBody] MarkIssueReadRequest req)
+        {
+            if (req.UserID <= 0) return Ok();
+            await MarkReadInternal(req.IssueID, req.UserID);
+            return Ok();
+        }
+
+        private async Task MarkReadInternal(long issueId, int userId)
+        {
+            if (userId <= 0) return;
+
+            var existing = await _context.IssueReads
+                .FirstOrDefaultAsync(r => r.IssueID == issueId && r.UserID == userId);
+
+            if (existing == null)
+                _context.IssueReads.Add(new IssueRead { IssueID = issueId, UserID = userId, ReadAt = DateTime.Now });
+            else
+                existing.ReadAt = DateTime.Now;
+
+            await _context.SaveChangesAsync();
+        }
+
+        // ---- Σύνοψη για το καμπανάκι ----
+        // Μετράει ΜΟΝΟ όσα αφορούν τον χρήστη και δεν τα έχει δει ακόμα:
+        //   "με αφορά"  = ανατεθειμένο σε μένα, ή το άνοιξα εγώ, ή αφορά εμένα,
+        //                 ή έχω σχολιάσει σε αυτό
+        //   "αδιάβαστο" = δεν το άνοιξα ποτέ, ή άλλαξε μετά την τελευταία φορά
+        // Έτσι το καμπανάκι σβήνει μόλις τα ανοίξει ο χρήστης, χωρίς να επηρεάζει τους άλλους.
+        [HttpGet("my-summary")]
+        public async Task<ActionResult<IssueMySummaryDto>> GetMySummary([FromQuery] int userId)
+        {
+            if (userId <= 0) return Ok(new IssueMySummaryDto());
+
+            var commentedIssueIds = await _context.IssueComments
+                .Where(c => c.UserID == userId)
+                .Select(c => c.IssueID)
+                .Distinct()
+                .ToListAsync();
+
+            var relevant = await _context.IssueTasks
+                .Where(i => i.AssignedUserID == userId
+                         || i.CreatedBy == userId
+                         || i.RegardingUserID == userId
+                         || commentedIssueIds.Contains(i.IssueID))
+                .Select(i => new { i.IssueID, i.IssueCode, i.Title, i.UpdatedAt, i.Status, i.AssignedUserID })
+                .ToListAsync();
+
+            var ids = relevant.Select(x => x.IssueID).ToList();
+            var reads = await _context.IssueReads
+                .Where(r => r.UserID == userId && ids.Contains(r.IssueID))
+                .ToDictionaryAsync(r => r.IssueID, r => r.ReadAt);
+
+            var unread = relevant
+                .Where(i => !reads.TryGetValue(i.IssueID, out var readAt) || i.UpdatedAt > readAt)
+                .OrderByDescending(i => i.IssueID)
+                .ToList();
+
+            var newest = unread.FirstOrDefault();
+            return Ok(new IssueMySummaryDto
+            {
+                UnreadCount = unread.Count,
+                AssignedOpenCount = relevant.Count(i => i.AssignedUserID == userId
+                                                     && i.Status != "Done" && i.Status != "Cancelled"),
+                NewestIssueID = newest?.IssueID ?? 0,
+                NewestIssueCode = newest?.IssueCode,
+                NewestTitle = newest?.Title
+            });
+        }
+
+        // ---- Διαγραφή θέματος (μόνο admin) ----
+        // Τα IssueComments/IssueAttachments έχουν foreign key χωρίς ON DELETE CASCADE,
+        // οπότε σβήνονται πρώτα αυτά και μετά το θέμα.
+        [HttpPost("delete/{id:long}")]
+        public async Task<ActionResult<IssueSaveResult>> DeleteIssue(long id, [FromQuery] int userId)
+        {
+            var role = await _context.Users.Where(u => u.IdUser == userId).Select(u => u.Role).FirstOrDefaultAsync();
+            if (!string.Equals(role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase))
+                return Ok(new IssueSaveResult { Success = false, Message = "Μόνο ο admin μπορεί να διαγράψει θέμα." });
+
+            var issue = await _context.IssueTasks.FindAsync(id);
+            if (issue == null)
+                return Ok(new IssueSaveResult { Success = false, Message = "Το θέμα δεν βρέθηκε." });
+
+            var comments = await _context.IssueComments.Where(c => c.IssueID == id).ToListAsync();
+            var attachments = await _context.IssueAttachments.Where(a => a.IssueID == id).ToListAsync();
+            var reads = await _context.IssueReads.Where(r => r.IssueID == id).ToListAsync();
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                _context.IssueComments.RemoveRange(comments);
+                _context.IssueAttachments.RemoveRange(attachments);
+                _context.IssueReads.RemoveRange(reads);
+                await _context.SaveChangesAsync();
+
+                _context.IssueTasks.Remove(issue);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Αποτυχία διαγραφής θέματος {IssueID}", id);
+                return Ok(new IssueSaveResult { Success = false, Message = "Η διαγραφή απέτυχε. Δοκίμασε ξανά." });
+            }
+
+            _logger.LogInformation("Ο χρήστης {UserID} διέγραψε το θέμα {Code} ({Comments} σχόλια, {Attachments} συνημμένα)",
+                userId, issue.IssueCode, comments.Count, attachments.Count);
+
+            return Ok(new IssueSaveResult
+            {
+                Success = true,
+                IssueID = id,
+                Message = $"Το θέμα {issue.IssueCode} διαγράφηκε."
+            });
         }
 
         // ---- Σχόλια (συνομιλία) ----
@@ -180,6 +388,12 @@ namespace StallmedManager.Server.Controllers
             });
             issue.UpdatedAt = DateTime.Now;
             await _context.SaveChangesAsync();
+
+            // Το δικό σου σχόλιο δεν σε ειδοποιεί. Για τους υπόλοιπους που εμπλέκονται,
+            // το θέμα γίνεται ξανά αδιάβαστο επειδή άλλαξε το UpdatedAt.
+            if (req.UserID.HasValue)
+                await MarkReadInternal(req.IssueID, req.UserID.Value);
+
             return Ok(new IssueSaveResult { Success = true, IssueID = req.IssueID });
         }
 

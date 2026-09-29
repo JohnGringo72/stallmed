@@ -1,0 +1,125 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@* Κουμπί υπαγόρευσης. Εμφανίζεται μόνο όπου ο browser το υποστηρίζει. *@
+@if (supported)
+{
+    <div class="d-inline-flex align-items-center gap-1">
+        <button type="button" class="btn btn-sm @(listening ? "btn-danger" : "btn-outline-secondary")"
+                @onclick="Toggle"
+                title="@(listening ? "Σταμάτα την υπαγόρευση" : "Υπαγόρευση με φωνή (ελληνικά)")">
+            @(listening ? "⏹️" : "🎤")
+        </button>
+
+        @if (listening)
+        {
+            <span class="mic-recording" title="Ηχογραφεί -- μίλα κανονικά">
+                <span class="mic-dot"></span> Ακούω…
+            </span>
+            @if (!string.IsNullOrEmpty(interim))
+            {
+                <span class="text-muted fst-italic small">@interim</span>
+            }
+        }
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <span class="text-danger small">@error</span>
+        }
+    </div>
+}
+
+@code {
+    // Το αναγνωρισμένο κείμενο δίνεται στον γονέα για να το προσθέσει όπου θέλει.
+    [Parameter] public EventCallback<string> OnText { get; set; }
+    [Parameter] public string Lang { get; set; } = "el-GR";
+
+    private IJSObjectReference? module;
+    private DotNetObjectReference<MicButton>? selfRef;
+    private bool supported;
+    private bool listening;
+    private string error = "";
+    private string interim = "";   // ζωντανή προεπισκόπηση, δεν μπαίνει στο πεδίο
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./Shared/MicButton.razor.js");
+            supported = await module.InvokeAsync<bool>("isSupported");
+            StateHasChanged();
+        }
+        catch (Exception)
+        {
+            supported = false;   // π.χ. prerender ή αποτυχία φόρτωσης -- απλώς δεν εμφανίζεται
+        }
+    }
+
+    private async Task Toggle()
+    {
+        if (module == null) return;
+        error = "";
+
+        if (listening)
+        {
+            await module.InvokeVoidAsync("stop");
+            listening = false;
+            return;
+        }
+
+        listening = await module.InvokeAsync<bool>("start", selfRef ??= DotNetObjectReference.Create(this), Lang);
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechResult(string text)
+    {
+        interim = "";
+        await OnText.InvokeAsync(text);
+        StateHasChanged();
+    }
+
+    // Ό,τι ακούγεται τη στιγμή αυτή -- μόνο για να βλέπει ο χρήστης ότι ηχογραφεί.
+    [JSInvokable]
+    public void OnSpeechInterim(string text)
+    {
+        interim = text;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnSpeechEnd()
+    {
+        listening = false;
+        interim = "";
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnSpeechError(string code)
+    {
+        listening = false;
+        interim = "";
+        error = code switch
+        {
+            "not-allowed" or "service-not-allowed" => "Δεν δόθηκε άδεια μικροφώνου",
+            "no-speech" => "Δεν ακούστηκε κάτι",
+            "network" => "Χωρίς σύνδεση",
+            _ => ""
+        };
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (module != null)
+            {
+                await module.InvokeVoidAsync("stop");
+                await module.DisposeAsync();
+            }
+        }
+        catch (Exception) { /* η σελίδα κλείνει -- αγνοείται */ }
+        selfRef?.Dispose();
+    }
+}

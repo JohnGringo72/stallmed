@@ -188,6 +188,7 @@
                 </div>
                 <div class="d-flex gap-2">
                     <button class="btn btn-outline-secondary" @onclick="() => PrintOrder(order)" @onclick:stopPropagation="true" title="@Hint("Εκτύπωση φύλλου προετοιμασίας παραγγελίας")">🖨️</button>
+                    <button class="btn btn-outline-warning" @onclick="() => returnOrder = order" @onclick:stopPropagation="true" title="@Hint("Επιστροφή σε Ανοιχτή -- οι δεσμεύσεις ανακαλούνται, η παραγγελία μένει και θέλει νέο allocate")">↩️</button>
                     <button class="btn btn-outline-danger" @onclick="() => cancelOrder = order" @onclick:stopPropagation="true" title="@Hint("Ακύρωση ΟΛΗΣ της παραγγελίας -- οι δεσμεύσεις ανακαλούνται και τα φιαλίδια επιστρέφουν στο stock")">🗑️</button>
                     <button class="btn btn-primary" @onclick="() => OpenShipPopup(order)" @onclick:stopPropagation="true" title="@Hint("Καταχώρηση στοιχείων αποστολής και κλείσιμο της παραγγελίας")">📦 Αποστολή</button>
                 </div>
@@ -226,6 +227,10 @@
                         }
                         <br />
                         <strong>Τηλέφωνο:</strong> @(string.IsNullOrWhiteSpace(order.ShippingPhone) ? "— δεν έχει καταχωρηθεί —" : order.ShippingPhone)
+                        <button class="btn btn-sm btn-outline-primary ms-2" @onclick="() => OpenShippingEdit(order)"
+                                title="@Hint("Διόρθωση στοιχείων παράδοσης -- αφορά μόνο αυτή την παραγγελία, όχι την καρτέλα του γιατρού")">
+                            ✏️ Διόρθωση στοιχείων
+                        </button>
                     </div>
                     <div class="list-window">
                     <table class="table table-sm mb-0 sticky-head">
@@ -352,6 +357,67 @@
 }
 
 @* ===== Popup επιβεβαίωσης ακύρωσης παραγγελίας ===== *@
+@if (returnOrder != null)
+{
+    <div class="popup-overlay" @onclick="() => returnOrder = null">
+        <div class="popup-box" style="max-width:460px;" @onclick:stopPropagation="true">
+            <h5 class="mb-2">↩️ Επιστροφή σε Ανοιχτή</h5>
+            <p class="mb-2">
+                Η παραγγελία <strong>@returnOrder.OrderCode</strong> (@returnOrder.DoctorName) θα γυρίσει πίσω σε «Ανοιχτή».
+            </p>
+            <ul class="mb-3 small">
+                <li>Οι δεσμεύσεις (<strong>@returnOrder.Lines.Sum(l => l.QuantityAllocated) τεμ.</strong>) ανακαλούνται και τα φιαλίδια επιστρέφουν στο διαθέσιμο stock.</li>
+                <li>Η παραγγελία <strong>δεν χάνεται</strong>: κρατά τις ίδιες γραμμές και ποσότητες, απλώς γίνονται ξανά εκκρεμείς.</li>
+                <li>Για να ξαναφτάσει στις Αποστολές, θέλει νέο «⚡ Allocate Όλα» από τις Παραγγελίες Γιατρών.</li>
+                @if (returnOrder.IsPrepared)
+                {
+                    <li>Θα φύγει και η σήμανση «✅ Έτοιμο».</li>
+                }
+            </ul>
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary flex-fill" @onclick="() => returnOrder = null" title="@Hint("Κλείσιμο χωρίς αλλαγή")">Πίσω</button>
+                <button class="btn btn-warning flex-fill" @onclick="DoReturnToOpen" title="@Hint("Ανακαλεί τις δεσμεύσεις και γυρίζει την παραγγελία σε Ανοιχτή")">Ναι, γύρνα την πίσω</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (shippingEdit != null)
+{
+    <div class="popup-overlay" @onclick="() => shippingEdit = null">
+        <div class="popup-box" style="max-width:520px;" @onclick:stopPropagation="true">
+            <h5 class="mb-1">✏️ Στοιχεία παράδοσης — @shippingEditCode</h5>
+            <p class="text-muted small mb-3">Αφορά μόνο αυτή την παραγγελία. Η καρτέλα του γιατρού δεν αλλάζει.</p>
+            <div class="row g-2">
+                <div class="col-12">
+                    <label class="form-label mb-1">Παραλήπτης</label>
+                    <input class="form-control" @bind="shippingEdit.RecipientName" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label mb-1">Διεύθυνση</label>
+                    <input class="form-control" @bind="shippingEdit.ShippingAddress" />
+                </div>
+                <div class="col-7">
+                    <label class="form-label mb-1">Πόλη</label>
+                    <input class="form-control" @bind="shippingEdit.ShippingCity" />
+                </div>
+                <div class="col-5">
+                    <label class="form-label mb-1">ΤΚ</label>
+                    <input class="form-control" @bind="shippingEdit.ShippingPostalCode" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label mb-1">Τηλέφωνο</label>
+                    <input class="form-control" @bind="shippingEdit.ShippingPhone" />
+                </div>
+            </div>
+            <div class="d-flex gap-2 mt-3">
+                <button class="btn btn-secondary flex-fill" @onclick="() => shippingEdit = null" title="@Hint("Κλείσιμο χωρίς αποθήκευση")">Ακύρωση</button>
+                <button class="btn btn-success flex-fill" @onclick="SaveShipping" title="@Hint("Αποθήκευση των στοιχείων παράδοσης")">Αποθήκευση</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (cancelOrder != null)
 {
     <div class="popup-overlay" @onclick="() => cancelOrder = null">
@@ -464,6 +530,60 @@
 
     // --- "Έτοιμο": ετοιμάστηκε και μπήκε σε κουτί, περιμένει παραλαβή ---
     private bool onlyPrepared = false;
+
+    // --- Επιστροφή σε Ανοιχτή + διόρθωση στοιχείων παράδοσης ---
+    private DoctorOrderViewDto? returnOrder;
+    private UpdateShippingRequest? shippingEdit;
+    private string shippingEditCode = "";
+
+    private async Task DoReturnToOpen()
+    {
+        if (returnOrder == null) return;
+        var order = returnOrder;
+        returnOrder = null;
+
+        var result = await new PrickDoctorOrderService(dataService).ReturnToOpen(new ShipOrderRequest
+        {
+            OrderID = order.OrderID,
+            UserID = userManager.User?.IdUser
+        });
+
+        if (result == null || !result.Success)
+            loadError = result?.Message ?? "Δεν ήταν δυνατή η επιστροφή της παραγγελίας. Δοκίμασε ξανά.";
+        else
+            topBannerMessage = result.Message ?? "";
+
+        await LoadData();
+    }
+
+    private void OpenShippingEdit(DoctorOrderViewDto order)
+    {
+        shippingEditCode = order.OrderCode;
+        shippingEdit = new UpdateShippingRequest
+        {
+            OrderID = order.OrderID,
+            RecipientName = order.RecipientName,
+            ShippingAddress = order.ShippingAddress,
+            ShippingCity = order.ShippingCity,
+            ShippingPostalCode = order.ShippingPostalCode,
+            ShippingPhone = order.ShippingPhone
+        };
+    }
+
+    private async Task SaveShipping()
+    {
+        if (shippingEdit == null) return;
+        var req = shippingEdit;
+        shippingEdit = null;
+
+        var result = await new PrickDoctorOrderService(dataService).UpdateShipping(req);
+        if (result == null || !result.Success)
+            loadError = result?.Message ?? "Δεν ήταν δυνατή η αποθήκευση. Δοκίμασε ξανά.";
+        else
+            topBannerMessage = result.Message ?? "";
+
+        await LoadData();
+    }
 
     private async Task SetPrepared(DoctorOrderViewDto order, bool prepared)
     {

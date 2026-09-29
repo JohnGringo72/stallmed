@@ -83,6 +83,46 @@ namespace StallmedManager.Shared.Models
         public int? UserID { get; set; }
     }
 
+    // Διόρθωση στοιχείων παράδοσης της συγκεκριμένης παραγγελίας
+    // (δεν αλλάζει την καρτέλα του γιατρού).
+    public class UpdateShippingRequest
+    {
+        public long OrderID { get; set; }
+        public string? RecipientName { get; set; }
+        public string? ShippingAddress { get; set; }
+        public string? ShippingCity { get; set; }
+        public string? ShippingPostalCode { get; set; }
+        public string? ShippingPhone { get; set; }
+    }
+
+    // Καρτέλα γιατρού: πλήρη στοιχεία για προβολή/διόρθωση
+    public class DoctorDetailsDto
+    {
+        public int DoctorID { get; set; }
+        public string FullName { get; set; } = "";
+        public string? Specialty { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? Address { get; set; }
+        public string? City { get; set; }
+        public string? PostalCode { get; set; }
+        public string? Notes { get; set; }
+        public bool IsActive { get; set; } = true;
+        public int OrdersCount { get; set; }
+    }
+
+    public class DeleteDoctorRequest
+    {
+        public int DoctorID { get; set; }
+    }
+
+    public class SaveDoctorResult
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
+        public int DoctorID { get; set; }
+    }
+
     public class SetPreparedRequest
     {
         public long OrderID { get; set; }

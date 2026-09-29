@@ -13,6 +13,7 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 builder.Services.AddScoped<UserManager>();
 builder.Services.AddScoped<UiPreferencesService>();
 builder.Services.AddScoped<DataService>();
+builder.Services.AddScoped<NotificationsState>();
 builder.Services.AddScoped<StockSearchClientService>();
 
 var host = builder.Build();

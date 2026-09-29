@@ -185,6 +185,12 @@
         font-size: 1.05rem;
     }
 
+    /* Η ποσότητα γράφεται και με το πληκτρολόγιο, όχι μόνο με τα +/- */
+    input.qty-value {
+        width: 60px;
+        min-height: 36px;
+    }
+
     .allergen-suggestion-row {
         padding: 10px 12px;
         cursor: pointer;
@@ -531,6 +537,12 @@
                                             🔀 Διαχωρισμός
                                         </button>
                                     }
+                                    @if (order.OrderStatus == "ReadyToShip")
+                                    {
+                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => ConfirmReturnToOpen(order)" @onclick:stopPropagation="true" title="@Hint("Επιστροφή σε Ανοιχτή -- ανακαλεί τις δεσμεύσεις, η παραγγελία μένει και θέλει νέο allocate")">
+                                            ↩️
+                                        </button>
+                                    }
                                     @if (order.OrderStatus != "Fulfilled")
                                     {
                                         <button class="btn btn-sm btn-outline-warning" @onclick="() => ConfirmForceComplete(order)" @onclick:stopPropagation="true" title="@Hint("Διορθωτικό κλείσιμο (π.χ. λόγω migration)")">
@@ -643,7 +655,11 @@
                                                         {
                                                             <div class="qty-stepper">
                                                                 <button class="btn btn-sm btn-outline-secondary" disabled="@(GetAllocateQty(order, line) <= 0)" @onclick="() => ChangeAllocateQty(order, line, -1)" title="@Hint("Μείωση ποσότητας προς δέσμευση")">−</button>
-                                                                <span class="qty-value">@GetAllocateQty(order, line)</span>
+                                                                <input type="number" min="0" max="@allocateMax"
+                                                                       class="form-control form-control-sm text-center p-0 qty-value"
+                                                                       value="@GetAllocateQty(order, line)"
+                                                                       @onchange="e => SetAllocateQty(order, line, e.Value?.ToString())"
+                                                                       title="@Hint("Γράψε ποσότητα ή χρησιμοποίησε τα + και − (μέγιστο το διαθέσιμο)")" />
                                                                 <button class="btn btn-sm btn-outline-success" disabled="@(GetAllocateQty(order, line) >= allocateMax)" @onclick="() => ChangeAllocateQty(order, line, 1)" title="@Hint("Αύξηση ποσότητας προς δέσμευση")">+</button>
                                                             </div>
                                                             <button class="btn btn-sm @(markedCancel ? "btn-danger" : "btn-outline-danger")" @onclick="() => ConfirmCancelLine(order, line, pending)" title="@Hint("Ακύρωση της εκκρεμούς ποσότητας αυτής της γραμμής")">Ακύρωση</button>
@@ -926,7 +942,10 @@
                                             <button class="btn btn-sm btn-outline-secondary py-0 px-1"
                                                     @onclick="() => ChangeNewOrderQty(a.Code, -1)"
                                                     disabled="@(qty == 0)" title="@Hint("Μείωση ποσότητας")">−</button>
-                                            <span style="min-width:20px; text-align:center; @(qty > 0 ? "font-weight:700;" : "color:#aaa;")">@qty</span>
+                                            <input type="number" min="0" class="form-control form-control-sm text-center p-0"
+                                                   style="width:56px; @(qty > 0 ? "font-weight:700;" : "")"
+                                                   value="@qty" @onchange="e => SetNewOrderQty(a.Code, e.Value?.ToString())"
+                                                   title="@Hint("Γράψε ποσότητα ή χρησιμοποίησε τα + και −")" />
                                             <button class="btn btn-sm btn-outline-secondary py-0 px-1"
                                                     @onclick="() => ChangeNewOrderQty(a.Code, 1)" title="@Hint("Αύξηση ποσότητας")">+</button>
                                         </div>
@@ -1183,6 +1202,33 @@
     private void ConfirmSaveOrderChanges(DoctorOrderViewDto order, int changeCount) =>
         ShowConfirm($"Θέλεις να αποθηκεύσεις {changeCount} αλλαγές στην παραγγελία {order.OrderCode};", () => SaveOrderChanges(order));
 
+    // Η επιστροφή ανακαλεί τις δεσμεύσεις -- ο χρήστης πρέπει να ξέρει τι θα γίνει.
+    private void ConfirmReturnToOpen(DoctorOrderViewDto order)
+    {
+        var allocated = order.Lines.Sum(l => l.QuantityAllocated);
+        ShowConfirm(
+            $"Επιστροφή της {order.OrderCode} σε Ανοιχτή; " +
+            $"Θα ανακληθούν οι δεσμεύσεις ({allocated} τεμ.) και τα φιαλίδια επιστρέφουν στο διαθέσιμο stock. " +
+            "Η παραγγελία δεν χάνεται -- κρατά τις ίδιες γραμμές, που ξαναγίνονται εκκρεμείς και θέλουν νέο Allocate.",
+            () => DoReturnToOpen(order));
+    }
+
+    private async Task DoReturnToOpen(DoctorOrderViewDto order)
+    {
+        var req = new ShipOrderRequest { OrderID = order.OrderID, UserID = userManager.User?.IdUser };
+        var result = await new PrickDoctorOrderService(dataService).ReturnToOpen(req);
+        if (result != null && result.Success)
+        {
+            topBannerMessage = $"↩️ {result.Message}";
+            pendingChanges.Remove(order.OrderID);
+            await LoadData();
+        }
+        else
+        {
+            topBannerMessage = result?.Message ?? "Κάτι πήγε στραβά. Δοκίμασε ξανά.";
+        }
+    }
+
     private void ConfirmForceComplete(DoctorOrderViewDto order) =>
         ShowConfirm($"Θέλεις να κλείσεις οριστικά την παραγγελία {order.OrderCode} ως ολοκληρωμένη; Αυτή η ενέργεια δεν αναιρείται.", () => DoForceComplete(order));
 
@@ -1350,6 +1396,14 @@
         else newOrderQtyMap[code] = updated;
     }
 
+    // Πληκτρολογημένη ποσότητα: ό,τι δεν είναι έγκυρος αριθμός μετράει ως 0.
+    private void SetNewOrderQty(string code, string? value)
+    {
+        var updated = int.TryParse(value, out var parsed) ? Math.Max(0, parsed) : 0;
+        if (updated == 0) newOrderQtyMap.Remove(code);
+        else newOrderQtyMap[code] = updated;
+    }
+
     private string doctorSearchQuery = "";
     private List<DoctorOptionDto> doctorSearchResults = new();
     private DoctorOptionDto? selectedDoctor;
@@ -1403,6 +1457,18 @@
         var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
         var max = Math.Max(0, Math.Min(pending, line.AvailableStock));
         var updated = Math.Clamp(GetAllocateQty(order, line) + delta, 0, max);
+        if (updated == 0) p.Allocations.Remove(line.OrderLineID);
+        else p.Allocations[line.OrderLineID] = updated;
+    }
+
+    // Πληκτρολογημένη ποσότητα δέσμευσης: κόβεται στο μέγιστο (εκκρεμές ή διαθέσιμο stock).
+    private void SetAllocateQty(DoctorOrderViewDto order, DoctorOrderLineViewDto line, string? value)
+    {
+        var p = GetPending(order.OrderID);
+        var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
+        var max = Math.Max(0, Math.Min(pending, line.AvailableStock));
+        var parsed = int.TryParse(value, out var v) ? v : 0;
+        var updated = Math.Clamp(parsed, 0, max);
         if (updated == 0) p.Allocations.Remove(line.OrderLineID);
         else p.Allocations[line.OrderLineID] = updated;
     }

@@ -21,6 +21,33 @@ namespace StallmedManager.Client
             return await dataService.Get<List<DoctorOrderViewDto>>($"api/prickdoctororder/orders{query}");
         }
 
+        public async Task<ShipResult> ReturnToOpen(ShipOrderRequest req)
+        {
+            return await dataService.Post<ShipOrderRequest, ShipResult>("api/prickdoctororder/return-to-open", req);
+        }
+
+        public async Task<ShipResult> UpdateShipping(UpdateShippingRequest req)
+        {
+            return await dataService.Post<UpdateShippingRequest, ShipResult>("api/prickdoctororder/update-shipping", req);
+        }
+
+        public async Task<List<DoctorDetailsDto>> GetDoctorDetails(string? search)
+        {
+            var query = string.IsNullOrEmpty(search) ? "" : $"?search={Uri.EscapeDataString(search)}";
+            return await dataService.Get<List<DoctorDetailsDto>>($"api/prickdoctororder/doctors/details{query}") ?? new();
+        }
+
+        public async Task<SaveDoctorResult> SaveDoctor(DoctorDetailsDto req)
+        {
+            return await dataService.Post<DoctorDetailsDto, SaveDoctorResult>("api/prickdoctororder/doctors/save", req);
+        }
+
+        public async Task<SaveDoctorResult> DeleteDoctor(int doctorId)
+        {
+            return await dataService.Post<DeleteDoctorRequest, SaveDoctorResult>(
+                "api/prickdoctororder/doctors/delete", new DeleteDoctorRequest { DoctorID = doctorId });
+        }
+
         public async Task<ShipResult> SetPrepared(SetPreparedRequest req)
         {
             return await dataService.Post<SetPreparedRequest, ShipResult>("api/prickdoctororder/set-prepared", req);

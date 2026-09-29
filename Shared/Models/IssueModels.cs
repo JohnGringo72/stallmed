@@ -53,6 +53,24 @@ namespace StallmedManager.Shared.Models
         public DateTime CreatedAt { get; set; }
     }
 
+    // Ποιος χρήστης άνοιξε ποιο θέμα και πότε (sql/issue_reads.sql).
+    // Η ένδειξη "ΝΕΟ" είναι ανά χρήστη: όταν το ανοίγει ο ένας, δεν φεύγει από τους άλλους.
+    [Table("IssueReads")]
+    public class IssueRead
+    {
+        [Key]
+        public long ReadID { get; set; }
+        public long IssueID { get; set; }
+        public int UserID { get; set; }
+        public DateTime ReadAt { get; set; }
+    }
+
+    public class MarkIssueReadRequest
+    {
+        public long IssueID { get; set; }
+        public int UserID { get; set; }
+    }
+
     // ---- DTOs ----
 
     public class IssueListItemDto
@@ -61,6 +79,7 @@ namespace StallmedManager.Shared.Models
         public string IssueCode { get; set; } = "";
         public string Title { get; set; } = "";
         public string? RegardingName { get; set; }
+        public int? AssignedUserID { get; set; }
         public string? AssignedName { get; set; }
         public string Status { get; set; } = "Open";
         public string Priority { get; set; } = "Normal";
@@ -70,6 +89,8 @@ namespace StallmedManager.Shared.Models
         public DateTime UpdatedAt { get; set; }
         public int CommentCount { get; set; }
         public int AttachmentCount { get; set; }
+        // Δεν το έχει ανοίξει ακόμα ΑΥΤΟΣ ο χρήστης (ή άλλαξε μετά την τελευταία φορά)
+        public bool IsUnread { get; set; }
     }
 
     public class IssueDetailsDto
@@ -126,6 +147,18 @@ namespace StallmedManager.Shared.Models
         public int IdUser { get; set; }
         public string FullName { get; set; } = "";
         public string? Role { get; set; }
+    }
+
+    // Σύνοψη για το σήμα ειδοποίησης στο μενού
+    public class IssueMySummaryDto
+    {
+        // Αδιάβαστα που με αφορούν -- αυτό δείχνει το καμπανάκι και σβήνει όταν τα ανοίξω
+        public int UnreadCount { get; set; }
+        // Πόσα ανοιχτά μου έχουν ανατεθεί -- πληροφοριακό
+        public int AssignedOpenCount { get; set; }
+        public long NewestIssueID { get; set; }
+        public string? NewestIssueCode { get; set; }
+        public string? NewestTitle { get; set; }
     }
 
     public class IssueSaveResult

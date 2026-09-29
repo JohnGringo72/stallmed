@@ -27,6 +27,45 @@ namespace StallmedManager.Server.Services
             !string.IsNullOrEmpty(Setting(company, "Host")) &&
             !string.IsNullOrEmpty(Setting(company, "FromAddress"));
 
+        // Απλό email χωρίς συνημμένο -- χρησιμοποιείται για ειδοποιήσεις (π.χ. νέο issue).
+        // Ίδιες ρυθμίσεις SMTP με τις προσφορές, ώστε να υπάρχει ένα μόνο σημείο ρύθμισης.
+        public async Task SendPlainAsync(string company, string toAddress, string? toName, string subject, string body)
+        {
+            var message = BuildMessage(company, toAddress, toName, subject);
+            message.Body = new BodyBuilder { TextBody = body }.ToMessageBody();
+            await SendMessageAsync(company, message, toAddress, subject);
+        }
+
+        private MimeMessage BuildMessage(string company, string toAddress, string? toName, string subject)
+        {
+            var fromAddress = Setting(company, "FromAddress");
+            var fromName = Setting(company, "FromName") ?? fromAddress;
+
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress(fromName, fromAddress));
+            message.To.Add(new MailboxAddress(toName ?? toAddress, toAddress));
+            message.Subject = subject;
+            return message;
+        }
+
+        private async Task SendMessageAsync(string company, MimeMessage message, string toAddress, string subject)
+        {
+            var host = Setting(company, "Host");
+            var port = int.TryParse(Setting(company, "Port"), out var p) ? p : 587;
+            var username = Setting(company, "Username");
+            var password = Setting(company, "Password");
+            var useSsl = !string.Equals(Setting(company, "UseSsl"), "false", StringComparison.OrdinalIgnoreCase);
+
+            using var client = new SmtpClient();
+            await client.ConnectAsync(host, port, useSsl ? SecureSocketOptions.StartTlsWhenAvailable : SecureSocketOptions.None);
+            if (!string.IsNullOrEmpty(username))
+                await client.AuthenticateAsync(username, password);
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
+
+            _logger.LogInformation("Εστάλη email ({Company}) προς {To} με θέμα '{Subject}'", company, toAddress, subject);
+        }
+
         public async Task SendAsync(string company, string toAddress, string? toName, string subject, string body, byte[] pdfBytes, string pdfFileName)
         {
             var host = Setting(company, "Host");

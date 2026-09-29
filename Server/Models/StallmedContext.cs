@@ -35,6 +35,7 @@ namespace StallmedManager.Server.Models
         public virtual DbSet<IssueTask> IssueTasks { get; set; }
         public virtual DbSet<IssueComment> IssueComments { get; set; }
         public virtual DbSet<IssueAttachment> IssueAttachments { get; set; }
+        public virtual DbSet<IssueRead> IssueReads { get; set; }
 
         // ---- Προσωπικά Todo ανά χρήστη ----
         public virtual DbSet<PersonalTodo> PersonalTodos { get; set; }

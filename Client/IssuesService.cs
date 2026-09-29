@@ -11,11 +11,12 @@ namespace StallmedManager.Client
             this.dataService = dataService;
         }
 
-        public async Task<List<IssueListItemDto>> GetIssues(string? status, string? search)
+        public async Task<List<IssueListItemDto>> GetIssues(string? status, string? search, int? userId = null)
         {
             var qs = new List<string>();
             if (!string.IsNullOrEmpty(status)) qs.Add($"status={Uri.EscapeDataString(status)}");
             if (!string.IsNullOrEmpty(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+            if (userId.HasValue) qs.Add($"userId={userId.Value}");
             var query = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
             return await dataService.Get<List<IssueListItemDto>>($"api/issues{query}") ?? new();
         }
@@ -41,6 +42,16 @@ namespace StallmedManager.Client
 
         public async Task DeleteAttachment(long attachmentId)
             => await dataService.Post<object, object>($"api/issues/attachments/delete/{attachmentId}", new { });
+
+        public async Task MarkRead(long issueId, int userId)
+            => await dataService.Post<MarkIssueReadRequest, object>("api/issues/mark-read",
+                new MarkIssueReadRequest { IssueID = issueId, UserID = userId });
+
+        public async Task<IssueMySummaryDto?> GetMySummary(int userId)
+            => await dataService.Get<IssueMySummaryDto>($"api/issues/my-summary?userId={userId}");
+
+        public async Task<IssueSaveResult?> DeleteIssue(long issueId, int userId)
+            => await dataService.Post<object, IssueSaveResult>($"api/issues/delete/{issueId}?userId={userId}", new { });
 
         public async Task<List<IssueUserDto>> GetUsers()
             => await dataService.Get<List<IssueUserDto>>("api/issues/users") ?? new();

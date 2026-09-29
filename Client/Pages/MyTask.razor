@@ -4,6 +4,7 @@
 @inject DataService dataService
 @inject UserManager userManager
 @inject IJSRuntime JS
+@inject NotificationsState notifications
 
 <PageTitle>Tasks / Issues</PageTitle>
 
@@ -58,6 +59,24 @@
     <div class="col-auto">
         <button class="btn btn-outline-primary" @onclick="Load" title="@Hint("Ανανέωση της λίστας")">🔄</button>
     </div>
+    <div class="col-auto">
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="onlyMineSwitch" @bind="onlyMine" />
+            <label class="form-check-label" for="onlyMineSwitch"
+                   title="@Hint("Μόνο τα θέματα που έχουν ανατεθεί σε μένα")">👤 Τα δικά μου</label>
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(notifyMessage))
+    {
+        <div class="col-auto"><span class="text-danger small">@notifyMessage</span></div>
+    }
+    @if (notifyPermission == "default")
+    {
+        <div class="col-auto">
+            <button class="btn btn-outline-secondary" @onclick="EnableNotifications"
+                    title="@Hint("Ειδοποίηση των Windows όταν σου ανατεθεί νέο θέμα")">🔔 Ειδοποιήσεις</button>
+        </div>
+    }
     <div class="col-auto ms-auto">
         <button class="btn btn-primary" @onclick="OpenNew" title="@Hint("Δημιουργία νέου θέματος/εργασίας")">+ Νέο Θέμα</button>
     </div>
@@ -98,7 +117,13 @@ else
                         <td class="d-none d-lg-table-cell">@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : i.CreatedByName)</td>
                         <td class="d-none d-lg-table-cell">@i.CreatedAt.ToString("dd/MM/yyyy")</td>
                         <td class="d-none d-md-table-cell">@(i.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td>
-                        <td><span class="badge @StatusBadge(i.Status)">@StatusLabel(i.Status)</span></td>
+                        <td>
+                            <span class="badge @StatusBadge(i.Status)">@StatusLabel(i.Status)</span>
+                            @if (i.IsUnread)
+                            {
+                                <span class="badge bg-danger ms-1" title="Δεν το έχεις ανοίξει ακόμα εσύ">● ΝΕΟ</span>
+                            }
+                        </td>
                         <td class="d-none d-lg-table-cell">@PriorityLabel(i.Priority)</td>
                         <td class="d-none d-lg-table-cell text-muted small">@i.CommentCount / @i.AttachmentCount</td>
                     </tr>
@@ -127,11 +152,17 @@ else
                     }
                     <div class="mb-2">
                         <label class="form-label mb-1">Τίτλος *</label>
-                        <input class="form-control" @bind="editTitle" />
+                        <div class="d-flex gap-1">
+                            <input class="form-control" @bind="editTitle" />
+                            <MicButton OnText="OnTitleSpeech" />
+                        </div>
                     </div>
                     <div class="mb-2">
                         <label class="form-label mb-1">Περιγραφή</label>
-                        <textarea class="form-control" rows="3" @bind="editDescription"></textarea>
+                        <div class="d-flex gap-1 align-items-start">
+                            <textarea class="form-control" rows="3" @bind="editDescription"></textarea>
+                            <MicButton OnText="OnDescriptionSpeech" />
+                        </div>
                     </div>
                     <div class="row g-2 mb-2">
                         <div class="col-md-6">
@@ -266,6 +297,26 @@ else
                                 <div class="border rounded p-2 mb-2" style="white-space:pre-wrap">@iss.Description</div>
                             }
                             <button class="btn btn-sm btn-outline-primary mb-3" @onclick="() => OpenEditFromDetails()">✏️ Επεξεργασία / Αλλαγή στάτους</button>
+                            @if (userManager.IsAdmin)
+                            {
+                                <button class="btn btn-sm btn-outline-danger mb-3 ms-1" @onclick="() => confirmDeleteIssue = true"
+                                        title="@Hint("Οριστική διαγραφή του θέματος μαζί με σχόλια και συνημμένα")">🗑️ Διαγραφή θέματος</button>
+                            }
+                            @if (confirmDeleteIssue)
+                            {
+                                <div class="alert alert-danger py-2">
+                                    <div class="mb-2">
+                                        Οριστική διαγραφή του <strong>@iss.IssueCode</strong>;
+                                        Θα σβηστούν και τα @details.Comments.Count σχόλια και τα @details.Attachments.Count συνημμένα.
+                                    </div>
+                                    <button class="btn btn-sm btn-secondary" @onclick="() => confirmDeleteIssue = false">Άκυρο</button>
+                                    <button class="btn btn-sm btn-danger" @onclick="DeleteIssue" disabled="@busy">Ναι, διάγραψέ το</button>
+                                    @if (!string.IsNullOrEmpty(deleteMessage))
+                                    {
+                                        <div class="mt-2 small">@deleteMessage</div>
+                                    }
+                                </div>
+                            }
 
                             <h6>📎 Συνημμένα (@details.Attachments.Count)</h6>
                             @if (details.Attachments.Any())
@@ -312,6 +363,7 @@ else
                             <div class="d-flex gap-2">
                                 <textarea class="form-control" rows="2" placeholder="Γράψε σχόλιο... (π.χ. «Κάνε αυτό», «Το έκανα, θέλω 2»)"
                                           @bind="newComment" @bind:event="oninput"></textarea>
+                                <MicButton OnText="OnCommentSpeech" />
                                 <button class="btn btn-primary" @onclick="SendComment" disabled="@(busy || string.IsNullOrWhiteSpace(newComment))">Αποστολή</button>
                             </div>
                         </div>
@@ -383,16 +435,20 @@ else
     {
         get
         {
+            var visible = onlyMine
+                ? issues.Where(i => i.AssignedUserID == userManager.User?.IdUser).ToList()
+                : issues;
+
             IOrderedEnumerable<IssueListItemDto> sorted = sortField switch
             {
-                "title" => issues.OrderBy(i => i.Title, StringComparer.CurrentCultureIgnoreCase),
-                "regarding" => issues.OrderBy(i => i.RegardingName ?? "", StringComparer.CurrentCultureIgnoreCase),
-                "createdby" => issues.OrderBy(i => i.CreatedByName ?? "", StringComparer.CurrentCultureIgnoreCase),
-                "created" => issues.OrderBy(i => i.CreatedAt),
-                "due" => issues.OrderBy(i => i.DueDate == null).ThenBy(i => i.DueDate), // χωρίς προθεσμία στο τέλος
-                "status" => issues.OrderBy(i => StatusRank(i.Status)),
-                "priority" => issues.OrderBy(i => PriorityRank(i.Priority)),
-                _ => issues.OrderBy(i => i.IssueID)
+                "title" => visible.OrderBy(i => i.Title, StringComparer.CurrentCultureIgnoreCase),
+                "regarding" => visible.OrderBy(i => i.RegardingName ?? "", StringComparer.CurrentCultureIgnoreCase),
+                "createdby" => visible.OrderBy(i => i.CreatedByName ?? "", StringComparer.CurrentCultureIgnoreCase),
+                "created" => visible.OrderBy(i => i.CreatedAt),
+                "due" => visible.OrderBy(i => i.DueDate == null).ThenBy(i => i.DueDate), // χωρίς προθεσμία στο τέλος
+                "status" => visible.OrderBy(i => StatusRank(i.Status)),
+                "priority" => visible.OrderBy(i => PriorityRank(i.Priority)),
+                _ => visible.OrderBy(i => i.IssueID)
             };
             return sortAsc ? sorted : sorted.Reverse();
         }
@@ -424,11 +480,73 @@ else
     private IssueDetailsDto? details;
     private string newComment = "";
 
+    // --- Φίλτρο "τα δικά μου", ειδοποιήσεις, υπαγόρευση, διαγραφή ---
+    private bool onlyMine;
+    private string notifyPermission = "unsupported";
+    private string notifyMessage = "";
+    private bool confirmDeleteIssue;
+    private string deleteMessage = "";
+
+    private async Task EnableNotifications()
+    {
+        // Η άδεια ζητιέται με κλικ του χρήστη -- οι browsers δεν τη δίνουν αλλιώς.
+        // Αν λείπει η βοηθητική JS (π.χ. ο browser κρατά παλιό index.html από cache),
+        // δεν σκάει η σελίδα: απλώς δεν ενεργοποιούνται οι ειδοποιήσεις.
+        try
+        {
+            notifyPermission = await JS.InvokeAsync<string>("sbtNotify.request");
+        }
+        catch (Exception)
+        {
+            notifyPermission = "unsupported";
+            notifyMessage = "Κάνε ανανέωση με Ctrl+F5 και ξαναδοκίμασε.";
+        }
+        StateHasChanged();
+    }
+
+    // Η υπαγόρευση προσθέτει στο υπάρχον κείμενο, δεν το σβήνει.
+    private static string Append(string? current, string addition) =>
+        string.IsNullOrWhiteSpace(current) ? addition : $"{current} {addition}";
+
+    private void OnTitleSpeech(string text) => editTitle = Append(editTitle, text);
+    private void OnDescriptionSpeech(string text) => editDescription = Append(editDescription, text);
+    private void OnCommentSpeech(string text) => newComment = Append(newComment, text);
+
+    private async Task DeleteIssue()
+    {
+        if (details?.Issue == null || userManager.User == null) return;
+        busy = true;
+        var result = await Service.DeleteIssue(details.Issue.IssueID, userManager.User.IdUser);
+        busy = false;
+
+        if (result == null || !result.Success)
+        {
+            deleteMessage = result?.Message ?? "Η διαγραφή απέτυχε.";
+            return;
+        }
+
+        confirmDeleteIssue = false;
+        deleteMessage = "";
+        details = null;
+        await Load();
+    }
+
     // Αρχεία + πρώτο σχόλιο που επιλέχθηκαν στη φόρμα ΠΡΙΝ την αποθήκευση:
     // ανεβαίνουν αμέσως μετά τη δημιουργία του θέματος.
     private record PendingFile(string Name, byte[] Bytes);
     private List<PendingFile> pendingFiles = new();
     private string firstComment = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            notifyPermission = await JS.InvokeAsync<string>("sbtNotify.permission");
+            StateHasChanged();
+        }
+        catch (Exception) { notifyPermission = "unsupported"; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -441,7 +559,8 @@ else
     {
         loading = true;
         issues = await Service.GetIssues(string.IsNullOrEmpty(filterStatus) ? null : filterStatus,
-                                         string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim());
+                                         string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim(),
+                                         userManager.User?.IdUser);
         loading = false;
     }
 
@@ -591,6 +710,16 @@ else
     private async Task OpenDetails(long id)
     {
         details = await Service.GetIssue(id);
+
+        // "Το είδα" ανά χρήστη: δεν επηρεάζει τους υπόλοιπους.
+        var userId = userManager.User?.IdUser;
+        if (userId.HasValue)
+        {
+            await Service.MarkRead(id, userId.Value);
+            var row = issues.FirstOrDefault(i => i.IssueID == id);
+            if (row != null) row.IsUnread = false;
+            await notifications.RequestRefresh();   // σβήνει αμέσως το καμπανάκι
+        }
         newComment = "";
     }
 

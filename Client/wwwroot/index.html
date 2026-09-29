@@ -72,6 +72,27 @@
             try { URL.revokeObjectURL(url); } catch (e) { }
         };
 
+        // Ειδοποιήσεις του λειτουργικού για νέα θέματα (Tasks).
+        // Χρειάζεται HTTPS. Σε Android Chrome ο constructor δεν υποστηρίζεται
+        // (θέλει service worker) -- τότε επιστρέφει false και μένει μόνο το σήμα στο μενού.
+        window.sbtNotify = {
+            supported: function () { return "Notification" in window; },
+            permission: function () { return ("Notification" in window) ? Notification.permission : "unsupported"; },
+            request: async function () {
+                if (!("Notification" in window)) return "unsupported";
+                try { return await Notification.requestPermission(); } catch (e) { return "denied"; }
+            },
+            show: function (title, body) {
+                if (!("Notification" in window) || Notification.permission !== "granted") return false;
+                try {
+                    new Notification(title, { body: body, icon: "/favicon.png" });
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+        };
+
         window.selectAll = function (id) {
             const el = document.getElementById(id);
             if (el) { el.select(); }

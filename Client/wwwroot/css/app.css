@@ -282,3 +282,27 @@ th.sortable {
     th.sortable:hover {
         background: #e2e6ea;
     }
+
+/* ===== Ένδειξη ότι το μικρόφωνο ηχογραφεί ===== */
+.mic-recording {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #dc3545;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.mic-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #dc3545;
+    animation: mic-blink 1s ease-in-out infinite;
+}
+
+@keyframes mic-blink {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.8); }
+}

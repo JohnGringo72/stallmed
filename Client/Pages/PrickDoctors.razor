@@ -105,6 +105,171 @@ else if (status == "loaded")
     <div class="alert alert-info">Δεν υπάρχουν παραγγελίες πρικ στην περίοδο.</div>
 }
 
+@* ===== Καρτέλες γιατρών: αναζήτηση και διόρθωση στοιχείων ===== *@
+<div class="chart-box mb-4">
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+        <h6 class="mb-0">📇 Καρτέλες γιατρών</h6>
+        <input class="form-control" style="max-width:320px;" placeholder="Αναζήτηση: όνομα, πόλη ή τηλέφωνο..."
+               value="@doctorSearch" @oninput="OnDoctorSearchInput" />
+        @if (doctorsStatus == "loading")
+        {
+            <span class="text-muted small">Φορτώνω...</span>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(doctorMessage))
+    {
+        <div class="alert @(doctorMessageIsError ? "alert-danger" : "alert-success") py-2">@doctorMessage</div>
+    }
+
+    @if (doctors.Any())
+    {
+        <div class="table-responsive list-window">
+            <table class="table table-hover table-sm sticky-head">
+                <thead>
+                    <tr>
+                        <th>Γιατρός</th>
+                        <th>Τηλέφωνο</th>
+                        <th>Email</th>
+                        <th>Διεύθυνση</th>
+                        <th>Πόλη</th>
+                        <th class="text-end">Παραγγελίες</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in doctors)
+                    {
+                        <tr class="@(d.IsActive ? "" : "text-muted")">
+                            <td>
+                                <strong>@d.FullName</strong>
+                                @if (!d.IsActive)
+                                {
+                                    <span class="badge bg-secondary ms-1">ανενεργός</span>
+                                }
+                            </td>
+                            <td>@d.Phone</td>
+                            <td>@d.Email</td>
+                            <td>@d.Address</td>
+                            <td>@d.City</td>
+                            <td class="text-end">@d.OrdersCount</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenDoctorEdit(d)" title="Διόρθωση στοιχείων γιατρού">✏️</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => doctorToDelete = d"
+                                        title="Διαγραφή γιατρού -- επιτρέπεται μόνο αν δεν έχει παραγγελίες ή προσφορές">🗑️</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (doctorsStatus == "loaded")
+    {
+        <div class="alert alert-info mb-0">Δεν βρέθηκαν γιατροί με αυτά τα κριτήρια.</div>
+    }
+</div>
+
+@if (doctorToDelete != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="() => doctorToDelete = null">
+        <div class="modal-dialog modal-sm" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">🗑️ Διαγραφή γιατρού</h5>
+                    <button type="button" class="btn-close" @onclick="() => doctorToDelete = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Οριστική διαγραφή του <strong>@doctorToDelete.FullName</strong>;</p>
+                    @if (doctorToDelete.OrdersCount > 0)
+                    {
+                        <div class="alert alert-warning py-2 mb-0 small">
+                            Έχει @doctorToDelete.OrdersCount παραγγελίες, οπότε δεν θα διαγραφεί.
+                            Κάνε τον ανενεργό από το ✏️.
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-0">Επιτρέπεται μόνο για γιατρούς χωρίς παραγγελίες και προσφορές.</p>
+                    }
+                </div>
+                <div class="modal-footer py-1">
+                    <button class="btn btn-secondary btn-sm" @onclick="() => doctorToDelete = null">Ακύρωση</button>
+                    <button class="btn btn-danger btn-sm" @onclick="DeleteDoctor">Διαγραφή</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (doctorEdit != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">✏️ Στοιχεία γιατρού</h5>
+                    <button type="button" class="btn-close" @onclick="() => doctorEdit = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <label class="form-label mb-1">Ονοματεπώνυμο <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="doctorEdit.FullName" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-1">Ειδικότητα</label>
+                            <input class="form-control" @bind="doctorEdit.Specialty" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-1">Τηλέφωνο</label>
+                            <input class="form-control" @bind="doctorEdit.Phone" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label mb-1">Email</label>
+                            <input class="form-control" type="email" @bind="doctorEdit.Email" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label mb-1">Διεύθυνση</label>
+                            <input class="form-control" @bind="doctorEdit.Address" />
+                        </div>
+                        <div class="col-7">
+                            <label class="form-label mb-1">Πόλη</label>
+                            <input class="form-control" @bind="doctorEdit.City" />
+                        </div>
+                        <div class="col-5">
+                            <label class="form-label mb-1">ΤΚ</label>
+                            <input class="form-control" @bind="doctorEdit.PostalCode" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label mb-1">Σημειώσεις</label>
+                            <textarea class="form-control" rows="2" @bind="doctorEdit.Notes"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="doctorActive" @bind="doctorEdit.IsActive" />
+                                <label class="form-check-label" for="doctorActive">Ενεργός</label>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-muted small mt-2 mb-0">
+                        Η αλλαγή ισχύει για την καρτέλα και τις επόμενες παραγγελίες. Τα στοιχεία παράδοσης
+                        παλιών παραγγελιών δεν αλλάζουν — αυτά διορθώνονται στις Αποστολές.
+                    </p>
+                    @if (!string.IsNullOrEmpty(doctorModalMessage))
+                    {
+                        <div class="alert alert-warning py-2 mt-2 mb-0">@doctorModalMessage</div>
+                    }
+                </div>
+                <div class="modal-footer py-1">
+                    <button class="btn btn-secondary btn-sm" @onclick="() => doctorEdit = null">Ακύρωση</button>
+                    <button class="btn btn-success btn-sm" @onclick="SaveDoctor">Αποθήκευση</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private string status = "idle";
     private DateTime fromDate = DateTime.Today.AddMonths(-12);
@@ -119,9 +284,94 @@ else if (status == "loaded")
         _ => summary.OrderByDescending(r => r.QtyTotal)
     };
 
+    // --- Καρτέλες γιατρών ---
+    private List<DoctorDetailsDto> doctors = new();
+    private string doctorsStatus = "idle";
+    private string doctorSearch = "";
+    private DoctorDetailsDto? doctorEdit;
+    private DoctorDetailsDto? doctorToDelete;
+    private string doctorMessage = "";
+    private bool doctorMessageIsError;
+    private string doctorModalMessage = "";
+    private CancellationTokenSource? doctorSearchDebounce;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadSummary();
+        await LoadDoctors();
+    }
+
+    private async Task LoadDoctors()
+    {
+        doctorsStatus = "loading";
+        StateHasChanged();
+        doctors = await new PrickDoctorOrderService(dataService).GetDoctorDetails(doctorSearch);
+        doctorsStatus = "loaded";
+        StateHasChanged();
+    }
+
+    // Ίδιο debounce με τον γρήγορο έλεγχο stock, για να μη χτυπάει σε κάθε πλήκτρο.
+    private async Task OnDoctorSearchInput(ChangeEventArgs e)
+    {
+        doctorSearch = e.Value?.ToString() ?? "";
+        doctorSearchDebounce?.Cancel();
+        doctorSearchDebounce = new CancellationTokenSource();
+        var token = doctorSearchDebounce.Token;
+        try
+        {
+            await Task.Delay(350, token);
+            await LoadDoctors();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private void OpenDoctorEdit(DoctorDetailsDto d)
+    {
+        // Αντίγραφο, ώστε η ακύρωση να μην αφήνει μισοαλλαγμένα στοιχεία στη λίστα.
+        doctorEdit = new DoctorDetailsDto
+        {
+            DoctorID = d.DoctorID,
+            FullName = d.FullName,
+            Specialty = d.Specialty,
+            Phone = d.Phone,
+            Email = d.Email,
+            Address = d.Address,
+            City = d.City,
+            PostalCode = d.PostalCode,
+            Notes = d.Notes,
+            IsActive = d.IsActive
+        };
+        doctorModalMessage = "";
+    }
+
+    private async Task DeleteDoctor()
+    {
+        if (doctorToDelete == null) return;
+        var id = doctorToDelete.DoctorID;
+        doctorToDelete = null;
+
+        var result = await new PrickDoctorOrderService(dataService).DeleteDoctor(id);
+        doctorMessage = result?.Message ?? "Κάτι πήγε στραβά. Δοκίμασε ξανά.";
+        doctorMessageIsError = result == null || !result.Success;
+        await LoadDoctors();
+    }
+
+    private async Task SaveDoctor()
+    {
+        if (doctorEdit == null) return;
+        doctorModalMessage = "";
+
+        var result = await new PrickDoctorOrderService(dataService).SaveDoctor(doctorEdit);
+        if (result == null || !result.Success)
+        {
+            doctorModalMessage = result?.Message ?? "Κάτι πήγε στραβά. Δοκίμασε ξανά.";
+            return;
+        }
+
+        doctorEdit = null;
+        doctorMessage = result.Message ?? "Αποθηκεύτηκε.";
+        doctorMessageIsError = false;
+        await LoadDoctors();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

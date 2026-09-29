@@ -322,6 +322,209 @@ namespace StallmedManager.Server.Controllers
             }
         }
 
+        // ---- Επιστροφή "Προς Αποστολή" -> "Ανοιχτή" ----
+        // Η κατάσταση προκύπτει από τις γραμμές, οπότε για να γυρίσει πίσω πρέπει να
+        // ανακληθούν οι δεσμεύσεις: τα φιαλίδια επιστρέφουν στο ελεύθερο stock και οι
+        // γραμμές ξαναγίνονται εκκρεμείς. Η παραγγελία ΔΕΝ διαγράφεται και κρατά τις
+        // ίδιες γραμμές/ποσότητες -- θέλει νέο allocate όταν ετοιμαστεί ξανά.
+        [HttpPost("return-to-open")]
+        public async Task<ActionResult<ShipResult>> ReturnToOpen([FromBody] ShipOrderRequest req)
+        {
+            var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+            if (order == null)
+                return Ok(new ShipResult { Success = false, Message = "Η παραγγελία δεν βρέθηκε." });
+
+            if (order.OrderStatus == "Fulfilled" || order.OrderStatus == "Cancelled")
+                return Ok(new ShipResult
+                {
+                    Success = false,
+                    Message = $"Η παραγγελία {order.OrderCode} έχει ήδη κλείσει -- δεν γυρίζει πίσω."
+                });
+
+            if (order.OrderStatus == "Open")
+                return Ok(new ShipResult { Success = false, Message = $"Η παραγγελία {order.OrderCode} είναι ήδη ανοιχτή." });
+
+            var lines = await _context.DoctorOrderLines.Where(l => l.OrderID == req.OrderID).ToListAsync();
+            var lineIds = lines.Select(l => l.OrderLineID).ToList();
+            var activeAllocs = await _context.OrderAllocations
+                .Where(a => lineIds.Contains(a.OrderLineID) && a.AllocationStatus == "Active")
+                .ToListAsync();
+            var freed = activeAllocs.Sum(a => a.QuantityAllocated);
+
+            // Η σύνδεση ανοίγει μόνο αν υπάρχει κάτι να ανακληθεί.
+            if (activeAllocs.Count > 0)
+            {
+                var connection = (MySqlConnector.MySqlConnection)_context.Database.GetDbConnection();
+                if (connection.State != System.Data.ConnectionState.Open)
+                    await connection.OpenAsync();
+
+                foreach (var alloc in activeAllocs)
+                {
+                    using var cmd = connection.CreateCommand();
+                    cmd.CommandText = "sp_ReverseAllocation";
+                    cmd.CommandType = System.Data.CommandType.StoredProcedure;
+                    cmd.Parameters.Add(new MySqlConnector.MySqlParameter("p_AllocationID", MySqlConnector.MySqlDbType.Int64) { Value = alloc.AllocationID });
+                    cmd.Parameters.Add(new MySqlConnector.MySqlParameter("p_UserID", MySqlConnector.MySqlDbType.Int32) { Value = (object?)req.UserID ?? DBNull.Value });
+                    cmd.Parameters.Add(new MySqlConnector.MySqlParameter("p_Reason", MySqlConnector.MySqlDbType.VarChar) { Value = "Επιστροφή παραγγελίας σε Ανοιχτή" });
+                    await cmd.ExecuteNonQueryAsync();
+                }
+            }
+
+            foreach (var line in lines)
+            {
+                await _context.Entry(line).ReloadAsync();
+                line.LineStatus = RecomputeLineStatus(line);
+                line.UpdatedAt = DateTime.Now;
+            }
+
+            // Δεν είναι πια ετοιμασμένη για παραλαβή
+            order.PreparedAt = null;
+            order.PreparedBy = null;
+            await _context.SaveChangesAsync();
+
+            await RecomputeOrderStatus(order);
+            await _context.SaveChangesAsync();
+
+            return Ok(new ShipResult
+            {
+                Success = true,
+                Message = $"Η παραγγελία {order.OrderCode} επέστρεψε σε Ανοιχτή. Επιστράφηκαν {freed} τεμάχια στο διαθέσιμο stock."
+            });
+        }
+
+        // ---- Διόρθωση στοιχείων παράδοσης της παραγγελίας ----
+        // Αφορά ΜΟΝΟ αυτή την παραγγελία, όχι την καρτέλα του γιατρού.
+        [HttpPost("update-shipping")]
+        public async Task<ActionResult<ShipResult>> UpdateShipping([FromBody] UpdateShippingRequest req)
+        {
+            var order = await _context.DoctorOrders.FindAsync(req.OrderID);
+            if (order == null)
+                return Ok(new ShipResult { Success = false, Message = "Η παραγγελία δεν βρέθηκε." });
+
+            if (order.OrderStatus == "Cancelled")
+                return Ok(new ShipResult { Success = false, Message = "Η παραγγελία είναι ακυρωμένη." });
+
+            order.RecipientName = req.RecipientName?.Trim();
+            order.ShippingAddress = req.ShippingAddress?.Trim();
+            order.ShippingCity = req.ShippingCity?.Trim();
+            order.ShippingPostalCode = req.ShippingPostalCode?.Trim();
+            order.ShippingPhone = req.ShippingPhone?.Trim();
+            order.UpdatedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+
+            return Ok(new ShipResult { Success = true, Message = $"Τα στοιχεία παράδοσης της {order.OrderCode} ενημερώθηκαν." });
+        }
+
+        // ---- Καρτέλα γιατρού: λίστα με πλήρη στοιχεία και αποθήκευση αλλαγών ----
+        [HttpGet("doctors/details")]
+        public async Task<ActionResult<List<DoctorDetailsDto>>> GetDoctorDetails([FromQuery] string? search)
+        {
+            var query = _context.Doctors.AsQueryable();
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(d => d.FullName.Contains(search) ||
+                                         (d.City != null && d.City.Contains(search)) ||
+                                         (d.Phone != null && d.Phone.Contains(search)));
+
+            var doctors = await query.OrderBy(d => d.FullName).Take(200).ToListAsync();
+            var ids = doctors.Select(d => d.DoctorID).ToList();
+            var counts = await _context.DoctorOrders
+                .Where(o => o.DoctorID != null && ids.Contains(o.DoctorID.Value))
+                .GroupBy(o => o.DoctorID!.Value)
+                .Select(g => new { DoctorID = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.DoctorID, x => x.Count);
+
+            return Ok(doctors.Select(d => new DoctorDetailsDto
+            {
+                DoctorID = d.DoctorID,
+                FullName = d.FullName,
+                Specialty = d.Specialty,
+                Phone = d.Phone,
+                Email = d.Email,
+                Address = d.Address,
+                City = d.City,
+                PostalCode = d.PostalCode,
+                Notes = d.Notes,
+                IsActive = d.IsActive,
+                OrdersCount = counts.TryGetValue(d.DoctorID, out var c) ? c : 0
+            }).ToList());
+        }
+
+        [HttpPost("doctors/save")]
+        public async Task<ActionResult<SaveDoctorResult>> SaveDoctor([FromBody] DoctorDetailsDto req)
+        {
+            var fullName = (req.FullName ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(fullName))
+                return Ok(new SaveDoctorResult { Success = false, Message = "Το όνομα είναι υποχρεωτικό." });
+
+            var doctor = await _context.Doctors.FindAsync(req.DoctorID);
+            if (doctor == null)
+                return Ok(new SaveDoctorResult { Success = false, Message = "Ο γιατρός δεν βρέθηκε." });
+
+            // Το ίδιο όνομα επιτρέπεται (υπάρχουν πραγματικά συνώνυμοι γιατροί).
+            // Προσοχή: η κατάταξη γιατρών και η σύνδεση με το παλιό σύστημα εμβολίων
+            // ομαδοποιούν ανά όνομα, οπότε εκεί οι συνώνυμοι εμφανίζονται μαζί.
+            doctor.FullName = fullName;
+            doctor.Specialty = req.Specialty?.Trim();
+            doctor.Phone = req.Phone?.Trim();
+            doctor.Email = req.Email?.Trim();
+            doctor.Address = req.Address?.Trim();
+            doctor.City = req.City?.Trim();
+            doctor.PostalCode = req.PostalCode?.Trim();
+            doctor.Notes = req.Notes?.Trim();
+            doctor.IsActive = req.IsActive;
+            doctor.UpdatedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+
+            return Ok(new SaveDoctorResult { Success = true, DoctorID = doctor.DoctorID, Message = "Τα στοιχεία του γιατρού ενημερώθηκαν." });
+        }
+
+        // ---- Διαγραφή γιατρού ----
+        // Μόνο για γιατρούς χωρίς ιστορικό (λάθος καταχωρήσεις, διπλοεγγραφές).
+        // Όποιος έχει παραγγελίες ή προσφορές δεν σβήνεται: ο πίνακας Quotes έχει
+        // foreign key προς τους γιατρούς, και το ιστορικό θα έμενε ορφανό.
+        [HttpPost("doctors/delete")]
+        public async Task<ActionResult<SaveDoctorResult>> DeleteDoctor([FromBody] DeleteDoctorRequest req)
+        {
+            var doctor = await _context.Doctors.FindAsync(req.DoctorID);
+            if (doctor == null)
+                return Ok(new SaveDoctorResult { Success = false, Message = "Ο γιατρός δεν βρέθηκε." });
+
+            var orders = await _context.DoctorOrders.CountAsync(o => o.DoctorID == req.DoctorID);
+            var quotes = await _context.Quotes.CountAsync(q => q.CustomerDoctorID == req.DoctorID);
+
+            if (orders > 0 || quotes > 0)
+            {
+                var what = orders > 0 && quotes > 0 ? $"{orders} παραγγελίες και {quotes} προσφορές"
+                         : orders > 0 ? $"{orders} παραγγελίες"
+                         : $"{quotes} προσφορές";
+                return Ok(new SaveDoctorResult
+                {
+                    Success = false,
+                    Message = $"Ο γιατρός '{doctor.FullName}' έχει {what} και δεν διαγράφεται. " +
+                              "Κάνε τον ανενεργό από το ✏️ για να μη βγαίνει στις λίστες."
+                });
+            }
+
+            var name = doctor.FullName;
+            _context.Doctors.Remove(doctor);
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                // Δίχτυ ασφαλείας για αναφορές που δεν ξέρουμε (π.χ. μελλοντικοί πίνακες)
+                _logger.LogError(ex, "Αποτυχία διαγραφής γιατρού {DoctorID}", req.DoctorID);
+                return Ok(new SaveDoctorResult
+                {
+                    Success = false,
+                    Message = $"Ο γιατρός '{name}' χρησιμοποιείται κάπου αλλού και δεν διαγράφεται. Κάνε τον ανενεργό."
+                });
+            }
+
+            return Ok(new SaveDoctorResult { Success = true, DoctorID = req.DoctorID, Message = $"Ο γιατρός '{name}' διαγράφηκε." });
+        }
+
         // ---- "Έτοιμο": ετοιμάστηκε και μπήκε σε κουτί, περιμένει παραλαβή ----
         // Ενδιάμεσο βήμα ανάμεσα στη δέσμευση και την αποστολή: η αποθήκη το ετοιμάζει
         // και ο πωλητής το παραλαμβάνει αργότερα. ΔΕΝ αλλάζει το OrderStatus ούτε το stock.

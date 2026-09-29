@@ -83,6 +83,8 @@
     .proposal-row-danger { background-color: #f8d7da !important; }
     .qty-stepper { display: flex; align-items: center; gap: 4px; }
     .qty-value { min-width: 30px; text-align: center; font-weight: 700; }
+    /* Η ποσότητα γράφεται και με το πληκτρολόγιο, όχι μόνο με τα +/- */
+    input.qty-value { width: 60px; }
 </style>
 
 <div class="sbt-page-header">
@@ -280,14 +282,14 @@ else if (status == "loaded")
                     {
                         @foreach (var grp in smartProposal.GroupBy(x => new { x.ProductTypeCode, x.ProductDescription }).OrderBy(g => g.Key.ProductTypeCode))
                         {
-                            var proposalOpen = IsProposalTypeOpen(grp.Key.ProductTypeCode);
+                            var typeOpen = IsProposalTypeOpen(grp.Key.ProductTypeCode);
                             var toOrderBM = grp.Where(x => x.Company == "BM").Sum(x => x.OrderQuantity);
                             var toOrderSM = grp.Where(x => x.Company == "SM").Sum(x => x.OrderQuantity);
                             <div class="card mb-3">
                                 <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2"
                                      style="cursor:pointer;" @onclick="() => ToggleProposalType(grp.Key.ProductTypeCode)">
                                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        <span class="expand-arrow @(proposalOpen ? "open" : "")">▶</span>
+                                        <span class="expand-arrow @(typeOpen ? "open" : "")">▶</span>
                                         <strong>@grp.Key.ProductTypeCode — @grp.Key.ProductDescription</strong>
                                         <span class="badge bg-success" title="@Hint("Σύνολο τεμαχίων που θα παραγγελθούν για αυτό το είδος")">
                                             🛒 Θα παραγγελθούν: @(toOrderBM + toOrderSM) τεμ.
@@ -319,7 +321,7 @@ else if (status == "loaded")
                                         }
                                     </div>
                                 </div>
-                                @if (proposalOpen)
+                                @if (typeOpen)
                                 {
                                 <div class="card-body p-0">
                                     <div class="table-responsive list-window">
@@ -371,7 +373,11 @@ else if (status == "loaded")
                                                             <div class="qty-stepper">
                                                                 <button class="btn btn-sm btn-outline-secondary py-0 px-1"
                                                                         @onclick="() => ChangeSmartProposalQty(item, -1)" title="@Hint("Μειώνει την προτεινόμενη ποσότητα παραγγελίας κατά 1")">−</button>
-                                                                <span class="qty-value">@item.OrderQuantity</span>
+                                                                <input type="number" min="0"
+                                                                       class="form-control form-control-sm text-center p-0 qty-value"
+                                                                       value="@item.OrderQuantity"
+                                                                       @onchange="e => SetSmartProposalQty(item, e.Value?.ToString())"
+                                                                       title="@Hint("Γράψε ποσότητα ή χρησιμοποίησε τα + και −")" />
                                                                 <button class="btn btn-sm btn-outline-secondary py-0 px-1"
                                                                         @onclick="() => ChangeSmartProposalQty(item, 1)" title="@Hint("Αυξάνει την προτεινόμενη ποσότητα παραγγελίας κατά 1")">+</button>
                                                             </div>
@@ -832,6 +838,12 @@ else if (status == "loaded")
     {
         var updated = item.OrderQuantity + delta;
         if (updated >= 0) item.OrderQuantity = updated;
+    }
+
+    // Πληκτρολογημένη ποσότητα: ό,τι δεν είναι έγκυρος αριθμός μετράει ως 0.
+    private void SetSmartProposalQty(SmartStockProposalDto item, string? value)
+    {
+        item.OrderQuantity = int.TryParse(value, out var parsed) ? Math.Max(0, parsed) : 0;
     }
 
     private async Task CreateSmartStockOrder(string company, string productTypeCode)
