@@ -252,10 +252,10 @@
                     }
                 </div>
                 <canvas id="barChartHome"></canvas>
-                @if (yearly.Series.Any())
+                @if (VisibleSeries.Any())
                 {
                     <div class="d-flex gap-3 flex-wrap mt-2 small text-muted">
-                        @foreach (var srs in yearly.Series)
+                        @foreach (var srs in VisibleSeries)
                         {
                             <span><strong>@srs.Year</strong>: @srs.Total παραγγελίες</span>
                         }
@@ -341,11 +341,17 @@
 
     private async Task LoadYearly()
     {
-        yearly = await new OrdersService(dataService).GetYearlyMonthlyStats(null, serverFilter, selectedYears);
+        // Ο server επιστρέφει ΟΛΕΣ τις χρονιές με μία κλήση (λίγες δεκάδες αριθμοί),
+        // ώστε η αλλαγή επιλογής να είναι ακαριαία, χωρίς νέα ερώτηση στη βάση.
+        yearly = await new OrdersService(dataService).GetYearlyMonthlyStats(null, serverFilter, Array.Empty<int>());
 
-        // Την πρώτη φορά κρατάμε ό,τι διάλεξε ο server (δύο πιο πρόσφατες χρονιές)
-        if (!selectedYears.Any())
-            selectedYears = yearly.Series.Select(x => x.Year).ToList();
+        // Προεπιλογή: οι δύο πιο πρόσφατες χρονιές
+        var valid = selectedYears.Where(y => yearly.AvailableYears.Contains(y)).ToList();
+        selectedYears = valid.Any() ? valid : yearly.AvailableYears.Take(2).OrderBy(y => y).ToList();
+
+        // Χωρίς αυτό τα κουμπιά των ετών δεν εμφανίζονται: η LoadYearly καλείται
+        // από το OnAfterRender, όπου το Blazor δεν ξανασχεδιάζει από μόνο του.
+        StateHasChanged();
 
         await DrawYearlyChart();
     }
@@ -359,14 +365,19 @@
         if (!selectedYears.Any())
             selectedYears.Add(year);
 
-        await LoadYearly();
+        // Τα δεδομένα υπάρχουν ήδη -- μόνο ξανασχεδιάζουμε.
+        await DrawYearlyChart();
     }
+
+    private IEnumerable<YearSeries> VisibleSeries =>
+        yearly.Series.Where(x => selectedYears.Contains(x.Year)).OrderBy(x => x.Year);
 
     private async Task DrawYearlyChart()
     {
-        if (!yearly.Series.Any()) return;
-        var years = yearly.Series.Select(x => x.Year).ToArray();
-        var data = yearly.Series.Select(x => x.Counts.ToArray()).ToArray();
+        var visible = VisibleSeries.ToList();
+        if (!visible.Any()) return;
+        var years = visible.Select(x => x.Year).ToArray();
+        var data = visible.Select(x => x.Counts.ToArray()).ToArray();
         await JS.InvokeVoidAsync("renderYearlyBarChart", "barChartHome", years, data);
     }
 

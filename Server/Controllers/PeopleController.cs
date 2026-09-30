@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using StallmedManager.Server.Models;
 using StallmedManager.Server.Services;
 using StallmedManager.Shared.Models;
@@ -477,13 +478,18 @@ namespace StallmedManager.Server.Controllers
                 baseQuery = baseQuery.Where(x => x.CompanyID == companyId);
             }
 
-            var rows = baseQuery
-                .Select(x => new { x.Ordered!.Value.Year, x.Ordered.Value.Month })
+            // Η ομαδοποίηση γίνεται ΣΤΗ ΒΑΣΗ: επιστρέφονται λίγες δεκάδες γραμμές
+            // (χρονιά x μήνας) αντί για όλες τις παραγγελίες όλων των ετών.
+            var grouped = baseQuery
+                .AsNoTracking()
+                .GroupBy(x => new { x.Ordered!.Value.Year, x.Ordered.Value.Month })
+                .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
                 .ToList();
 
-            var availableYears = rows.Select(r => r.Year).Distinct().OrderByDescending(y => y).ToList();
+            var availableYears = grouped.Select(g => g.Year).Distinct().OrderByDescending(y => y).ToList();
 
-            // Χωρίς επιλογή, δείχνουμε τις δύο πιο πρόσφατες χρονιές που έχουν δεδομένα.
+            // Προαιρετικό φίλτρο ετών. Χωρίς αυτό επιστρέφονται όλες οι χρονιές --
+            // το ωφέλιμο φορτίο είναι μικρό και ο χρήστης αλλάζει επιλογή χωρίς νέα κλήση.
             var requested = (years ?? "")
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(y => int.TryParse(y, out var v) ? v : 0)
@@ -491,16 +497,15 @@ namespace StallmedManager.Server.Controllers
                 .Distinct()
                 .ToList();
 
-            if (requested.Count == 0)
-                requested = availableYears.Take(2).ToList();
+            var wanted = requested.Count > 0 ? requested : availableYears;
 
-            var series = requested
+            var series = wanted
                 .OrderBy(y => y)
                 .Select(year =>
                 {
                     var counts = new int[12];
-                    foreach (var r in rows.Where(r => r.Year == year))
-                        counts[r.Month - 1]++;
+                    foreach (var g in grouped.Where(g => g.Year == year))
+                        counts[g.Month - 1] = g.Count;
 
                     return new YearSeries
                     {
@@ -542,10 +547,28 @@ namespace StallmedManager.Server.Controllers
             var orders = baseQuery
                 .Where(x => x.Ordered >= fromDate && x.Ordered <= toDate)
                 .OrderByDescending(x => x.Ordered)
+                .AsNoTracking()
+                .Select(x => new StatRow
+                {
+                    Patient = x.Patient,
+                    CompanyID = x.CompanyID,
+                    TreatmentDescription = x.TreatmentDescription,
+                    QNT = x.QNT,
+                    Ordered = x.Ordered
+                })
                 .ToList();
 
             var prevOrders = baseQuery
                 .Where(x => x.Ordered >= prevFromDate && x.Ordered <= prevToDate)
+                .AsNoTracking()
+                .Select(x => new StatRow
+                {
+                    Patient = x.Patient,
+                    CompanyID = x.CompanyID,
+                    TreatmentDescription = x.TreatmentDescription,
+                    QNT = x.QNT,
+                    Ordered = x.Ordered
+                })
                 .ToList();
 
             var prevQNT = prevOrders.Sum(x => x.QNT ?? 0);
@@ -591,6 +614,7 @@ namespace StallmedManager.Server.Controllers
             }
 
             var existingPatients = existingPatientsQuery
+                .AsNoTracking()
                 .Select(x => x.Patient!)
                 .Distinct()
                 .ToList();
@@ -622,7 +646,7 @@ namespace StallmedManager.Server.Controllers
                 var companyId = serverFilter == "SM" ? "1" : "2";
                 existingBeforePrevQuery = existingBeforePrevQuery.Where(x => x.CompanyID == companyId);
             }
-            var existingBeforePrev = existingBeforePrevQuery.Select(x => x.Patient!).Distinct().ToList();
+            var existingBeforePrev = existingBeforePrevQuery.AsNoTracking().Select(x => x.Patient!).Distinct().ToList();
             var prevNewPatients = prevPatients.Except(existingBeforePrev).Count();
 
             // Ανάλυση παραγγελιών ανά εταιρεία + τάση πλήθους παραγγελιών
@@ -721,6 +745,16 @@ namespace StallmedManager.Server.Controllers
             };
 
             return Ok(stats);
+        }
+
+        // Μόνο τα πεδία που χρησιμοποιούν τα στατιστικά της αρχικής.
+        private class StatRow
+        {
+            public string? Patient { get; set; }
+            public string? CompanyID { get; set; }
+            public string? TreatmentDescription { get; set; }
+            public int? QNT { get; set; }
+            public DateTime? Ordered { get; set; }
         }
 
         private static string StatusHexColor(string status) => status switch
