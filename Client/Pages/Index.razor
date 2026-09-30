@@ -238,8 +238,29 @@
     <div class="row g-3 mb-4">
         <div class="col-12 col-md-6">
             <div class="chart-box">
-                <h6 class="mb-3">Παραγγελίες ανά Μήνα</h6>
+                <h6 class="mb-2">Παραγγελίες ανά Μήνα — σύγκριση ετών</h6>
+                <div class="d-flex gap-2 flex-wrap mb-2">
+                    @foreach (var y in yearly.AvailableYears)
+                    {
+                        <button class="btn btn-sm @(selectedYears.Contains(y) ? "btn-primary" : "btn-outline-secondary")"
+                                @onclick="() => ToggleYear(y)"
+                                title="@Hint("Πρόσθεσε ή αφαίρεσε τη χρονιά από το γράφημα")">@y</button>
+                    }
+                    @if (!yearly.AvailableYears.Any())
+                    {
+                        <span class="text-muted small">Φόρτωση ετών...</span>
+                    }
+                </div>
                 <canvas id="barChartHome"></canvas>
+                @if (yearly.Series.Any())
+                {
+                    <div class="d-flex gap-3 flex-wrap mt-2 small text-muted">
+                        @foreach (var srs in yearly.Series)
+                        {
+                            <span><strong>@srs.Year</strong>: @srs.Total παραγγελίες</span>
+                        }
+                    </div>
+                }
             </div>
         </div>
         <div class="col-12 col-md-6">
@@ -314,6 +335,41 @@
     private DateTime toDate = DateTime.Today;
     private CompanyStats? stats = null;
 
+    // --- Γράφημα σύγκρισης ετών: πάντα 12 μήνες, μία σειρά ανά χρονιά ---
+    private YearlyMonthlyStats yearly = new();
+    private List<int> selectedYears = new();
+
+    private async Task LoadYearly()
+    {
+        yearly = await new OrdersService(dataService).GetYearlyMonthlyStats(null, serverFilter, selectedYears);
+
+        // Την πρώτη φορά κρατάμε ό,τι διάλεξε ο server (δύο πιο πρόσφατες χρονιές)
+        if (!selectedYears.Any())
+            selectedYears = yearly.Series.Select(x => x.Year).ToList();
+
+        await DrawYearlyChart();
+    }
+
+    private async Task ToggleYear(int year)
+    {
+        if (!selectedYears.Remove(year))
+            selectedYears.Add(year);
+
+        // Τουλάχιστον μία χρονιά πρέπει να μείνει επιλεγμένη
+        if (!selectedYears.Any())
+            selectedYears.Add(year);
+
+        await LoadYearly();
+    }
+
+    private async Task DrawYearlyChart()
+    {
+        if (!yearly.Series.Any()) return;
+        var years = yearly.Series.Select(x => x.Year).ToArray();
+        var data = yearly.Series.Select(x => x.Counts.ToArray()).ToArray();
+        await JS.InvokeVoidAsync("renderYearlyBarChart", "barChartHome", years, data);
+    }
+
     protected override async Task OnInitializedAsync()
     {
         // Δεν κάνουμε LoadStats εδώ
@@ -327,17 +383,14 @@
             await JS.InvokeVoidAsync("initDatePicker", "fromDatePickerHome", dotNetRef, fromDate.ToString("dd/MM/yyyy"));
             await JS.InvokeVoidAsync("initDatePicker", "toDatePickerHome", dotNetRef, toDate.ToString("dd/MM/yyyy"));
             await LoadStats();
+            await LoadYearly();
             return;
         }
 
         if (status == "loaded" && stats != null)
         {
             await Task.Delay(50);
-            var barLabels = stats.PerMonth.Select(x => x.Month).ToArray();
-            var barData = stats.PerMonth.Select(x => x.Count).ToArray();
-            var prevLabels = stats.PerMonthPrev.Select(x => x.Month).ToArray();
-            var prevData = stats.PerMonthPrev.Select(x => x.Count).ToArray();
-            await JS.InvokeVoidAsync("renderBarChart", "barChartHome", barLabels, barData, prevLabels, prevData);
+            await DrawYearlyChart();
         }
     }
 
@@ -358,6 +411,7 @@
     {
         serverFilter = filter;
         await LoadStats();
+        await LoadYearly();
     }
 
     private async Task LoadStats()

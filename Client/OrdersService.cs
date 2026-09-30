@@ -59,21 +59,33 @@ namespace StallmedManager.Client
             return await dataService.Get<CompanyStats>(url);
         }
 
-        public async Task<List<TreatmentMixGroup>> GetTreatmentMixStats(DateTime fromDate, DateTime toDate, string company)
+        public async Task<YearlyMonthlyStats> GetYearlyMonthlyStats(string? company, string? serverFilter, IEnumerable<int> years)
+        {
+            var url = $"/people/company-stats-yearly?company={Uri.EscapeDataString(company ?? "")}" +
+                      $"&serverFilter={Uri.EscapeDataString(serverFilter ?? "")}" +
+                      $"&years={string.Join(",", years)}";
+            return await dataService.Get<YearlyMonthlyStats>(url) ?? new YearlyMonthlyStats();
+        }
+
+        public async Task<List<TreatmentMixGroup>> GetTreatmentMixStats(DateTime fromDate, DateTime toDate, string company,
+                                                                       string? doctor = null)
         {
             return await dataService.Get<List<TreatmentMixGroup>>(
-                TreatmentMixUrl("treatment-mix-stats", fromDate, toDate, company)) ?? new();
+                TreatmentMixUrl("treatment-mix-stats", fromDate, toDate, company, doctor)) ?? new();
         }
 
-        public async Task<byte[]> DownloadTreatmentMixStatsExcel(DateTime fromDate, DateTime toDate, string company)
+        public async Task<byte[]> DownloadTreatmentMixStatsExcel(DateTime fromDate, DateTime toDate, string company,
+                                                                 string? doctor = null)
         {
             return await dataService.GetBytes(
-                TreatmentMixUrl("treatment-mix-stats-excel", fromDate, toDate, company));
+                TreatmentMixUrl("treatment-mix-stats-excel", fromDate, toDate, company, doctor));
         }
 
-        private static string TreatmentMixUrl(string action, DateTime fromDate, DateTime toDate, string company) =>
+        private static string TreatmentMixUrl(string action, DateTime fromDate, DateTime toDate, string company,
+                                              string? doctor) =>
             $"/people/{action}?fromDate={fromDate:yyyy-MM-dd}" +
             $"&toDate={toDate:yyyy-MM-dd}" +
-            $"&company={Uri.EscapeDataString(company ?? "")}";
+            $"&company={Uri.EscapeDataString(company ?? "")}" +
+            (string.IsNullOrWhiteSpace(doctor) ? "" : $"&doctor={Uri.EscapeDataString(doctor)}");
     }
 }

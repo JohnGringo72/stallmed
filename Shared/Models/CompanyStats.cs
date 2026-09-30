@@ -30,4 +30,19 @@ namespace StallmedManager.Shared.Models
         public List<MonthlyCount> PerMonthPrev { get; set; } = new();
         public List<ProductCount> PerProduct { get; set; } = new();
     }
+
+    // ---- Σύγκριση ετών: πάντα 12 μήνες στον άξονα, μία σειρά ανά χρονιά ----
+    public class YearlyMonthlyStats
+    {
+        public List<int> AvailableYears { get; set; } = new();
+        public List<YearSeries> Series { get; set; } = new();
+    }
+
+    public class YearSeries
+    {
+        public int Year { get; set; }
+        // Πάντα 12 τιμές: Ιανουάριος -> Δεκέμβριος
+        public List<int> Counts { get; set; } = new();
+        public int Total { get; set; }
+    }
 }

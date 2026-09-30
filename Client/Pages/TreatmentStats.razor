@@ -35,6 +35,19 @@
                 </div>
             </div>
 
+            <div class="filter-group" style="min-width:240px;">
+                <label class="flabel">Γιατρός</label>
+                <input class="form-control fselect" list="mixDoctorList" placeholder="Όλοι οι γιατροί"
+                       value="@selectedDoctor" @onchange="OnDoctorChanged"
+                       title="@Hint("Γράψε ή διάλεξε γιατρό. Κενό = όλοι")" />
+                <datalist id="mixDoctorList">
+                    @foreach (var d in doctorOptions)
+                    {
+                        <option value="@d" />
+                    }
+                </datalist>
+            </div>
+
             <div class="filter-group fg-end ms-auto">
                 <label class="flabel">&nbsp;</label>
                 <button class="btn btn-success sbtn" @onclick="ExportExcel"
@@ -80,15 +93,31 @@
             <span><strong>@groups.Count</strong> είδη</span>
             <span class="ms-3"><strong>@groups.Sum(g => g.Mixes.Count)</strong> μείγματα</span>
             <span class="ms-3">Συνολική ποσότητα: <strong>@groups.Sum(g => g.TotalQNT)</strong></span>
+            @if (!string.IsNullOrWhiteSpace(selectedDoctor))
+            {
+                <span class="ms-3">
+                    Γιατρός: <strong>@selectedDoctor</strong>
+                    <button class="btn btn-sm btn-link p-0 ms-1" @onclick="ClearDoctor" title="@Hint("Καθαρισμός φίλτρου γιατρού")">✕</button>
+                </span>
+            }
+            <button class="btn btn-sm btn-outline-secondary ms-3" @onclick="ExpandAll"
+                    title="@Hint("Ανοίγει όλα τα είδη")">Άνοιγμα όλων</button>
+            <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="CollapseAll"
+                    title="@Hint("Κλείνει όλα τα είδη")">Κλείσιμο όλων</button>
         </div>
 
         @foreach (var g in groups)
         {
+            var isOpen = IsTreatmentOpen(g.Treatment);
             <div class="mix-card">
-                <div class="mix-card-header">
+                <div class="mix-card-header mix-card-header-click" @onclick="() => ToggleTreatment(g.Treatment)">
+                    <span class="mix-arrow @(isOpen ? "open" : "")">▶</span>
                     <span class="mix-treatment">@g.Treatment</span>
+                    <span class="mix-count">@g.Mixes.Count μείγματα</span>
                     <span class="mix-total">@g.TotalQNT</span>
                 </div>
+                @if (isOpen)
+                {
                 <table class="table table-sm mix-table mb-0">
                     <thead>
                         <tr>
@@ -114,6 +143,7 @@
                         }
                     </tbody>
                 </table>
+                }
             </div>
         }
     }
@@ -125,6 +155,29 @@
     .page-header { margin-bottom: 1.5rem; }
     .page-header h2 { font-size: 1.4rem; font-weight: 700; color: #1a2e4a; margin-bottom: 0.2rem; }
     .page-header p  { color: #6c757d; font-size: 0.85rem; margin: 0; }
+
+    /* Η κεφαλίδα είναι σκούρα -- τα χρώματα ακολουθούν αυτήν, όχι το λευκό φόντο */
+    .mix-card-header-click { cursor: pointer; user-select: none; }
+    .mix-card-header-click:hover { background: #24405f; }
+
+    .mix-arrow {
+        display: inline-block;
+        width: 14px;
+        text-align: center;
+        transition: transform 0.15s;
+        color: rgba(255,255,255,0.8);
+    }
+
+    .mix-arrow.open { transform: rotate(90deg); }
+
+    .mix-count {
+        font-size: 0.78rem;
+        color: rgba(255,255,255,0.85);
+        background: rgba(255,255,255,0.15);
+        border-radius: 12px;
+        padding: 2px 10px;
+        white-space: nowrap;
+    }
 
     .filter-card {
         background: #fff; border: 1px solid #e2e8f0;
@@ -167,7 +220,7 @@
         display: flex; justify-content: space-between; align-items: center; gap: 1rem;
         background: #1a2e4a; color: #fff; padding: 0.6rem 1rem;
     }
-    .mix-treatment { font-weight: 600; font-size: 0.9rem; word-break: break-word; }
+    .mix-treatment { font-weight: 600; font-size: 0.9rem; word-break: break-word; flex: 1; }
     .mix-total {
         background: #fff; color: #1a2e4a; font-weight: 700; font-size: 0.85rem;
         border-radius: 20px; padding: 0.15em 0.75em; white-space: nowrap;
@@ -195,12 +248,46 @@
     private DateTime toDate = DateTime.Today;
     private string selectedCompany = "";
     private List<TreatmentMixGroup> groups = new();
+
+    // Φίλτρο γιατρού: κενό σημαίνει όλοι
+    private string selectedDoctor = "";
+    private List<string> doctorOptions = new();
+
+    private async Task OnDoctorChanged(ChangeEventArgs e)
+    {
+        selectedDoctor = e.Value?.ToString()?.Trim() ?? "";
+        await Load();
+    }
+
+    private async Task ClearDoctor()
+    {
+        selectedDoctor = "";
+        await Load();
+    }
+
+    // Οι λίστες ξεκινούν κλειστές και ανοίγουν με κλικ, όπως στις παραγγελίες.
+    private HashSet<string> expandedTreatments = new();
+
+    private bool IsTreatmentOpen(string treatment) => expandedTreatments.Contains(treatment);
+
+    private void ToggleTreatment(string treatment)
+    {
+        if (!expandedTreatments.Add(treatment))
+            expandedTreatments.Remove(treatment);
+    }
+
+    private void ExpandAll() => expandedTreatments = groups.Select(g => g.Treatment).ToHashSet();
+
+    private void CollapseAll() => expandedTreatments.Clear();
     private bool isLoading = true;
     private bool isExporting = false;
     private string errorMessage = "";
 
     protected override async Task OnInitializedAsync()
     {
+        // Η λίστα γιατρών έρχεται από τις παραγγελίες του παλιού συστήματος.
+        var options = await new OrdersService(dataService).GetFilterOptions();
+        doctorOptions = options.Doctors ?? new();
         await Load();
     }
 
@@ -243,7 +330,7 @@
         isLoading = true;
         errorMessage = "";
         StateHasChanged();
-        groups = await new OrdersService(dataService).GetTreatmentMixStats(fromDate, toDate, selectedCompany);
+        groups = await new OrdersService(dataService).GetTreatmentMixStats(fromDate, toDate, selectedCompany, selectedDoctor);
         isLoading = false;
         StateHasChanged();
     }
@@ -252,7 +339,7 @@
     {
         isExporting = true;
         errorMessage = "";
-        var bytes = await new OrdersService(dataService).DownloadTreatmentMixStatsExcel(fromDate, toDate, selectedCompany);
+        var bytes = await new OrdersService(dataService).DownloadTreatmentMixStatsExcel(fromDate, toDate, selectedCompany, selectedDoctor);
         isExporting = false;
 
         if (bytes == null)

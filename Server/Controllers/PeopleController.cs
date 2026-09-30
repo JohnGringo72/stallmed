@@ -302,7 +302,8 @@ namespace StallmedManager.Server.Controllers
             return parts.Count == 0 ? TreatmentMixRow.NoMixLabel : string.Join(",\n", parts);
         }
 
-        private List<TreatmentMixGroup> BuildTreatmentMixStats(DateTime fromDate, DateTime toDate, string? company)
+        private List<TreatmentMixGroup> BuildTreatmentMixStats(DateTime fromDate, DateTime toDate, string? company,
+            string? doctor = null)
         {
             // Το toDate έρχεται ως μεσάνυχτα -- μετράμε ολόκληρη την τελευταία μέρα
             var toExclusive = toDate.Date.AddDays(1);
@@ -317,6 +318,9 @@ namespace StallmedManager.Server.Controllers
 
             if (!string.IsNullOrWhiteSpace(company))
                 query = query.Where(x => x.CompanyID == company);
+
+            if (!string.IsNullOrWhiteSpace(doctor))
+                query = query.Where(x => x.Doctor == doctor);
 
             var raw = query
                 .Select(x => new { x.TreatmentDescription, x.Allergen, x.QNT })
@@ -349,9 +353,10 @@ namespace StallmedManager.Server.Controllers
         public ActionResult<List<TreatmentMixGroup>> GetTreatmentMixStats(
             [FromQuery] DateTime fromDate,
             [FromQuery] DateTime toDate,
-            [FromQuery] string? company)
+            [FromQuery] string? company,
+            [FromQuery] string? doctor)
         {
-            return Ok(BuildTreatmentMixStats(fromDate, toDate, company));
+            return Ok(BuildTreatmentMixStats(fromDate, toDate, company, doctor));
         }
 
         [HttpGet("treatment-mix-stats-excel")]
@@ -359,16 +364,18 @@ namespace StallmedManager.Server.Controllers
         public IActionResult ExportTreatmentMixStats(
             [FromQuery] DateTime fromDate,
             [FromQuery] DateTime toDate,
-            [FromQuery] string? company)
+            [FromQuery] string? company,
+            [FromQuery] string? doctor)
         {
-            var groups = BuildTreatmentMixStats(fromDate, toDate, company);
+            var groups = BuildTreatmentMixStats(fromDate, toDate, company, doctor);
             var companyLabel = company == "1" ? "SM" : company == "2" ? "BM" : "SM + BM";
+            var doctorLabel = string.IsNullOrWhiteSpace(doctor) ? "" : $"  --  {doctor}";
 
             using var workbook = new XLWorkbook();
             var ws = workbook.Worksheets.Add("Μείγματα ανά είδος");
 
             // ── ΤΙΤΛΟΣ ──
-            ws.Cell(1, 1).Value = $"Μείγματα ανά είδος ({companyLabel})  {fromDate:dd/MM/yyyy} - {toDate:dd/MM/yyyy}";
+            ws.Cell(1, 1).Value = $"Μείγματα ανά είδος ({companyLabel})  {fromDate:dd/MM/yyyy} - {toDate:dd/MM/yyyy}{doctorLabel}";
             ws.Range(1, 1, 1, 3).Merge();
             ws.Cell(1, 1).Style.Font.Bold = true;
             ws.Cell(1, 1).Style.Font.FontSize = 13;
@@ -444,6 +451,67 @@ namespace StallmedManager.Server.Controllers
             return File(stream.ToArray(),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 $"Μείγματα_ανά_είδος_{fromDate:dd-MM-yyyy}_{toDate:dd-MM-yyyy}.xlsx");
+        }
+
+        // ---- Σύγκριση ετών: πάντα 12 μήνες, μία σειρά ανά χρονιά ----
+        // Ανεξάρτητο από τα φίλτρα ημερομηνίας της αρχικής -- εδώ διαλέγεις χρονιές.
+        [HttpGet("company-stats-yearly")]
+        [Authorize(Policy = "NotWarehouse")]
+        public ActionResult<YearlyMonthlyStats> GetYearlyMonthlyStats(
+            [FromQuery] string? company,
+            [FromQuery] string? serverFilter,
+            [FromQuery] string? years)
+        {
+            var baseQuery = context.WebOrders
+                .Where(x => x.Ordered != null &&
+                            x.TreatmentDescription != null &&
+                            (x.TreatmentDescription.StartsWith("BELTA") ||
+                             x.TreatmentDescription.StartsWith("STALORAL")));
+
+            if (!string.IsNullOrWhiteSpace(company))
+                baseQuery = baseQuery.Where(x => x.CompanyID == company);
+
+            if (!string.IsNullOrWhiteSpace(serverFilter))
+            {
+                var companyId = serverFilter == "SM" ? "1" : "2";
+                baseQuery = baseQuery.Where(x => x.CompanyID == companyId);
+            }
+
+            var rows = baseQuery
+                .Select(x => new { x.Ordered!.Value.Year, x.Ordered.Value.Month })
+                .ToList();
+
+            var availableYears = rows.Select(r => r.Year).Distinct().OrderByDescending(y => y).ToList();
+
+            // Χωρίς επιλογή, δείχνουμε τις δύο πιο πρόσφατες χρονιές που έχουν δεδομένα.
+            var requested = (years ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(y => int.TryParse(y, out var v) ? v : 0)
+                .Where(y => y > 0)
+                .Distinct()
+                .ToList();
+
+            if (requested.Count == 0)
+                requested = availableYears.Take(2).ToList();
+
+            var series = requested
+                .OrderBy(y => y)
+                .Select(year =>
+                {
+                    var counts = new int[12];
+                    foreach (var r in rows.Where(r => r.Year == year))
+                        counts[r.Month - 1]++;
+
+                    return new YearSeries
+                    {
+                        Year = year,
+                        Counts = counts.ToList(),
+                        Total = counts.Sum()
+                    };
+                })
+                .ToList();
+
+            return Ok(new YearlyMonthlyStats { AvailableYears = availableYears, Series = series });
         }
 
         [HttpGet("company-stats")]
