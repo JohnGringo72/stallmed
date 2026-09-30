@@ -306,3 +306,42 @@ th.sortable {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.35; transform: scale(0.8); }
 }
+
+/* Αιωρούμενο παράθυρο υπαγόρευσης: δείχνει ζωντανά τι ακούγεται */
+.mic-popup {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    z-index: 1080;
+    width: min(520px, calc(100vw - 32px));
+    background: #212529;
+    color: #fff;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+}
+
+.mic-popup-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+    color: #ffc9cd;
+}
+
+.mic-popup-text {
+    font-style: italic;
+    font-size: 1.05rem;
+    line-height: 1.4;
+    min-height: 2.6rem;
+    max-height: 30vh;
+    overflow-y: auto;
+}
+
+.mic-popup-hint {
+    color: #adb5bd;
+    font-style: normal;
+}

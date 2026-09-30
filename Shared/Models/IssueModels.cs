@@ -25,6 +25,9 @@ namespace StallmedManager.Shared.Models
         public string? CreatedByName { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+        // Αρχειοθετημένο: δεν εμφανίζεται στη λίστα, αλλά δεν χάνεται (sql/issue_archive.sql)
+        public DateTime? ArchivedAt { get; set; }
+        public int? ArchivedBy { get; set; }
     }
 
     [Table("IssueComments")]
@@ -65,6 +68,13 @@ namespace StallmedManager.Shared.Models
         public DateTime ReadAt { get; set; }
     }
 
+    public class SetIssueArchivedRequest
+    {
+        public long IssueID { get; set; }
+        public bool Archived { get; set; }
+        public int UserID { get; set; }
+    }
+
     public class MarkIssueReadRequest
     {
         public long IssueID { get; set; }
@@ -91,6 +101,7 @@ namespace StallmedManager.Shared.Models
         public int AttachmentCount { get; set; }
         // Δεν το έχει ανοίξει ακόμα ΑΥΤΟΣ ο χρήστης (ή άλλαξε μετά την τελευταία φορά)
         public bool IsUnread { get; set; }
+        public bool IsArchived { get; set; }
     }
 
     public class IssueDetailsDto

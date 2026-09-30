@@ -16,15 +16,33 @@
             <span class="mic-recording" title="Ηχογραφεί -- μίλα κανονικά">
                 <span class="mic-dot"></span> Ακούω…
             </span>
-            @if (!string.IsNullOrEmpty(interim))
-            {
-                <span class="text-muted fst-italic small">@interim</span>
-            }
         }
         @if (!string.IsNullOrEmpty(error))
         {
             <span class="text-danger small">@error</span>
         }
+    </div>
+}
+
+@* Ό,τι ακούγεται τη στιγμή αυτή, σε αιωρούμενο παράθυρο ώστε να διαβάζεται
+   άνετα και να μη στριμώχνεται δίπλα στο πεδίο. *@
+@if (listening)
+{
+    <div class="mic-popup">
+        <div class="mic-popup-title">
+            <span class="mic-dot"></span> Ακούω… μίλα κανονικά
+        </div>
+        <div class="mic-popup-text">
+            @if (string.IsNullOrWhiteSpace(interim))
+            {
+                <span class="mic-popup-hint">Περιμένω να μιλήσεις…</span>
+            }
+            else
+            {
+                @interim
+            }
+        </div>
+        <button type="button" class="btn btn-sm btn-light w-100 mt-2" @onclick="Toggle">⏹️ Σταμάτα</button>
     </div>
 }
 

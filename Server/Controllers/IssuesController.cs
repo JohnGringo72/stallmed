@@ -31,9 +31,12 @@ namespace StallmedManager.Server.Controllers
         [HttpGet]
         public async Task<ActionResult<List<IssueListItemDto>>> GetIssues(
             [FromQuery] string? status, [FromQuery] string? search, [FromQuery] int? regardingUserId,
-            [FromQuery] int? userId)
+            [FromQuery] int? userId, [FromQuery] bool includeArchived = false)
         {
             var query = _context.IssueTasks.AsQueryable();
+            // Τα αρχειοθετημένα δεν εμφανίζονται, εκτός αν ζητηθούν ρητά.
+            if (!includeArchived)
+                query = query.Where(i => i.ArchivedAt == null);
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(i => i.Status == status);
             if (regardingUserId.HasValue)
@@ -59,11 +62,22 @@ namespace StallmedManager.Server.Controllers
                 .ToDictionaryAsync(x => x.Key, x => x.Count);
 
             // Τι έχει ήδη ανοίξει ΑΥΤΟΣ ο χρήστης. Χωρίς userId δεν σημαδεύεται τίποτα.
-            var reads = userId.HasValue
-                ? await _context.IssueReads
-                    .Where(r => r.UserID == userId.Value && ids.Contains(r.IssueID))
-                    .ToDictionaryAsync(r => r.IssueID, r => r.ReadAt)
-                : new Dictionary<long, DateTime>();
+            // Αν λείπει ο πίνακας IssueReads (δεν έχει τρέξει ακόμα το sql/issue_reads.sql),
+            // η λίστα πρέπει να εμφανίζεται κανονικά -- απλώς χωρίς την ένδειξη "νέο".
+            var reads = new Dictionary<long, DateTime>();
+            if (userId.HasValue)
+            {
+                try
+                {
+                    reads = await _context.IssueReads
+                        .Where(r => r.UserID == userId.Value && ids.Contains(r.IssueID))
+                        .ToDictionaryAsync(r => r.IssueID, r => r.ReadAt);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Ο πίνακας IssueReads δεν είναι διαθέσιμος -- τρέξε το sql/issue_reads.sql");
+                }
+            }
 
             bool Unread(IssueTask i)
             {
@@ -88,7 +102,8 @@ namespace StallmedManager.Server.Controllers
                 UpdatedAt = i.UpdatedAt,
                 CommentCount = commentCounts.TryGetValue(i.IssueID, out var cc) ? cc : 0,
                 AttachmentCount = attachmentCounts.TryGetValue(i.IssueID, out var ac) ? ac : 0,
-                IsUnread = Unread(i)
+                IsUnread = Unread(i),
+                IsArchived = i.ArchivedAt != null
             }).ToList());
         }
 
@@ -262,6 +277,23 @@ namespace StallmedManager.Server.Controllers
         {
             if (userId <= 0) return;
 
+            try
+            {
+                await MarkReadCore(issueId, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Δεν καταγράφηκε η ανάγνωση του θέματος {IssueID} -- τρέξε το sql/issue_reads.sql", issueId);
+
+                // Η αποτυχημένη εγγραφή μένει στον change tracker και θα ξαναδοκιμαζόταν
+                // στο επόμενο SaveChanges, ρίχνοντας ολόκληρο το αίτημα.
+                foreach (var entry in _context.ChangeTracker.Entries<IssueRead>().ToList())
+                    entry.State = EntityState.Detached;
+            }
+        }
+
+        private async Task MarkReadCore(long issueId, int userId)
+        {
             var existing = await _context.IssueReads
                 .FirstOrDefaultAsync(r => r.IssueID == issueId && r.UserID == userId);
 
@@ -291,6 +323,7 @@ namespace StallmedManager.Server.Controllers
                 .ToListAsync();
 
             var relevant = await _context.IssueTasks
+                .Where(i => i.ArchivedAt == null)
                 .Where(i => i.AssignedUserID == userId
                          || i.CreatedBy == userId
                          || i.RegardingUserID == userId
@@ -299,9 +332,18 @@ namespace StallmedManager.Server.Controllers
                 .ToListAsync();
 
             var ids = relevant.Select(x => x.IssueID).ToList();
-            var reads = await _context.IssueReads
-                .Where(r => r.UserID == userId && ids.Contains(r.IssueID))
-                .ToDictionaryAsync(r => r.IssueID, r => r.ReadAt);
+            var reads = new Dictionary<long, DateTime>();
+            try
+            {
+                reads = await _context.IssueReads
+                    .Where(r => r.UserID == userId && ids.Contains(r.IssueID))
+                    .ToDictionaryAsync(r => r.IssueID, r => r.ReadAt);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Ο πίνακας IssueReads δεν είναι διαθέσιμος -- τρέξε το sql/issue_reads.sql");
+                return Ok(new IssueMySummaryDto());   // καλύτερα κανένα σήμα, παρά σφάλμα
+            }
 
             var unread = relevant
                 .Where(i => !reads.TryGetValue(i.IssueID, out var readAt) || i.UpdatedAt > readAt)
@@ -317,6 +359,32 @@ namespace StallmedManager.Server.Controllers
                 NewestIssueID = newest?.IssueID ?? 0,
                 NewestIssueCode = newest?.IssueCode,
                 NewestTitle = newest?.Title
+            });
+        }
+
+        // ---- Αρχειοθέτηση / επαναφορά ----
+        // Δεν διαγράφει τίποτα: το θέμα απλώς φεύγει από τη λίστα και από το καμπανάκι.
+        // Αντιστρέψιμο από οποιονδήποτε, σε αντίθεση με τη διαγραφή που είναι μόνο για admin.
+        [HttpPost("set-archived")]
+        public async Task<ActionResult<IssueSaveResult>> SetArchived([FromBody] SetIssueArchivedRequest req)
+        {
+            var issue = await _context.IssueTasks.FindAsync(req.IssueID);
+            if (issue == null)
+                return Ok(new IssueSaveResult { Success = false, Message = "Το θέμα δεν βρέθηκε." });
+
+            issue.ArchivedAt = req.Archived ? DateTime.Now : null;
+            issue.ArchivedBy = req.Archived ? req.UserID : null;
+            // Το UpdatedAt ΔΕΝ αλλάζει: η αρχειοθέτηση δεν είναι αλλαγή που πρέπει
+            // να εμφανιστεί ως "νέο" στους υπόλοιπους χρήστες.
+            await _context.SaveChangesAsync();
+
+            return Ok(new IssueSaveResult
+            {
+                Success = true,
+                IssueID = issue.IssueID,
+                Message = req.Archived
+                    ? $"Το θέμα {issue.IssueCode} αρχειοθετήθηκε."
+                    : $"Το θέμα {issue.IssueCode} επανήλθε στη λίστα."
             });
         }
 
@@ -336,7 +404,9 @@ namespace StallmedManager.Server.Controllers
 
             var comments = await _context.IssueComments.Where(c => c.IssueID == id).ToListAsync();
             var attachments = await _context.IssueAttachments.Where(a => a.IssueID == id).ToListAsync();
-            var reads = await _context.IssueReads.Where(r => r.IssueID == id).ToListAsync();
+            var reads = new List<IssueRead>();
+            try { reads = await _context.IssueReads.Where(r => r.IssueID == id).ToListAsync(); }
+            catch (Exception) { /* ο πίνακας μπορεί να μην υπάρχει ακόμα */ }
 
             using var transaction = await _context.Database.BeginTransactionAsync();
             try

@@ -11,12 +11,14 @@ namespace StallmedManager.Client
             this.dataService = dataService;
         }
 
-        public async Task<List<IssueListItemDto>> GetIssues(string? status, string? search, int? userId = null)
+        public async Task<List<IssueListItemDto>> GetIssues(string? status, string? search, int? userId = null,
+                                                           bool includeArchived = false)
         {
             var qs = new List<string>();
             if (!string.IsNullOrEmpty(status)) qs.Add($"status={Uri.EscapeDataString(status)}");
             if (!string.IsNullOrEmpty(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
             if (userId.HasValue) qs.Add($"userId={userId.Value}");
+            if (includeArchived) qs.Add("includeArchived=true");
             var query = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
             return await dataService.Get<List<IssueListItemDto>>($"api/issues{query}") ?? new();
         }
@@ -42,6 +44,10 @@ namespace StallmedManager.Client
 
         public async Task DeleteAttachment(long attachmentId)
             => await dataService.Post<object, object>($"api/issues/attachments/delete/{attachmentId}", new { });
+
+        public async Task<IssueSaveResult?> SetArchived(long issueId, bool archived, int userId)
+            => await dataService.Post<SetIssueArchivedRequest, IssueSaveResult>("api/issues/set-archived",
+                new SetIssueArchivedRequest { IssueID = issueId, Archived = archived, UserID = userId });
 
         public async Task MarkRead(long issueId, int userId)
             => await dataService.Post<MarkIssueReadRequest, object>("api/issues/mark-read",

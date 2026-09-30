@@ -61,6 +61,14 @@
     </div>
     <div class="col-auto">
         <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="showArchivedSwitch"
+                   checked="@showArchived" @onchange="OnShowArchivedChanged" />
+            <label class="form-check-label" for="showArchivedSwitch"
+                   title="@Hint("Εμφανίζει και όσα έχουν αρχειοθετηθεί")">📦 Αρχειοθετημένα</label>
+        </div>
+    </div>
+    <div class="col-auto">
+        <div class="form-check form-switch mb-0">
             <input class="form-check-input" type="checkbox" id="onlyMineSwitch" @bind="onlyMine" />
             <label class="form-check-label" for="onlyMineSwitch"
                    title="@Hint("Μόνο τα θέματα που έχουν ανατεθεί σε μένα")">👤 Τα δικά μου</label>
@@ -122,6 +130,10 @@ else
                             @if (i.IsUnread)
                             {
                                 <span class="badge bg-danger ms-1" title="Δεν το έχεις ανοίξει ακόμα εσύ">● ΝΕΟ</span>
+                            }
+                            @if (i.IsArchived)
+                            {
+                                <span class="badge bg-secondary ms-1" title="Αρχειοθετημένο -- δεν εμφανίζεται κανονικά στη λίστα">📦 Αρχείο</span>
                             }
                         </td>
                         <td class="d-none d-lg-table-cell">@PriorityLabel(i.Priority)</td>
@@ -297,6 +309,16 @@ else
                                 <div class="border rounded p-2 mb-2" style="white-space:pre-wrap">@iss.Description</div>
                             }
                             <button class="btn btn-sm btn-outline-primary mb-3" @onclick="() => OpenEditFromDetails()">✏️ Επεξεργασία / Αλλαγή στάτους</button>
+                            @if (iss.ArchivedAt == null)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary mb-3 ms-1" @onclick="() => SetArchived(true)"
+                                        title="@Hint("Φεύγει από τη λίστα χωρίς να διαγραφεί -- επαναφέρεται όποτε θες")">📦 Αρχειοθέτηση</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-success mb-3 ms-1" @onclick="() => SetArchived(false)"
+                                        title="@Hint("Επιστροφή του θέματος στη λίστα")">↩️ Επαναφορά</button>
+                            }
                             @if (userManager.IsAdmin)
                             {
                                 <button class="btn btn-sm btn-outline-danger mb-3 ms-1" @onclick="() => confirmDeleteIssue = true"
@@ -482,6 +504,31 @@ else
 
     // --- Φίλτρο "τα δικά μου", ειδοποιήσεις, υπαγόρευση, διαγραφή ---
     private bool onlyMine;
+    private bool showArchived;
+
+    private async Task OnShowArchivedChanged(ChangeEventArgs e)
+    {
+        showArchived = (bool)(e.Value ?? false);
+        await Load();
+    }
+
+    private async Task SetArchived(bool archived)
+    {
+        if (details?.Issue == null || userManager.User == null) return;
+        busy = true;
+        var result = await Service.SetArchived(details.Issue.IssueID, archived, userManager.User.IdUser);
+        busy = false;
+
+        if (result == null || !result.Success)
+        {
+            deleteMessage = result?.Message ?? "Η ενέργεια απέτυχε.";
+            return;
+        }
+
+        details = null;
+        await Load();
+        await notifications.RequestRefresh();
+    }
     private string notifyPermission = "unsupported";
     private string notifyMessage = "";
     private bool confirmDeleteIssue;
@@ -560,7 +607,8 @@ else
         loading = true;
         issues = await Service.GetIssues(string.IsNullOrEmpty(filterStatus) ? null : filterStatus,
                                          string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim(),
-                                         userManager.User?.IdUser);
+                                         userManager.User?.IdUser,
+                                         showArchived);
         loading = false;
     }
 
