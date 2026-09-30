@@ -347,7 +347,8 @@ namespace StallmedManager.Server.Controllers
 
             var unread = relevant
                 .Where(i => !reads.TryGetValue(i.IssueID, out var readAt) || i.UpdatedAt > readAt)
-                .OrderByDescending(i => i.IssueID)
+                .OrderByDescending(i => i.UpdatedAt)     // πιο πρόσφατη κίνηση πρώτη
+                .ThenByDescending(i => i.IssueID)
                 .ToList();
 
             var newest = unread.FirstOrDefault();
@@ -358,7 +359,9 @@ namespace StallmedManager.Server.Controllers
                                                      && i.Status != "Done" && i.Status != "Cancelled"),
                 NewestIssueID = newest?.IssueID ?? 0,
                 NewestIssueCode = newest?.IssueCode,
-                NewestTitle = newest?.Title
+                NewestTitle = newest?.Title,
+                NewestActivityAt = newest?.UpdatedAt,
+                NewestIsNewIssue = newest != null && !reads.ContainsKey(newest.IssueID)
             });
         }
 

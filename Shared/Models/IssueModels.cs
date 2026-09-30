@@ -170,6 +170,11 @@ namespace StallmedManager.Shared.Models
         public long NewestIssueID { get; set; }
         public string? NewestIssueCode { get; set; }
         public string? NewestTitle { get; set; }
+        // Πότε έγινε η πιο πρόσφατη αδιάβαστη κίνηση (νέο θέμα, σχόλιο, αλλαγή).
+        // Με βάση αυτό ανάβει η ειδοποίηση -- όχι με βάση τον κωδικό του θέματος,
+        // γιατί έτσι δεν έπιανε τα νέα μηνύματα σε παλιά θέματα.
+        public DateTime? NewestActivityAt { get; set; }
+        public bool NewestIsNewIssue { get; set; }
     }
 
     public class IssueSaveResult

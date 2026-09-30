@@ -20,12 +20,15 @@ namespace StallmedManager.Server.Controllers
 
         private readonly StallmedContext _context;
         private readonly AesService _aes;
+        private readonly QuoteEmailService _email;
         private readonly ILogger<UsersController> _logger;
 
-        public UsersController(StallmedContext context, AesService aes, ILogger<UsersController> logger)
+        public UsersController(StallmedContext context, AesService aes, QuoteEmailService email,
+            ILogger<UsersController> logger)
         {
             _context = context;
             _aes = aes;
+            _email = email;
             _logger = logger;
         }
 
@@ -206,6 +209,55 @@ namespace StallmedManager.Server.Controllers
             var otherAdmins = await _context.Users
                 .CountAsync(u => u.IdUser != target.IdUser && u.Active && u.Role.ToLower() == "admin");
             return otherAdmins > 0;
+        }
+
+        // ---- Ρυθμίσεις email: τι είναι συμπληρωμένο και δοκιμαστική αποστολή ----
+        // Ο κωδικός δεν επιστρέφεται ποτέ -- μόνο αν υπάρχει ή όχι.
+        [HttpGet("email-status")]
+        public ActionResult<List<EmailStatusDto>> GetEmailStatus()
+        {
+            var list = new[] { "SM", "BM" }.Select(company =>
+            {
+                var st = _email.Status(company);
+                return new EmailStatusDto
+                {
+                    Company = company,
+                    Configured = st.Configured,
+                    Host = st.Host,
+                    Port = st.Port,
+                    FromAddress = st.From,
+                    HasPassword = st.HasPassword
+                };
+            }).ToList();
+
+            return Ok(list);
+        }
+
+        [HttpPost("test-email")]
+        public async Task<ActionResult<UserSaveResult>> SendTestEmail([FromBody] TestEmailRequest req)
+        {
+            var to = (req.ToAddress ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(to) || !to.Contains('@'))
+                return Ok(Fail("Δώσε έγκυρη διεύθυνση παραλήπτη."));
+
+            var company = string.IsNullOrWhiteSpace(req.Company) ? "SM" : req.Company.Trim();
+            if (!_email.IsConfigured(company))
+                return Ok(Fail($"Λείπουν ρυθμίσεις SMTP για {company}: συμπλήρωσε Host και FromAddress στο appsettings.json."));
+
+            try
+            {
+                await _email.SendPlainAsync(company, to, null,
+                    "Δοκιμαστικό μήνυμα από το SBT Suite",
+                    "Αν διαβάζεις αυτό το μήνυμα, οι ρυθμίσεις email δουλεύουν σωστά.");
+
+                return Ok(new UserSaveResult { Success = true, Message = $"Στάλθηκε δοκιμαστικό email στο {to}." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Αποτυχία δοκιμαστικού email προς {To} ({Company})", to, company);
+                // Το πραγματικό μήνυμα του SMTP βοηθά στη ρύθμιση -- η οθόνη είναι μόνο για admin.
+                return Ok(Fail($"Απέτυχε: {ex.Message}"));
+            }
         }
 
         private static UserSaveResult Fail(string message) => new() { Success = false, Message = message };

@@ -47,6 +47,67 @@
     </div>
 </div>
 
+<div class="users-panel">
+    <h5 class="mb-2">📧 Ρυθμίσεις email</h5>
+    @if (!emailStatus.Any())
+    {
+        <div class="text-muted small">Φορτώνω...</div>
+    }
+    else
+    {
+        <div class="table-responsive mb-2">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr><th>Εταιρεία</th><th>Διακομιστής</th><th>Θύρα</th><th>Αποστολέας</th><th>Κωδικός</th><th>Κατάσταση</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var st in emailStatus)
+                    {
+                        <tr>
+                            <td><strong>@st.Company</strong></td>
+                            <td>@(string.IsNullOrWhiteSpace(st.Host) ? "—" : st.Host)</td>
+                            <td>@st.Port</td>
+                            <td>@(string.IsNullOrWhiteSpace(st.FromAddress) ? "—" : st.FromAddress)</td>
+                            <td>@(st.HasPassword ? "✔" : "—")</td>
+                            <td>
+                                @if (st.Configured)
+                                {
+                                    <span class="badge bg-success">Έτοιμο</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Λείπουν στοιχεία</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select class="form-control" style="width:auto;" @bind="testCompany">
+                @foreach (var st in emailStatus)
+                {
+                    <option value="@st.Company">@st.Company</option>
+                }
+            </select>
+            <input class="form-control" style="max-width:280px;" placeholder="Παραλήπτης δοκιμής" @bind="testAddress" />
+            <button class="btn btn-outline-primary" @onclick="SendTestEmail" disabled="@testBusy">
+                @(testBusy ? "Στέλνω..." : "✉️ Δοκιμαστικό email")
+            </button>
+            @if (!string.IsNullOrEmpty(testResult))
+            {
+                <span class="@(testOk ? "text-success" : "text-danger") small">@testResult</span>
+            }
+        </div>
+        <div class="form-text">
+            Τα στοιχεία συμπληρώνονται στο <code>Server/appsettings.json</code>, στην ενότητα <code>Smtp</code>.
+            Ο κωδικός δεν εμφανίζεται ποτέ εδώ.
+        </div>
+    }
+</div>
+
 @if (status == "loading")
 {
     <p><em>Φορτώνω...</em></p>
@@ -243,6 +304,23 @@ else if (status == "loaded")
     private bool showInactive = true;
 
     private List<UserAdminDto> users = new();
+    private List<EmailStatusDto> emailStatus = new();
+    private string testCompany = "SM";
+    private string testAddress = "";
+    private string testResult = "";
+    private bool testOk;
+    private bool testBusy;
+
+    private async Task SendTestEmail()
+    {
+        testResult = "";
+        testBusy = true;
+        var result = await Service.SendTestEmail(new TestEmailRequest { Company = testCompany, ToAddress = testAddress });
+        testBusy = false;
+
+        testOk = result?.Success == true;
+        testResult = result?.Message ?? "Κάτι πήγε στραβά. Δοκίμασε ξανά.";
+    }
     private List<string> roles = new();
 
     private SaveUserRequest? editUser;
@@ -273,6 +351,9 @@ else if (status == "loaded")
         StateHasChanged();
         users = await Service.GetUsers();
         roles = await Service.GetRoles();
+        emailStatus = await Service.GetEmailStatus();
+        if (string.IsNullOrWhiteSpace(testAddress))
+            testAddress = userManager.User?.Email ?? "";
         status = "loaded";
     }
 

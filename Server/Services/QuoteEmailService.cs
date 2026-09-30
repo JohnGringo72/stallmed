@@ -23,6 +23,16 @@ namespace StallmedManager.Server.Services
         private string? Setting(string company, string key)
             => _config[$"Smtp:{company}:{key}"] ?? _config[$"Smtp:{key}"];
 
+        // Για την οθόνη ρυθμίσεων: τι είναι συμπληρωμένο. Ο κωδικός ΔΕΝ επιστρέφεται ποτέ.
+        public (bool Configured, string? Host, string? Port, string? From, bool HasPassword) Status(string company) =>
+        (
+            IsConfigured(company),
+            Setting(company, "Host"),
+            Setting(company, "Port"),
+            Setting(company, "FromAddress"),
+            !string.IsNullOrEmpty(Setting(company, "Password"))
+        );
+
         public bool IsConfigured(string company) =>
             !string.IsNullOrEmpty(Setting(company, "Host")) &&
             !string.IsNullOrEmpty(Setting(company, "FromAddress"));

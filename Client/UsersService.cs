@@ -23,6 +23,12 @@ namespace StallmedManager.Client
         public async Task<UserSaveResult> SetPassword(SetUserPasswordRequest req)
             => await dataService.Post<SetUserPasswordRequest, UserSaveResult>("api/users/set-password", req);
 
+        public async Task<List<EmailStatusDto>> GetEmailStatus()
+            => await dataService.Get<List<EmailStatusDto>>("api/users/email-status") ?? new();
+
+        public async Task<UserSaveResult> SendTestEmail(TestEmailRequest req)
+            => await dataService.Post<TestEmailRequest, UserSaveResult>("api/users/test-email", req);
+
         public async Task<UserSaveResult> SetActive(SetUserActiveRequest req)
             => await dataService.Post<SetUserActiveRequest, UserSaveResult>("api/users/set-active", req);
     }

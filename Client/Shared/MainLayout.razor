@@ -121,13 +121,15 @@
     // --- Σήμα ειδοποίησης για θέματα που μου ανατέθηκαν ---
     // Το Blazor WASM δεν δέχεται push, οπότε ρωτάμε τον server κάθε λεπτό.
     private int myUnreadIssues;
-    private long lastSeenIssueId;
+    // Κρατάμε τη στιγμή της τελευταίας κίνησης που έχουμε ήδη ειδοποιήσει, ώστε να
+    // ανάβει και για νέο σχόλιο σε παλιό θέμα -- όχι μόνο για ολοκαίνουργιο θέμα.
+    private DateTime? lastNotifiedActivity;
     private CancellationTokenSource? issuePollCts;
 
     private async Task PollIssuesAsync(CancellationToken token)
     {
-        try { lastSeenIssueId = await localStorage.GetItemAsync<long>("lastSeenIssueId"); }
-        catch (Exception) { lastSeenIssueId = 0; }
+        try { lastNotifiedActivity = await localStorage.GetItemAsync<DateTime?>("lastNotifiedActivity"); }
+        catch (Exception) { lastNotifiedActivity = null; }
 
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(60));
         try
@@ -153,22 +155,26 @@
 
             myUnreadIssues = summary.UnreadCount;
 
-            if (summary.NewestIssueID > lastSeenIssueId)
+            var activity = summary.NewestActivityAt;
+            if (activity.HasValue && (lastNotifiedActivity == null || activity > lastNotifiedActivity))
             {
-                // Την πρώτη φορά δεν ειδοποιούμε -- θα έβγαζε παλιά θέματα ως "νέα".
-                if (lastSeenIssueId > 0)
+                // Την πρώτη φορά δεν ειδοποιούμε -- θα έβγαζε παλιές κινήσεις ως "νέες".
+                if (lastNotifiedActivity != null)
                 {
+                    var title = summary.NewestIsNewIssue
+                        ? $"Νέο θέμα {summary.NewestIssueCode}"
+                        : $"Νέο μήνυμα στο {summary.NewestIssueCode}";
+
                     // Χωριστό try: αν λείπει η βοηθητική JS (παλιό index.html από cache),
                     // το σήμα στο μενού πρέπει να συνεχίσει να δουλεύει κανονικά.
                     try
                     {
-                        await JS.InvokeVoidAsync("sbtNotify.show",
-                            $"Νέο θέμα {summary.NewestIssueCode}", summary.NewestTitle ?? "");
+                        await JS.InvokeVoidAsync("sbtNotify.show", title, summary.NewestTitle ?? "");
                     }
                     catch (Exception) { }
                 }
-                lastSeenIssueId = summary.NewestIssueID;
-                await localStorage.SetItemAsync("lastSeenIssueId", lastSeenIssueId);
+                lastNotifiedActivity = activity;
+                await localStorage.SetItemAsync("lastNotifiedActivity", lastNotifiedActivity);
             }
 
             await InvokeAsync(StateHasChanged);

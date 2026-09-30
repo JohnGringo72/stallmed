@@ -45,6 +45,23 @@ namespace StallmedManager.Shared.Models
         public bool Active { get; set; }
     }
 
+    // Κατάσταση ρυθμίσεων email (χωρίς κωδικό) και δοκιμαστική αποστολή
+    public class EmailStatusDto
+    {
+        public string Company { get; set; } = "";
+        public bool Configured { get; set; }
+        public string? Host { get; set; }
+        public string? Port { get; set; }
+        public string? FromAddress { get; set; }
+        public bool HasPassword { get; set; }
+    }
+
+    public class TestEmailRequest
+    {
+        public string Company { get; set; } = "SM";
+        public string ToAddress { get; set; } = "";
+    }
+
     public class UserSaveResult
     {
         public bool Success { get; set; }
