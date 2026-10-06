@@ -122,6 +122,7 @@ else if (status == "loaded")
                     <th>Username</th>
                     <th>Email</th>
                     <th>Ρόλος</th>
+                    <th>Θέματα</th>
                     <th>Κατάσταση</th>
                     <th>Κωδικός</th>
                     <th>Τελευταία σύνδεση</th>
@@ -136,6 +137,16 @@ else if (status == "loaded")
                         <td>@u.Username</td>
                         <td>@u.Email</td>
                         <td><span class="role-badge" style="background-color:@RoleColor(u.Role)">@u.Role</span></td>
+                        <td>
+                            @if (u.TasksVisibility == "All")
+                            {
+                                <span class="badge bg-primary" title="Βλέπει όλα τα θέματα">Όλα</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-light text-dark" title="Βλέπει μόνο όσα άνοιξε ή του ανατέθηκαν">Μόνο τα δικά του</span>
+                            }
+                        </td>
                         <td>
                             @if (u.Active)
                             {
@@ -231,6 +242,14 @@ else if (status == "loaded")
                                 <div class="form-text">Προσοχή: νέος ρόλος δεν ξεκλειδώνει από μόνος του δικαιώματα. Τα δικαιώματα ορίζονται στον κώδικα (σήμερα: admin, warehouse).</div>
                             </div>
                         }
+                        <div class="col-12">
+                            <label class="form-label mb-1">Ορατότητα θεμάτων (Tasks)</label>
+                            <select class="form-control" @bind="editUser.TasksVisibility">
+                                <option value="Own">Μόνο όσα άνοιξε ή του ανατέθηκαν</option>
+                                <option value="All">Όλα τα θέματα</option>
+                            </select>
+                            <div class="form-text">Ανεξάρτητο από τον ρόλο -- ορίζεται ξεχωριστά για κάθε χρήστη.</div>
+                        </div>
                         @if (editUser.IdUser == null)
                         {
                             <div class="col-6">
@@ -367,7 +386,7 @@ else if (status == "loaded")
 
     private void OpenNew()
     {
-        editUser = new SaveUserRequest { Active = true };
+        editUser = new SaveUserRequest { Active = true, TasksVisibility = "Own" };
         roleChoice = roles.FirstOrDefault() ?? NewRoleOption;
         newRoleName = "";
         newPassword = newPasswordRepeat = "";
@@ -385,7 +404,8 @@ else if (status == "loaded")
             Lastname = u.Lastname,
             AMKA = u.AMKA,
             Role = u.Role,
-            Active = u.Active
+            Active = u.Active,
+            TasksVisibility = u.TasksVisibility
         };
         roleChoice = roles.Contains(u.Role) ? u.Role : NewRoleOption;
         newRoleName = roles.Contains(u.Role) ? "" : u.Role;

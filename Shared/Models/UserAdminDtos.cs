@@ -13,6 +13,8 @@ namespace StallmedManager.Shared.Models
         public string? AMKA { get; set; }
         public string Role { get; set; } = "";
         public bool Active { get; set; }
+        // "All" = βλέπει όλα τα θέματα, "Own" = μόνο τα δικά του
+        public string TasksVisibility { get; set; } = "Own";
         // false = ο κωδικός είναι ακόμη σε απλό κείμενο στη βάση (παλιοί χρήστες)
         public bool HasEncryptedPassword { get; set; }
         public DateTime? LastLogin { get; set; }
@@ -30,6 +32,7 @@ namespace StallmedManager.Shared.Models
         public string? AMKA { get; set; }
         public string Role { get; set; } = "";
         public bool Active { get; set; } = true;
+        public string? TasksVisibility { get; set; }   // "All" ή "Own"
         public string? Password { get; set; }       // υποχρεωτικός μόνο στη δημιουργία
     }
 

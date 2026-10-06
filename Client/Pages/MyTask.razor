@@ -739,9 +739,9 @@ else
         // Αν η επεξεργασία έγινε από τα details, φρεσκάρισμα του ανοιχτού παραθύρου·
         // αλλιώς άνοιγμα του νέου θέματος για άμεσο έλεγχο.
         if (details != null && editId != null)
-            details = await Service.GetIssue(editId.Value);
+            details = await Service.GetIssue(editId.Value, userManager.User?.IdUser);
         else if (editId == null)
-            details = await Service.GetIssue(result.IssueID);
+            details = await Service.GetIssue(result.IssueID, userManager.User?.IdUser);
     }
 
     private async Task OnNewFilesSelected(InputFileChangeEventArgs e)
@@ -757,7 +757,7 @@ else
     // ---- Λεπτομέρειες / Συνομιλία / Συνημμένα ----
     private async Task OpenDetails(long id)
     {
-        details = await Service.GetIssue(id);
+        details = await Service.GetIssue(id, userManager.User?.IdUser);
 
         // "Το είδα" ανά χρήστη: δεν επηρεάζει τους υπόλοιπους.
         var userId = userManager.User?.IdUser;
@@ -806,7 +806,7 @@ else
             UserName = UserFullName(),
             CommentText = $"⏩ Άλλαξε το στάτους σε «{StatusLabel(newStatus)}»"
         });
-        details = await Service.GetIssue(iss.IssueID);
+        details = await Service.GetIssue(iss.IssueID, userManager.User?.IdUser);
         busy = false;
         await Load();
     }
@@ -823,7 +823,7 @@ else
             CommentText = newComment.Trim()
         });
         newComment = "";
-        details = await Service.GetIssue(details.Issue.IssueID);
+        details = await Service.GetIssue(details.Issue.IssueID, userManager.User?.IdUser);
         busy = false;
         await Load();
     }
@@ -836,7 +836,7 @@ else
         busy = true;
         await Service.UploadAttachment(details.Issue.IssueID, ms.ToArray(), e.File.Name,
             userManager.User?.IdUser, UserFullName());
-        details = await Service.GetIssue(details.Issue.IssueID);
+        details = await Service.GetIssue(details.Issue.IssueID, userManager.User?.IdUser);
         busy = false;
         await Load();
     }
@@ -910,7 +910,7 @@ else
         var ok = await JS.InvokeAsync<bool>("confirm", $"Διαγραφή του συνημμένου «{att.FileName}»;");
         if (!ok) return;
         await Service.DeleteAttachment(att.AttachmentID);
-        details = await Service.GetIssue(details.Issue.IssueID);
+        details = await Service.GetIssue(details.Issue.IssueID, userManager.User?.IdUser);
         await Load();
     }
 

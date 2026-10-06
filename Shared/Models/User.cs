@@ -20,6 +20,8 @@ namespace StallmedManager.Shared.Models
         public bool Active { get; set; }
         // Υπάρχουν στον πίνακα Users -- χρειάζονται για τη δημιουργία χρήστη
         // και για να φαίνεται η τελευταία σύνδεση στη διαχείριση.
+        // Ορατότητα θεμάτων: "All" ή "Own". NULL = προεπιλογή ανά ρόλο.
+        public string? TasksVisibility { get; set; }
         public DateTime? CreatedAt { get; set; }
         public DateTime? LastLogin { get; set; }
         [NotMapped]

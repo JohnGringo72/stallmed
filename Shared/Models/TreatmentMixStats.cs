@@ -5,6 +5,11 @@ namespace StallmedManager.Shared.Models
     {
         public string Treatment { get; set; } = "";
         public int TotalQNT { get; set; }
+        // Στοκ αποθήκης (ασθενής "A A"): τι υπάρχει εδώ και τι αναμένεται.
+        // Received (3) = εδώ, Manufacturing (2) = αναμένεται.
+        public int StockHere { get; set; }
+        public int StockExpected { get; set; }
+        public int StockQNT => StockHere + StockExpected;
         public List<TreatmentMixRow> Mixes { get; set; } = new();
     }
 
@@ -15,5 +20,9 @@ namespace StallmedManager.Shared.Models
 
         public string Allergen { get; set; } = "";
         public int QNT { get; set; }
+        // Στοκ για το ίδιο μείγμα: εδώ και αναμενόμενα
+        public int StockHere { get; set; }
+        public int StockExpected { get; set; }
+        public int StockQNT => StockHere + StockExpected;
     }
 }

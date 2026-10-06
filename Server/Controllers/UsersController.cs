@@ -42,6 +42,15 @@ namespace StallmedManager.Server.Controllers
             return await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
         }
 
+        // Κενό σημαίνει προεπιλογή: admin -> όλα, υπόλοιποι -> μόνο τα δικά τους.
+        private static string NormalizeVisibility(string? value, string? role)
+        {
+            var v = (value ?? "").Trim();
+            if (string.Equals(v, "All", StringComparison.OrdinalIgnoreCase)) return "All";
+            if (string.Equals(v, "Own", StringComparison.OrdinalIgnoreCase)) return "Own";
+            return string.Equals(role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase) ? "All" : "Own";
+        }
+
         private static UserAdminDto ToDto(User u) => new()
         {
             IdUser = u.IdUser,
@@ -52,6 +61,7 @@ namespace StallmedManager.Server.Controllers
             AMKA = u.AMKA,
             Role = u.Role,
             Active = u.Active,
+            TasksVisibility = NormalizeVisibility(u.TasksVisibility, u.Role),
             HasEncryptedPassword = !string.IsNullOrEmpty(u.PasswordEncrypted),
             LastLogin = u.LastLogin
         };
@@ -115,6 +125,7 @@ namespace StallmedManager.Server.Controllers
                     AMKA = amka,
                     Role = role,
                     Active = req.Active,
+                    TasksVisibility = NormalizeVisibility(req.TasksVisibility, role),
                     Password = "",                                   // ποτέ απλό κείμενο
                     PasswordEncrypted = _aes.Encrypt(req.Password.Trim()),
                     ForcePasswordChange = false,
@@ -149,6 +160,7 @@ namespace StallmedManager.Server.Controllers
             existing.AMKA = amka;
             existing.Role = role;
             existing.Active = req.Active;
+            existing.TasksVisibility = NormalizeVisibility(req.TasksVisibility, role);
             await _context.SaveChangesAsync();
 
             return Ok(new UserSaveResult { Success = true, IdUser = existing.IdUser, Message = "Οι αλλαγές αποθηκεύτηκαν." });

@@ -23,8 +23,9 @@ namespace StallmedManager.Client
             return await dataService.Get<List<IssueListItemDto>>($"api/issues{query}") ?? new();
         }
 
-        public async Task<IssueDetailsDto?> GetIssue(long id)
-            => await dataService.Get<IssueDetailsDto>($"api/issues/{id}");
+        public async Task<IssueDetailsDto?> GetIssue(long id, int? userId = null)
+            => await dataService.Get<IssueDetailsDto>(
+                $"api/issues/{id}" + (userId.HasValue ? $"?userId={userId.Value}" : ""));
 
         public async Task<IssueSaveResult?> SaveIssue(SaveIssueRequest req)
             => await dataService.Post<SaveIssueRequest, IssueSaveResult>("api/issues/save", req);

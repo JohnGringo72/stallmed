@@ -93,6 +93,9 @@
             <span><strong>@groups.Count</strong> είδη</span>
             <span class="ms-3"><strong>@groups.Sum(g => g.Mixes.Count)</strong> μείγματα</span>
             <span class="ms-3">Συνολική ποσότητα: <strong>@groups.Sum(g => g.TotalQNT)</strong></span>
+            <span class="ms-3">Εδώ: <strong>@groups.Sum(g => g.StockHere)</strong></span>
+            <span class="ms-3">Αναμένονται: <strong>@groups.Sum(g => g.StockExpected)</strong></span>
+            <span class="ms-3">Μ.Ο.: <strong>@MonthlyAverage(groups.Sum(g => g.TotalQNT))</strong>/μήνα (@Math.Round(MonthsInPeriod, MidpointRounding.AwayFromZero).ToString("0") μήνες)</span>
             @if (!string.IsNullOrWhiteSpace(selectedDoctor))
             {
                 <span class="ms-3">
@@ -114,6 +117,13 @@
                     <span class="mix-arrow @(isOpen ? "open" : "")">▶</span>
                     <span class="mix-treatment">@g.Treatment</span>
                     <span class="mix-count">@g.Mixes.Count μείγματα</span>
+                    @if (g.StockQNT > 0)
+                    {
+                        <span class="mix-stock" title="Εδώ -- σε παρένθεση όσα αναμένονται">
+                            Εδώ @g.StockHere@(g.StockExpected > 0 ? $" ({g.StockExpected})" : "")
+                        </span>
+                    }
+                    <span class="mix-count">Μ.Ο. @MonthlyAverage(g.TotalQNT)/μήνα</span>
                     <span class="mix-total">@g.TotalQNT</span>
                 </div>
                 @if (isOpen)
@@ -123,6 +133,8 @@
                         <tr>
                             <th>Μείγμα</th>
                             <th class="text-end col-qnt">Ποσότητα</th>
+                            <th class="text-end col-qnt" title="Μέσος όρος ανά μήνα για την επιλεγμένη περίοδο">Μ.Ο./μήνα</th>
+                            <th class="text-end col-qnt" title="Πόσα υπάρχουν εδώ -- σε παρένθεση όσα αναμένονται">Εδώ (αναμ.)</th>
                             <th class="col-share">%</th>
                         </tr>
                     </thead>
@@ -133,6 +145,10 @@
                             <tr>
                                 <td class="@(m.Allergen == TreatmentMixRow.NoMixLabel ? "text-muted fst-italic" : "")" style="white-space: pre-line">@m.Allergen</td>
                                 <td class="text-end fw-bold col-qnt">@m.QNT</td>
+                                <td class="text-end col-qnt text-muted">@MonthlyAverage(m.QNT)</td>
+                                <td class="text-end col-qnt @(m.StockHere > 0 ? "text-success fw-bold" : "text-muted")">
+                                    @m.StockHere@(m.StockExpected > 0 ? $" ({m.StockExpected})" : "")
+                                </td>
                                 <td class="col-share">
                                     <div class="share-wrap">
                                         <div class="share-bar" style="width:@(pct.ToString("0.#", CultureInfo.InvariantCulture))%"></div>
@@ -169,6 +185,16 @@
     }
 
     .mix-arrow.open { transform: rotate(90deg); }
+
+    .mix-stock {
+        font-size: 0.78rem;
+        color: #0f172a;
+        background: #86efac;
+        border-radius: 12px;
+        padding: 2px 10px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
 
     .mix-count {
         font-size: 0.78rem;
@@ -269,6 +295,21 @@
     private HashSet<string> expandedTreatments = new();
 
     private bool IsTreatmentOpen(string treatment) => expandedTreatments.Contains(treatment);
+
+    // Μέσος όρος ανά μήνα για την επιλεγμένη περίοδο. Ο μήνας λογίζεται ως 30,44 ημέρες
+    // (365,25 / 12), ώστε διαστήματα σαν "15/3 - 20/9" να μετρούν σωστά.
+    private double MonthsInPeriod
+    {
+        get
+        {
+            var days = (toDate.Date - fromDate.Date).TotalDays + 1;
+            return Math.Max(days / 30.44, 1d);
+        }
+    }
+
+    // Χωρίς δεκαδικά: στρογγυλοποίηση στον πλησιέστερο ακέραιο.
+    private string MonthlyAverage(int total) =>
+        Math.Round(total / MonthsInPeriod, MidpointRounding.AwayFromZero).ToString("0");
 
     private void ToggleTreatment(string treatment)
     {

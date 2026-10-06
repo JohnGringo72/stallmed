@@ -6,6 +6,13 @@ namespace StallmedManager.Services;
 
 public class StockSearchService
 {
+    // Ο "ασθενής" των παραγγελιών αποθήκης. Στη βάση γράφεται με λατινικά ή ελληνικά Α
+    // και με διαφορετικά κενά, γι' αυτό η σύγκριση γίνεται χωρίς κενά.
+    private const string WarehouseAA = "AA";
+    private const string WarehouseGG = "ΑΑ";
+    private const string WarehouseAG = "AΑ";
+    private const string WarehouseGA = "ΑA";
+
     private readonly StallmedContext _context;
 
     public StockSearchService(StallmedContext context)
@@ -15,7 +22,7 @@ public class StockSearchService
 
     public async Task<StockFilterOptions> GetFilterOptionsAsync(string companyID = "", string treatment = "")
     {
-        var base_q = _context.WebOrders.Where(x => x.Patient == "A A");
+        var base_q = _context.WebOrders.Where(x => x.Patient != null && (x.Patient.Replace(" ", "") == WarehouseAA || x.Patient.Replace(" ", "") == WarehouseGG || x.Patient.Replace(" ", "") == WarehouseAG || x.Patient.Replace(" ", "") == WarehouseGA));
 
         if (!string.IsNullOrWhiteSpace(companyID))
             base_q = base_q.Where(x => x.CompanyID == companyID);
@@ -26,7 +33,7 @@ public class StockSearchService
         return new StockFilterOptions
         {
             Treatments = await _context.WebOrders
-                .Where(x => x.Patient == "A A")
+                .Where(x => x.Patient != null && (x.Patient.Replace(" ", "") == WarehouseAA || x.Patient.Replace(" ", "") == WarehouseGG || x.Patient.Replace(" ", "") == WarehouseAG || x.Patient.Replace(" ", "") == WarehouseGA))
                 .Where(x => string.IsNullOrWhiteSpace(companyID) || x.CompanyID == companyID)
                 .Where(x => x.TreatmentDescription != null && x.TreatmentDescription != "")
                 .Select(x => x.TreatmentDescription!)
@@ -50,7 +57,7 @@ public class StockSearchService
         string allergen)
     {
         var query = _context.WebOrders
-            .Where(x => x.Patient == "A A")
+            .Where(x => x.Patient != null && (x.Patient.Replace(" ", "") == WarehouseAA || x.Patient.Replace(" ", "") == WarehouseGG || x.Patient.Replace(" ", "") == WarehouseAG || x.Patient.Replace(" ", "") == WarehouseGA))
             .Where(x => x.Status == "2" || x.Status == "3");
 
         if (!string.IsNullOrWhiteSpace(searchText))

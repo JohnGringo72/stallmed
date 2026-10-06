@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -288,6 +288,29 @@ namespace StallmedManager.Server.Controllers
         // Το Allergen είναι κείμενο της μορφής "P-093 5 mix grasses 50, \nP-012 Olive 50,".
         // Ταξινομούμε τα συστατικά ώστε το ίδιο μείγμα (ίδια αλλεργιογόνα + ίδια ποσοστά)
         // γραμμένο με άλλη σειρά να δίνει το ίδιο κείμενο.
+        // Ο "ασθενής" των παραγγελιών αποθήκης. Στη βάση εμφανίζεται με διάφορες γραφές:
+        // λατινικά ή ελληνικά Α, με ένα ή περισσότερα κενά, ή με κενό στο τέλος.
+        // Γι' αυτό συγκρίνουμε ΧΩΡΙΣ κενά και δεχόμαστε και τους τέσσερις συνδυασμούς.
+        private const string WarehouseAA = "AA";           // λατινικά
+        private const string WarehouseGG = "ΑΑ";  // ελληνικά
+        private const string WarehouseAG = "AΑ";
+        private const string WarehouseGA = "ΑA";
+
+        // Το ίδιο αλλεργιογόνο γράφεται άλλοτε "V-003" και άλλοτε "v-003". Το κλειδί
+        // του στοκ πρέπει να ταιριάζει με τη γραμμή της παραγγελίας ανεξάρτητα από
+        // κεφαλαία/πεζά -- αλλιώς το στοκ δεν κολλάει πουθενά και χάνεται.
+        private sealed class MixKeyComparer : IEqualityComparer<(string Treatment, string Mix)>
+        {
+            public static readonly MixKeyComparer Instance = new();
+
+            public bool Equals((string Treatment, string Mix) a, (string Treatment, string Mix) b) =>
+                string.Equals(a.Treatment, b.Treatment, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(a.Mix, b.Mix, StringComparison.OrdinalIgnoreCase);
+
+            public int GetHashCode((string Treatment, string Mix) key) =>
+                HashCode.Combine(key.Treatment.ToUpperInvariant(), key.Mix.ToUpperInvariant());
+        }
+
         private static string NormalizeMix(string? allergen)
         {
             if (string.IsNullOrWhiteSpace(allergen))
@@ -296,6 +319,9 @@ namespace StallmedManager.Server.Controllers
             var parts = allergen
                 .Split(',')
                 .Select(p => System.Text.RegularExpressions.Regex.Replace(p, @"\s+", " ").Trim())
+                // Οι κωδικοί γράφονται άλλοτε "V-003" και άλλοτε "v-003" -- πάντα κεφαλαία.
+                .Select(p => System.Text.RegularExpressions.Regex.Replace(
+                    p, @"\b[A-Za-z]-\d+\b", m => m.Value.ToUpperInvariant()))
                 .Where(p => p.Length > 0)
                 .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -315,7 +341,12 @@ namespace StallmedManager.Server.Controllers
                             (x.TreatmentDescription.StartsWith("BELTA") ||
                              x.TreatmentDescription.StartsWith("STALORAL")) &&
                             x.Status != "5" &&
-                            x.Patient != "A A");
+                            // Εξαιρούνται οι παραγγελίες αποθήκης, σε όποια γραφή κι αν είναι.
+                            (x.Patient == null ||
+                             (x.Patient.Replace(" ", "") != WarehouseAA &&
+                              x.Patient.Replace(" ", "") != WarehouseGG &&
+                              x.Patient.Replace(" ", "") != WarehouseAG &&
+                              x.Patient.Replace(" ", "") != WarehouseGA)));
 
             if (!string.IsNullOrWhiteSpace(company))
                 query = query.Where(x => x.CompanyID == company);
@@ -327,26 +358,120 @@ namespace StallmedManager.Server.Controllers
                 .Select(x => new { x.TreatmentDescription, x.Allergen, x.QNT })
                 .ToList();
 
-            return raw
-                .GroupBy(x => x.TreatmentDescription!.Trim())
+            // ---- Στοκ: οι παραγγελίες αποθήκης, χωρίς περιορισμό ημερομηνίας ----
+            // Το στοκ είναι τωρινό, δεν αφορά την επιλεγμένη περίοδο. Το φίλτρο γιατρού
+            // επίσης δεν ισχύει εδώ: το στοκ ανήκει στην εταιρεία, όχι σε γιατρό.
+            // ΙΔΙΟ φίλτρο με τη σελίδα Stock: ασθενής αποθήκης + κατάσταση 2/3,
+            // ΧΩΡΙΣ περιορισμό στο είδος. Ο περιορισμός BELTA/STALORAL έκρυβε το στοκ
+            // όταν η περιγραφή του είδους γράφεται διαφορετικά στις γραμμές αποθήκης.
+            var stockQuery = context.WebOrders
+                .Where(x => x.TreatmentDescription != null &&
+                            x.Patient != null &&
+                            (x.Patient.Replace(" ", "") == WarehouseAA ||
+                             x.Patient.Replace(" ", "") == WarehouseGG ||
+                             x.Patient.Replace(" ", "") == WarehouseAG ||
+                             x.Patient.Replace(" ", "") == WarehouseGA) &&
+                            (x.Status == "2" || x.Status == "3"));
+
+            if (!string.IsNullOrWhiteSpace(company))
+                stockQuery = stockQuery.Where(x => x.CompanyID == company);
+
+            var stockRaw = stockQuery
+                .AsNoTracking()
+                .Select(x => new { x.TreatmentDescription, x.Allergen, x.QNT, x.Status })
+                .ToList();
+
+            // Status 3 = Received (είναι εδώ), Status 2 = Manufacturing (αναμένεται)
+            int Here(IEnumerable<dynamic> rows) => rows.Where(r => (string?)r.Status == "3").Sum(r => (int?)r.QNT ?? 0);
+            int Expected(IEnumerable<dynamic> rows) => rows.Where(r => (string?)r.Status == "2").Sum(r => (int?)r.QNT ?? 0);
+
+            // Ο comparer μπαίνει ΚΑΙ στο GroupBy: αλλιώς δύο γραφές του ίδιου μείγματος
+            // θα έδιναν δύο ομάδες και το ToDictionary θα έσκαγε με διπλό κλειδί.
+            var stockByMix = stockRaw
+                .GroupBy(x => (Treatment: x.TreatmentDescription!.Trim(), Mix: NormalizeMix(x.Allergen)),
+                         MixKeyComparer.Instance)
+                .ToDictionary(g => g.Key, g => (Here: Here(g), Expected: Expected(g)), MixKeyComparer.Instance);
+
+            var stockByTreatment = stockRaw
+                .GroupBy(x => x.TreatmentDescription!.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => (Here: Here(g), Expected: Expected(g)), StringComparer.OrdinalIgnoreCase);
+
+            var groups = raw
+                .GroupBy(x => x.TreatmentDescription!.Trim(), StringComparer.OrdinalIgnoreCase)
                 .Select(g => new TreatmentMixGroup
                 {
                     Treatment = g.Key,
                     TotalQNT = g.Sum(x => x.QNT ?? 0),
+                    StockHere = stockByTreatment.TryGetValue(g.Key, out var st) ? st.Here : 0,
+                    StockExpected = stockByTreatment.TryGetValue(g.Key, out var st2) ? st2.Expected : 0,
                     Mixes = g
                         .Select(x => new { Label = NormalizeMix(x.Allergen), x.QNT })
                         .GroupBy(x => x.Label, StringComparer.OrdinalIgnoreCase)
                         .Select(mg => new TreatmentMixRow
                         {
                             Allergen = mg.First().Label,
-                            QNT = mg.Sum(x => x.QNT ?? 0)
+                            QNT = mg.Sum(x => x.QNT ?? 0),
+                            StockHere = stockByMix.TryGetValue((g.Key, mg.First().Label), out var sm) ? sm.Here : 0,
+                            StockExpected = stockByMix.TryGetValue((g.Key, mg.First().Label), out var sm2) ? sm2.Expected : 0
                         })
-                        .OrderByDescending(m => m.QNT)
-                        .ThenBy(m => m.Allergen)
                         .ToList()
                 })
-                .OrderBy(t => t.Treatment)
                 .ToList();
+
+            // Στοκ που δεν αντιστοιχεί σε καμία παραγγελία της περιόδου πρέπει να
+            // φαίνεται κι αυτό -- αλλιώς είδος χωρίς πωλήσεις στο διάστημα (π.χ. STALORAL)
+            // θα εξαφανιζόταν, παρότι υπάρχει στην αποθήκη.
+            foreach (var entry in stockByMix)
+            {
+                var (treatment, mix) = entry.Key;
+
+                var group = groups.FirstOrDefault(x =>
+                    string.Equals(x.Treatment, treatment, StringComparison.OrdinalIgnoreCase));
+
+                if (group == null)
+                {
+                    // Νέο είδος μόνο από στοκ: δεκτό μόνο αν είναι όντως εμβόλιο,
+                    // ώστε να μην μπουν εδώ προϊόντα prick ή αναλώσιμα.
+                    if (!treatment.StartsWith("BELTA", StringComparison.OrdinalIgnoreCase) &&
+                        !treatment.StartsWith("STALORAL", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    group = new TreatmentMixGroup
+                    {
+                        Treatment = treatment,
+                        TotalQNT = 0,
+                        StockHere = stockByTreatment.TryGetValue(treatment, out var tot) ? tot.Here : entry.Value.Here,
+                        StockExpected = stockByTreatment.TryGetValue(treatment, out var tot2) ? tot2.Expected : entry.Value.Expected
+                    };
+                    groups.Add(group);
+                }
+
+                if (!group.Mixes.Any(m => string.Equals(m.Allergen, mix, StringComparison.OrdinalIgnoreCase)))
+                    group.Mixes.Add(new TreatmentMixRow
+                    {
+                        Allergen = mix,
+                        QNT = 0,
+                        StockHere = entry.Value.Here,
+                        StockExpected = entry.Value.Expected
+                    });
+            }
+
+            // Η επικεφαλίδα βγαίνει ΑΠΟ τις γραμμές, όχι χωριστά: ό,τι κι αν συμβεί
+            // παραπάνω, το σύνολο που βλέπει ο χρήστης αθροίζει πάντα τις γραμμές του.
+            foreach (var g in groups)
+            {
+                g.StockHere = g.Mixes.Sum(m => m.StockHere);
+                g.StockExpected = g.Mixes.Sum(m => m.StockExpected);
+            }
+
+            foreach (var g in groups)
+                g.Mixes = g.Mixes
+                    .OrderByDescending(m => m.QNT)
+                    .ThenByDescending(m => m.StockQNT)
+                    .ThenBy(m => m.Allergen)
+                    .ToList();
+
+            return groups.OrderBy(t => t.Treatment).ToList();
         }
 
         [HttpGet("treatment-mix-stats")]

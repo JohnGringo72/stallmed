@@ -27,6 +27,25 @@ namespace StallmedManager.Server.Controllers
             _logger = logger;
         }
 
+        // Ορατότητα θεμάτων ανά χρήστη. Ο έλεγχος γίνεται ΣΤΟΝ SERVER με βάση τη βάση,
+        // όχι με ό,τι δηλώνει ο client. NULL => admin βλέπει όλα, οι υπόλοιποι τα δικά τους.
+        private async Task<bool> SeesAllIssues(int? userId)
+        {
+            if (userId == null || userId <= 0) return false;
+
+            var user = await _context.Users
+                .Where(u => u.IdUser == userId.Value)
+                .Select(u => new { u.Role, u.TasksVisibility })
+                .FirstOrDefaultAsync();
+
+            if (user == null) return false;
+
+            if (string.Equals(user.TasksVisibility?.Trim(), "All", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(user.TasksVisibility?.Trim(), "Own", StringComparison.OrdinalIgnoreCase)) return false;
+
+            return string.Equals(user.Role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
+        }
+
         // ---- Λίστα με προαιρετικά φίλτρα ----
         [HttpGet]
         public async Task<ActionResult<List<IssueListItemDto>>> GetIssues(
@@ -37,6 +56,10 @@ namespace StallmedManager.Server.Controllers
             // Τα αρχειοθετημένα δεν εμφανίζονται, εκτός αν ζητηθούν ρητά.
             if (!includeArchived)
                 query = query.Where(i => i.ArchivedAt == null);
+
+            // Όποιος δεν βλέπει τα πάντα, βλέπει όσα άνοιξε ο ίδιος ή του ανατέθηκαν.
+            if (!await SeesAllIssues(userId))
+                query = query.Where(i => i.CreatedBy == userId || i.AssignedUserID == userId);
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(i => i.Status == status);
             if (regardingUserId.HasValue)
@@ -109,10 +132,17 @@ namespace StallmedManager.Server.Controllers
 
         // ---- Λεπτομέρειες: θέμα + συνομιλία + συνημμένα ----
         [HttpGet("{id:long}")]
-        public async Task<ActionResult<IssueDetailsDto>> GetIssue(long id)
+        public async Task<ActionResult<IssueDetailsDto>> GetIssue(long id, [FromQuery] int? userId)
         {
             var issue = await _context.IssueTasks.FindAsync(id);
             if (issue == null) return NotFound();
+
+            // Χωρίς αυτόν τον έλεγχο, όποιος ήξερε το id θα έβλεπε ξένο θέμα.
+            if (!await SeesAllIssues(userId) &&
+                issue.CreatedBy != userId && issue.AssignedUserID != userId)
+            {
+                return NotFound();
+            }
 
             var comments = await _context.IssueComments
                 .Where(c => c.IssueID == id)
