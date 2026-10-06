@@ -33,6 +33,9 @@ namespace StallmedManager.Client
         public async Task<IssueSaveResult?> AddComment(AddIssueCommentRequest req)
             => await dataService.Post<AddIssueCommentRequest, IssueSaveResult>("api/issues/comments", req);
 
+        public async Task<IssueSaveResult?> DeleteComment(DeleteIssueCommentRequest req)
+            => await dataService.Post<DeleteIssueCommentRequest, IssueSaveResult>("api/issues/comments/delete", req);
+
         public async Task<bool> UploadAttachment(long issueId, byte[] fileBytes, string fileName, int? userId, string? userName)
         {
             var qs = $"?userId={userId}&userName={Uri.EscapeDataString(userName ?? "")}";

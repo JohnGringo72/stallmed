@@ -331,6 +331,19 @@ else
                 <div class="modal-body">
                     <div class="row g-3">
                         <div class="col-lg-5">
+                            @* Προτεραιότητα στο περιεχόμενο: κείμενο πρώτα. Προθεσμίες,
+                               ποιος το άνοιξε κλπ. φαίνονται ήδη στη λίστα -- κρύβονται
+                               εδώ πίσω από το κουμπί «Λεπτομέρειες». *@
+                            @if (!string.IsNullOrWhiteSpace(iss.Description))
+                            {
+                                <div class="border rounded p-2 mb-2" style="white-space:pre-wrap">@iss.Description</div>
+                            }
+                            <button class="btn btn-sm btn-outline-secondary mb-2" @onclick="() => showTaskDetails = !showTaskDetails"
+                                    title="@Hint("Εμφάνιση/απόκρυψη στοιχείων του θέματος (προθεσμία, ανάθεση κλπ.) και ενεργειών")">
+                                @(showTaskDetails ? "▲ Απόκρυψη λεπτομερειών" : "ℹ️ Λεπτομέρειες")
+                            </button>
+                            @if (showTaskDetails)
+                            {
                             <table class="table table-sm mb-2">
                                 <tbody>
                                     <tr><th style="width:130px">Αφορά</th><td>@(string.IsNullOrEmpty(iss.RegardingName) ? "—" : iss.RegardingName)</td></tr>
@@ -341,10 +354,6 @@ else
                                     <tr><th>Τελ. ενημέρωση</th><td>@iss.UpdatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
                                 </tbody>
                             </table>
-                            @if (!string.IsNullOrWhiteSpace(iss.Description))
-                            {
-                                <div class="border rounded p-2 mb-2" style="white-space:pre-wrap">@iss.Description</div>
-                            }
                             <button class="btn btn-sm btn-outline-primary mb-3" @onclick="() => OpenEditFromDetails()">✏️ Επεξεργασία / Αλλαγή στάτους</button>
                             @if (iss.ArchivedAt == null)
                             {
@@ -360,6 +369,7 @@ else
                             {
                                 <button class="btn btn-sm btn-outline-danger mb-3 ms-1" @onclick="() => confirmDeleteIssue = true"
                                         title="@Hint("Οριστική διαγραφή του θέματος μαζί με σχόλια και συνημμένα")">🗑️ Διαγραφή θέματος</button>
+                            }
                             }
                             @if (confirmDeleteIssue)
                             {
@@ -413,7 +423,14 @@ else
                                     <div class="chat-msg @(mine ? "mine" : "")">
                                         <div class="chat-avatar" title="@c.UserName">@Initials(c.UserName)</div>
                                         <div class="chat-bubble">
-                                            <div class="chat-meta">@c.UserName · @c.CreatedAt.ToString("dd/MM/yyyy HH:mm")</div>
+                                            <div class="chat-meta">
+                                                @c.UserName · @c.CreatedAt.ToString("dd/MM/yyyy HH:mm")
+                                                @if (mine)
+                                                {
+                                                    <button class="btn btn-link btn-sm text-danger p-0 ms-1" style="font-size:0.72rem; vertical-align:baseline;"
+                                                            @onclick="() => DeleteComment(c)" title="@Hint("Διαγραφή αυτού του σχολίου (μόνο τα δικά σου)")">🗑</button>
+                                                }
+                                            </div>
                                             <div class="chat-text">@c.CommentText</div>
                                         </div>
                                     </div>
@@ -871,8 +888,13 @@ else
     }
 
     // ---- Λεπτομέρειες / Συνομιλία / Συνημμένα ----
+    // Τα στοιχεία (προθεσμία, ανάθεση κλπ.) ξεκινούν κρυμμένα -- προτεραιότητα
+    // στο κείμενο και τη συνομιλία· ανοίγουν με το κουμπί «Λεπτομέρειες».
+    private bool showTaskDetails = false;
+
     private async Task OpenDetails(long id)
     {
+        showTaskDetails = false;
         details = await Service.GetIssue(id, userManager.User?.IdUser);
 
         // "Το είδα" ανά χρήστη: δεν επηρεάζει τους υπόλοιπους.
@@ -1018,6 +1040,25 @@ else
         var bytes = await Service.DownloadAttachment(att.AttachmentID);
         if (bytes != null && bytes.Length > 0)
             await JS.InvokeVoidAsync("downloadFileFromBytes", att.FileName ?? "attachment", bytes);
+    }
+
+    private async Task DeleteComment(IssueCommentDto c)
+    {
+        if (details == null) return;
+        var ok = await JS.InvokeAsync<bool>("confirm", "Διαγραφή αυτού του σχολίου;");
+        if (!ok) return;
+        var result = await Service.DeleteComment(new DeleteIssueCommentRequest
+        {
+            CommentID = c.CommentID,
+            UserID = userManager.User?.IdUser
+        });
+        if (result != null && !result.Success && !string.IsNullOrEmpty(result.Message))
+        {
+            await JS.InvokeVoidAsync("alert", result.Message);
+            return;
+        }
+        details = await Service.GetIssue(details.Issue.IssueID, userManager.User?.IdUser);
+        await Load();
     }
 
     private async Task DeleteAttachment(IssueAttachmentDto att)

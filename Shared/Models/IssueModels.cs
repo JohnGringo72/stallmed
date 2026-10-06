@@ -153,6 +153,13 @@ namespace StallmedManager.Shared.Models
         public string CommentText { get; set; } = "";
     }
 
+    // ---- Διαγραφή σχολίου (μόνο από τον συντάκτη του) ----
+    public class DeleteIssueCommentRequest
+    {
+        public long CommentID { get; set; }
+        public int? UserID { get; set; }
+    }
+
     public class IssueUserDto
     {
         public int IdUser { get; set; }

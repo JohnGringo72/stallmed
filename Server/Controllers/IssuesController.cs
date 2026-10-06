@@ -500,6 +500,21 @@ namespace StallmedManager.Server.Controllers
             return Ok(new IssueSaveResult { Success = true, IssueID = req.IssueID });
         }
 
+        // ---- Διαγραφή σχολίου: μόνο ο συντάκτης σβήνει το δικό του ----
+        [HttpPost("comments/delete")]
+        public async Task<ActionResult<IssueSaveResult>> DeleteComment([FromBody] DeleteIssueCommentRequest req)
+        {
+            var comment = await _context.IssueComments.FindAsync(req.CommentID);
+            if (comment == null) return NotFound();
+
+            if (comment.UserID == null || !req.UserID.HasValue || comment.UserID != req.UserID)
+                return Ok(new IssueSaveResult { Success = false, Message = "Μόνο ο συντάκτης μπορεί να σβήσει το σχόλιό του." });
+
+            _context.IssueComments.Remove(comment);
+            await _context.SaveChangesAsync();
+            return Ok(new IssueSaveResult { Success = true, IssueID = comment.IssueID });
+        }
+
         // ---- Συνημμένα (ίδιο pattern με QuoteAttachments) ----
         [HttpPost("attachments/{issueId:long}")]
         public async Task<ActionResult> UploadAttachment(long issueId, IFormFile file,

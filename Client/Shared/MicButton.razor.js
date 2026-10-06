@@ -7,6 +7,12 @@ let recognition = null;
 let shouldListen = false;
 let restartTimer = null;
 let consecutiveErrors = 0;
+// Πόσα αποτελέσματα της τρέχουσας συνεδρίας έχουν ήδη σταλεί ως τελικά.
+// Το Android Chrome ξαναστέλνει ΟΛΑ τα προηγούμενα finals σε κάθε event
+// (με resultIndex 0), οπότε χωρίς δικό μας μετρητή το κείμενο διπλογράφεται.
+let finalizedCount = 0;
+let lastFinalSent = "";
+let lastFinalAt = 0;
 
 export function isSupported() {
     return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -25,6 +31,7 @@ function startInternal(dotnetRef, lang) {
     stopRecognition();
 
     recognition = new Recognition();
+    finalizedCount = 0;   // νέα συνεδρία = νέα λίστα αποτελεσμάτων
     recognition.lang = lang || "el-GR";
     recognition.continuous = true;
     // Τα ενδιάμεσα αποτελέσματα δείχνουν ζωντανά τι ακούγεται, ώστε ο χρήστης
@@ -36,13 +43,28 @@ function startInternal(dotnetRef, lang) {
         consecutiveErrors = 0;
         let finalText = "";
         let interimText = "";
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        // Όχι event.resultIndex: στο Android είναι συχνά 0 και ξαναδίνει
+        // όλα τα παλιά finals. Διαβάζουμε μόνο ό,τι δεν έχουμε ήδη στείλει.
+        for (let i = finalizedCount; i < event.results.length; i++) {
             const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) finalText += transcript;
-            else interimText += transcript;
+            if (event.results[i].isFinal) {
+                finalText += transcript;
+                finalizedCount = i + 1;
+            } else {
+                interimText += transcript;
+            }
         }
         finalText = finalText.trim();
-        if (finalText) dotnetRef.invokeMethodAsync("OnSpeechResult", finalText);
+        if (finalText) {
+            // Δεύτερη ασφάλεια: το ίδιο τελικό κείμενο μέσα σε 3" είναι
+            // διπλό event του Android Chrome, όχι επανάληψη του χρήστη.
+            const now = Date.now();
+            if (!(finalText === lastFinalSent && now - lastFinalAt < 3000)) {
+                lastFinalSent = finalText;
+                lastFinalAt = now;
+                dotnetRef.invokeMethodAsync("OnSpeechResult", finalText);
+            }
+        }
         dotnetRef.invokeMethodAsync("OnSpeechInterim", interimText.trim());
     };
 
