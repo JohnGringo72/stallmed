@@ -427,8 +427,8 @@ else
                                                 @c.UserName · @c.CreatedAt.ToString("dd/MM/yyyy HH:mm")
                                                 @if (mine)
                                                 {
-                                                    <button class="btn btn-link btn-sm text-danger p-0 ms-1" style="font-size:0.72rem; vertical-align:baseline;"
-                                                            @onclick="() => DeleteComment(c)" title="@Hint("Διαγραφή αυτού του σχολίου (μόνο τα δικά σου)")">🗑</button>
+                                                    <button class="btn btn-link btn-sm text-danger p-0 ms-2" style="font-size:1.05rem; line-height:1; vertical-align:middle;"
+                                                            @onclick="() => DeleteComment(c)" title="@Hint("Διαγραφή αυτού του σχολίου (μόνο τα δικά σου)")">🗑️</button>
                                                 }
                                             </div>
                                             <div class="chat-text">@c.CommentText</div>
