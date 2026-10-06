@@ -10,6 +10,23 @@
 
 <style>
     .issue-row { cursor: pointer; }
+    /* Αναζητήσιμη λίστα για το «Αφορά» -- οι γιατροί είναι πολλοί για απλό select */
+    .search-menu {
+        position: absolute; z-index: 1056; left: 12px; right: 12px;
+        max-height: 260px; overflow-y: auto;
+        background: #fff; border: 1px solid #ced4da; border-radius: 6px;
+        box-shadow: 0 6px 16px rgba(0,0,0,.15);
+    }
+    .search-group {
+        padding: 4px 12px; font-size: .75rem; font-weight: 700;
+        color: #6c757d; background: #f8f9fa; position: sticky; top: 0;
+    }
+    .search-item {
+        display: block; width: 100%; text-align: left; border: 0; background: none;
+        padding: 6px 12px; font-size: .9rem;
+    }
+    .search-item:hover { background: #e9ecef; }
+    .search-item.active { background: #0d6efd; color: #fff; }
     th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     th.sortable:hover { background: #f1f3f5; }
     .chat-box {
@@ -177,23 +194,43 @@ else
                         </div>
                     </div>
                     <div class="row g-2 mb-2">
-                        <div class="col-md-6">
+                        <div class="col-md-6 position-relative">
                             <label class="form-label mb-1">Αφορά (υπάλληλο / γιατρό)</label>
-                            <select class="form-select" @bind="editRegardingKey">
-                                <option value="">— επιλογή —</option>
-                                <optgroup label="Πωλητές / Υπάλληλοι">
-                                    @foreach (var u in users)
+                            <div class="input-group">
+                                <input class="form-control" placeholder="Γράψε όνομα για αναζήτηση…"
+                                       value="@(regardingOpen ? regardingSearch : RegardingLabel())"
+                                       @oninput="OnRegardingInput"
+                                       @onfocus="OpenRegarding"
+                                       @onblur="CloseRegarding" />
+                                @if (!string.IsNullOrEmpty(editRegardingKey))
+                                {
+                                    <button class="btn btn-outline-secondary" type="button"
+                                            title="Καθαρισμός" @onclick="ClearRegarding">✕</button>
+                                }
+                            </div>
+                            @if (regardingOpen)
+                            {
+                                var opts = FilteredRegarding();
+                                var lastGroup = "";
+                                <div class="search-menu">
+                                    @if (opts.Count == 0)
                                     {
-                                        <option value="@($"u:{u.IdUser}")">@u.FullName@(string.IsNullOrEmpty(u.Role) ? "" : $" ({u.Role})")</option>
+                                        <div class="px-3 py-2 text-muted small">Δεν βρέθηκε κανείς</div>
                                     }
-                                </optgroup>
-                                <optgroup label="Γιατροί">
-                                    @foreach (var d in doctors)
+                                    @foreach (var o in opts)
                                     {
-                                        <option value="@($"d:{d.DoctorID}")">@d.FullName</option>
+                                        if (o.Group != lastGroup)
+                                        {
+                                            lastGroup = o.Group;
+                                            <div class="search-group">@o.Group</div>
+                                        }
+                                        <button type="button"
+                                                class="search-item @(o.Key == editRegardingKey ? "active" : "")"
+                                                @onmousedown:preventDefault="true"
+                                                @onmousedown="@(() => PickRegarding(o))">@o.Label</button>
                                     }
-                                </optgroup>
-                            </select>
+                                </div>
+                            }
                         </div>
                         <div class="col-md-6">
                             <label class="form-label mb-1">Ανάθεση σε</label>
@@ -492,6 +529,9 @@ else
     // για γιατρό. Ο γιατρός αποθηκεύεται μόνο ως όνομα (RegardingName snapshot,
     // RegardingUserID = null), όπως προβλέπει το σχήμα του issues_module.sql.
     private string editRegardingKey = "";
+    // Αναζήτηση στο «Αφορά»: οι γιατροί είναι εκατοντάδες, δεν βρίσκονται με scroll.
+    private string regardingSearch = "";
+    private bool regardingOpen;
     private int? editAssignedUserId;
     private string editPriority = "Normal";
     private string editStatus = "Open";
@@ -666,6 +706,82 @@ else
         editDueDate = iss.DueDate;
         editMessage = "";
         showEdit = true;
+    }
+
+    // ---- Αναζήτηση στο «Αφορά» ----
+
+    private record RegardingOption(string Key, string Label, string Group);
+
+    private static string UserLabel(IssueUserDto u) =>
+        string.IsNullOrEmpty(u.Role) ? u.FullName : $"{u.FullName} ({u.Role})";
+
+    // Ο τόνος δεν πρέπει να εμποδίζει την εύρεση: «Γιαννης» βρίσκει «Γιάννης».
+    private static string SearchKey(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        var sb = new System.Text.StringBuilder(text.Length);
+        foreach (var ch in text.Normalize(System.Text.NormalizationForm.FormD))
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch)
+                != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(char.ToUpperInvariant(ch));
+        return sb.ToString();
+    }
+
+    private IEnumerable<RegardingOption> AllRegardingOptions()
+    {
+        foreach (var u in users)
+            yield return new RegardingOption($"u:{u.IdUser}", UserLabel(u), "Πωλητές / Υπάλληλοι");
+        foreach (var d in doctors)
+            yield return new RegardingOption($"d:{d.DoctorID}", d.FullName, "Γιατροί");
+    }
+
+    private List<RegardingOption> FilteredRegarding()
+    {
+        var options = AllRegardingOptions();
+        var needle = SearchKey(regardingSearch);
+        if (needle.Length > 0)
+            options = options.Where(o => SearchKey(o.Label).Contains(needle));
+        // Αρκετά για να βρεθεί κάποιος, χωρίς να γεμίσει η οθόνη
+        return options.Take(60).ToList();
+    }
+
+    private string RegardingLabel()
+    {
+        var (_, name) = ResolveRegarding();
+        if (editRegardingKey.StartsWith("u:") && int.TryParse(editRegardingKey[2..], out var uid))
+        {
+            var u = users.FirstOrDefault(x => x.IdUser == uid);
+            if (u != null) return UserLabel(u);
+        }
+        return name ?? "";
+    }
+
+    private void OpenRegarding()
+    {
+        regardingSearch = "";
+        regardingOpen = true;
+    }
+
+    private void CloseRegarding() => regardingOpen = false;
+
+    private void OnRegardingInput(ChangeEventArgs e)
+    {
+        regardingSearch = e.Value?.ToString() ?? "";
+        regardingOpen = true;
+    }
+
+    private void PickRegarding(RegardingOption option)
+    {
+        editRegardingKey = option.Key;
+        regardingSearch = "";
+        regardingOpen = false;
+    }
+
+    private void ClearRegarding()
+    {
+        editRegardingKey = "";
+        regardingSearch = "";
+        regardingOpen = false;
     }
 
     private (int? userId, string? name) ResolveRegarding()
