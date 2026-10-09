@@ -13,6 +13,10 @@ let consecutiveErrors = 0;
 let finalizedCount = 0;
 let lastFinalSent = "";
 let lastFinalAt = 0;
+// Ό,τι τελικό κείμενο έχει σταλεί στην τρέχουσα συνεδρία. Σε πολλά Android
+// κάθε νέο "τελικό" αποτέλεσμα περιέχει ΟΛΗ τη φράση από την αρχή (όχι μόνο
+// τα νέα λόγια) -- με αυτό κόβουμε το ήδη σταλμένο πρόθεμα.
+let sessionText = "";
 
 export function isSupported() {
     return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -32,6 +36,7 @@ function startInternal(dotnetRef, lang) {
 
     recognition = new Recognition();
     finalizedCount = 0;   // νέα συνεδρία = νέα λίστα αποτελεσμάτων
+    sessionText = "";
     recognition.lang = lang || "el-GR";
     recognition.continuous = true;
     // Τα ενδιάμεσα αποτελέσματα δείχνουν ζωντανά τι ακούγεται, ώστε ο χρήστης
@@ -56,13 +61,22 @@ function startInternal(dotnetRef, lang) {
         }
         finalText = finalText.trim();
         if (finalText) {
+            let toSend = finalText;
+            // Android: το νέο τελικό ξαναπεριέχει όλη τη φράση -- στέλνεται
+            // μόνο η συνέχεια, όχι ξανά το κομμάτι που έχει ήδη γραφτεί.
+            if (sessionText && finalText.startsWith(sessionText)) {
+                toSend = finalText.slice(sessionText.length).trim();
+                sessionText = finalText;
+            } else {
+                sessionText = sessionText ? sessionText + " " + finalText : finalText;
+            }
             // Δεύτερη ασφάλεια: το ίδιο τελικό κείμενο μέσα σε 3" είναι
             // διπλό event του Android Chrome, όχι επανάληψη του χρήστη.
             const now = Date.now();
-            if (!(finalText === lastFinalSent && now - lastFinalAt < 3000)) {
-                lastFinalSent = finalText;
+            if (toSend && !(toSend === lastFinalSent && now - lastFinalAt < 3000)) {
+                lastFinalSent = toSend;
                 lastFinalAt = now;
-                dotnetRef.invokeMethodAsync("OnSpeechResult", finalText);
+                dotnetRef.invokeMethodAsync("OnSpeechResult", toSend);
             }
         }
         dotnetRef.invokeMethodAsync("OnSpeechInterim", interimText.trim());

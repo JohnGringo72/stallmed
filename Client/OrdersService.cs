@@ -75,10 +75,11 @@ namespace StallmedManager.Client
         }
 
         public async Task<byte[]> DownloadTreatmentMixStatsExcel(DateTime fromDate, DateTime toDate, string company,
-                                                                 string? doctor = null)
+                                                                 string? doctor = null, int securityMonths = 3)
         {
             return await dataService.GetBytes(
-                TreatmentMixUrl("treatment-mix-stats-excel", fromDate, toDate, company, doctor));
+                TreatmentMixUrl("treatment-mix-stats-excel", fromDate, toDate, company, doctor)
+                + $"&securityMonths={securityMonths}");
         }
 
         private static string TreatmentMixUrl(string action, DateTime fromDate, DateTime toDate, string company,

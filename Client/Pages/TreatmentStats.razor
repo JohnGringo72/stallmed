@@ -96,6 +96,14 @@
             <span class="ms-3">Εδώ: <strong>@groups.Sum(g => g.StockHere)</strong></span>
             <span class="ms-3">Αναμένονται: <strong>@groups.Sum(g => g.StockExpected)</strong></span>
             <span class="ms-3">Μ.Ο.: <strong>@MonthlyAverage(groups.Sum(g => g.TotalQNT))</strong>/μήνα (@Math.Round(MonthsInPeriod, MidpointRounding.AwayFromZero).ToString("0") μήνες)</span>
+            <span class="ms-3">
+                Ασφαλείας: <strong class="text-danger">@groups.Sum(GroupSecurityStock)</strong>
+                για
+                <input type="number" class="form-control form-control-sm d-inline-block months-input"
+                       min="1" max="24" value="@securityMonths" @onchange="OnSecurityMonthsChanged"
+                       title="@Hint("Για πόσους μήνες θέλουμε κάλυψη")" />
+                μήνες
+            </span>
             @if (!string.IsNullOrWhiteSpace(selectedDoctor))
             {
                 <span class="ms-3">
@@ -124,6 +132,13 @@
                         </span>
                     }
                     <span class="mix-count">Μ.Ο. @MonthlyAverage(g.TotalQNT)/μήνα</span>
+                    @{ var groupNeed = GroupSecurityStock(g); }
+                    @if (groupNeed > 0)
+                    {
+                        <span class="mix-need" title="Σύνολο όσων λείπουν για @securityMonths μήνες">
+                            Ασφαλείας @groupNeed
+                        </span>
+                    }
                     <span class="mix-total">@g.TotalQNT</span>
                 </div>
                 @if (isOpen)
@@ -135,6 +150,7 @@
                             <th class="text-end col-qnt">Ποσότητα</th>
                             <th class="text-end col-qnt" title="Μέσος όρος ανά μήνα για την επιλεγμένη περίοδο">Μ.Ο./μήνα</th>
                             <th class="text-end col-qnt" title="Πόσα υπάρχουν εδώ -- σε παρένθεση όσα αναμένονται">Εδώ (αναμ.)</th>
+                            <th class="text-end col-qnt" title="Μ.Ο./μήνα × @securityMonths μήνες μείον ό,τι ήδη έχουμε (εδώ + αναμενόμενα)">Ασφαλείας</th>
                             <th class="col-share">%</th>
                         </tr>
                     </thead>
@@ -148,6 +164,11 @@
                                 <td class="text-end col-qnt text-muted">@MonthlyAverage(m.QNT)</td>
                                 <td class="text-end col-qnt @(m.StockHere > 0 ? "text-success fw-bold" : "text-muted")">
                                     @m.StockHere@(m.StockExpected > 0 ? $" ({m.StockExpected})" : "")
+                                </td>
+                                @{ var need = SecurityStock(m.QNT, m.StockHere, m.StockExpected); }
+                                <td class="text-end col-qnt @(need > 0 ? "text-danger fw-bold" : "text-muted")"
+                                    title="@(need > 0 ? $"Λείπουν {need} για {securityMonths} μήνες" : "Το απόθεμα επαρκεί")">
+                                    @(need > 0 ? need.ToString() : "—")
                                 </td>
                                 <td class="col-share">
                                     <div class="share-wrap">
@@ -204,6 +225,19 @@
         padding: 2px 10px;
         white-space: nowrap;
     }
+
+    /* Πόσα λείπουν για την κάλυψη -- κόκκινο, ξεχωρίζει από το πράσινο απόθεμα */
+    .mix-need {
+        font-size: 0.78rem;
+        color: #fff;
+        background: #dc2626;
+        border-radius: 12px;
+        padding: 2px 10px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .months-input { width: 64px; padding: 1px 6px; height: auto; }
 
     .filter-card {
         background: #fff; border: 1px solid #e2e8f0;
@@ -308,8 +342,30 @@
     }
 
     // Χωρίς δεκαδικά: στρογγυλοποίηση στον πλησιέστερο ακέραιο.
-    private string MonthlyAverage(int total) =>
-        Math.Round(total / MonthsInPeriod, MidpointRounding.AwayFromZero).ToString("0");
+    private int MonthlyAverageValue(int total) =>
+        (int)Math.Round(total / MonthsInPeriod, MidpointRounding.AwayFromZero);
+
+    private string MonthlyAverage(int total) => MonthlyAverageValue(total).ToString("0");
+
+    // Απόθεμα ασφαλείας: πόσα λείπουν για να καλυφθούν οι επόμενοι μήνες.
+    // Μ.Ο./μήνα × μήνες − ό,τι ήδη έχουμε (εδώ + αναμενόμενα).
+    // Χρησιμοποιεί τον στρογγυλοποιημένο Μ.Ο. που βλέπει ο χρήστης, ώστε να
+    // μπορεί να επαληθεύσει το νούμερο με το μάτι.
+    private int securityMonths = 3;
+
+    private int SecurityStock(int total, int stockHere, int stockExpected) =>
+        MonthlyAverageValue(total) * securityMonths - (stockHere + stockExpected);
+
+    // Το σύνολο του είδους βγαίνει από τις γραμμές του -- η παραγγελία γίνεται
+    // ανά μείγμα, οπότε τα πλεονάσματα ενός μείγματος δεν καλύπτουν άλλο.
+    private int GroupSecurityStock(TreatmentMixGroup g) =>
+        g.Mixes.Sum(m => Math.Max(0, SecurityStock(m.QNT, m.StockHere, m.StockExpected)));
+
+    private void OnSecurityMonthsChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var months))
+            securityMonths = Math.Clamp(months, 1, 24);
+    }
 
     private void ToggleTreatment(string treatment)
     {
@@ -380,7 +436,7 @@
     {
         isExporting = true;
         errorMessage = "";
-        var bytes = await new OrdersService(dataService).DownloadTreatmentMixStatsExcel(fromDate, toDate, selectedCompany, selectedDoctor);
+        var bytes = await new OrdersService(dataService).DownloadTreatmentMixStatsExcel(fromDate, toDate, selectedCompany, selectedDoctor, securityMonths);
         isExporting = false;
 
         if (bytes == null)

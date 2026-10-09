@@ -491,24 +491,35 @@ namespace StallmedManager.Server.Controllers
             [FromQuery] DateTime fromDate,
             [FromQuery] DateTime toDate,
             [FromQuery] string? company,
-            [FromQuery] string? doctor)
+            [FromQuery] string? doctor,
+            [FromQuery] int securityMonths = 3)
         {
             var groups = BuildTreatmentMixStats(fromDate, toDate, company, doctor);
             var companyLabel = company == "1" ? "SM" : company == "2" ? "BM" : "SM + BM";
             var doctorLabel = string.IsNullOrWhiteSpace(doctor) ? "" : $"  --  {doctor}";
 
+            // Ίδιοι υπολογισμοί με την οθόνη: ο μήνας είναι 30,44 ημέρες και ο Μ.Ο.
+            // στρογγυλοποιείται ΠΡΙΝ πολλαπλασιαστεί, ώστε τα νούμερα να συμφωνούν.
+            var months = Math.Max(((toDate.Date - fromDate.Date).TotalDays + 1) / 30.44, 1d);
+            var coverMonths = Math.Clamp(securityMonths, 1, 24);
+            int Avg(int total) => (int)Math.Round(total / months, MidpointRounding.AwayFromZero);
+            int Need(int total, int here, int expected) =>
+                Math.Max(0, Avg(total) * coverMonths - (here + expected));
+
             using var workbook = new XLWorkbook();
             var ws = workbook.Worksheets.Add("Μείγματα ανά είδος");
 
+            const int lastCol = 7;
+
             // ── ΤΙΤΛΟΣ ──
-            ws.Cell(1, 1).Value = $"Μείγματα ανά είδος ({companyLabel})  {fromDate:dd/MM/yyyy} - {toDate:dd/MM/yyyy}{doctorLabel}";
-            ws.Range(1, 1, 1, 3).Merge();
+            ws.Cell(1, 1).Value = $"Μείγματα ανά είδος ({companyLabel})  {fromDate:dd/MM/yyyy} - {toDate:dd/MM/yyyy}{doctorLabel}  --  απόθεμα ασφαλείας για {coverMonths} μήνες";
+            ws.Range(1, 1, 1, lastCol).Merge();
             ws.Cell(1, 1).Style.Font.Bold = true;
             ws.Cell(1, 1).Style.Font.FontSize = 13;
 
             // ── HEADERS ──
             const int headerRow = 3;
-            var headers = new[] { "ΕΙΔΟΣ", "ΜΕΙΓΜΑ", "ΠΟΣΟΤΗΤΑ" };
+            var headers = new[] { "ΕΙΔΟΣ", "ΜΕΙΓΜΑ", "ΠΟΣΟΤΗΤΑ", "Μ.Ο./ΜΗΝΑ", "ΕΔΩ", "ΑΝΑΜΕΝΟΝΤΑΙ", "ΑΣΦΑΛΕΙΑΣ" };
             for (int i = 0; i < headers.Length; i++)
             {
                 var cell = ws.Cell(headerRow, i + 1);
@@ -526,10 +537,20 @@ namespace StallmedManager.Server.Controllers
                 int alt = 0;
                 foreach (var m in g.Mixes)
                 {
+                    var need = Need(m.QNT, m.StockHere, m.StockExpected);
                     ws.Cell(row, 1).Value = g.Treatment;
                     ws.Cell(row, 2).Value = m.Allergen;
                     ws.Cell(row, 3).Value = m.QNT;
-                    ws.Range(row, 1, row, 3).Style.Fill.BackgroundColor = alt++ % 2 == 0
+                    ws.Cell(row, 4).Value = Avg(m.QNT);
+                    ws.Cell(row, 5).Value = m.StockHere;
+                    ws.Cell(row, 6).Value = m.StockExpected;
+                    ws.Cell(row, 7).Value = need;
+                    if (need > 0)
+                    {
+                        ws.Cell(row, 7).Style.Font.Bold = true;
+                        ws.Cell(row, 7).Style.Font.FontColor = XLColor.FromHtml("#C00000");
+                    }
+                    ws.Range(row, 1, row, lastCol).Style.Fill.BackgroundColor = alt++ % 2 == 0
                         ? XLColor.White
                         : XLColor.FromHtml("#EBF3FB");
                     row++;
@@ -540,7 +561,11 @@ namespace StallmedManager.Server.Controllers
                 ws.Cell(row, 1).Value = $"Σύνολο {g.Treatment}";
                 ws.Cell(row, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 ws.Cell(row, 3).Value = g.TotalQNT;
-                var subRange = ws.Range(row, 1, row, 3);
+                ws.Cell(row, 4).Value = Avg(g.TotalQNT);
+                ws.Cell(row, 5).Value = g.StockHere;
+                ws.Cell(row, 6).Value = g.StockExpected;
+                ws.Cell(row, 7).Value = g.Mixes.Sum(m => Need(m.QNT, m.StockHere, m.StockExpected));
+                var subRange = ws.Range(row, 1, row, lastCol);
                 subRange.Style.Font.Bold = true;
                 subRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#D6E4F0");
                 row++;
@@ -551,23 +576,28 @@ namespace StallmedManager.Server.Controllers
             ws.Cell(row, 1).Value = "ΓΕΝΙΚΟ ΣΥΝΟΛΟ";
             ws.Cell(row, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             ws.Cell(row, 3).Value = groups.Sum(g => g.TotalQNT);
-            var totalRange = ws.Range(row, 1, row, 3);
+            ws.Cell(row, 4).Value = Avg(groups.Sum(g => g.TotalQNT));
+            ws.Cell(row, 5).Value = groups.Sum(g => g.StockHere);
+            ws.Cell(row, 6).Value = groups.Sum(g => g.StockExpected);
+            ws.Cell(row, 7).Value = groups.Sum(g => g.Mixes.Sum(m => Need(m.QNT, m.StockHere, m.StockExpected)));
+            var totalRange = ws.Range(row, 1, row, lastCol);
             totalRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#2E75B6");
             totalRange.Style.Font.FontColor = XLColor.White;
             totalRange.Style.Font.Bold = true;
 
             // ── ΓΡΑΜΜΑΤΟΣΕΙΡΑ / ΣΤΟΙΧΙΣΗ / BORDERS ──
-            ws.Range(1, 1, row, 3).Style.Font.FontName = "Arial";
-            ws.Range(headerRow + 1, 3, row, 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Range(headerRow, 1, row, 3).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            ws.Range(headerRow, 1, row, 3).Style.Border.InsideBorder = XLBorderStyleValues.Hair;
+            ws.Range(1, 1, row, lastCol).Style.Font.FontName = "Arial";
+            ws.Range(headerRow + 1, 3, row, lastCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(headerRow, 1, row, lastCol).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Range(headerRow, 1, row, lastCol).Style.Border.InsideBorder = XLBorderStyleValues.Hair;
 
             // ── COLUMN WIDTHS ──
-            ws.Columns(1, 3).AdjustToContents(headerRow, row);
+            ws.Columns(1, lastCol).AdjustToContents(headerRow, row);
             ws.Column(1).Width = Math.Min(Math.Max(ws.Column(1).Width, 30), 60);
             ws.Column(2).Width = Math.Min(Math.Max(ws.Column(2).Width, 30), 80);
             ws.Column(2).Style.Alignment.WrapText = true;
-            ws.Column(3).Width = Math.Max(ws.Column(3).Width, 12);
+            for (int c = 3; c <= lastCol; c++)
+                ws.Column(c).Width = Math.Max(ws.Column(c).Width, 12);
 
             ws.SheetView.FreezeRows(headerRow);
 
