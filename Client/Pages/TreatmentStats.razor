@@ -1,4 +1,4 @@
-@page "/treatment-stats"
+﻿@page "/treatment-stats"
 @using System.Globalization
 @using StallmedManager.Shared.Models
 @inject DataService dataService
@@ -100,9 +100,9 @@
                 Ασφαλείας: <strong class="text-danger">@groups.Sum(GroupSecurityStock)</strong>
                 για
                 <input type="number" class="form-control form-control-sm d-inline-block months-input"
-                       min="1" max="24" value="@securityMonths" @onchange="OnSecurityMonthsChanged"
-                       title="@Hint("Για πόσους μήνες θέλουμε κάλυψη")" />
-                μήνες
+                       min="1" max="730" step="1" value="@securityDays" @onchange="OnSecurityDaysChanged"
+                       title="@Hint("Για πόσες ημέρες θέλουμε κάλυψη -- π.χ. 90 για ένα τρίμηνο")" />
+                ημέρες <span class="text-muted">(≈@SecurityMonthsLabel μήνες)</span>
             </span>
             @if (!string.IsNullOrWhiteSpace(selectedDoctor))
             {
@@ -135,7 +135,7 @@
                     @{ var groupNeed = GroupSecurityStock(g); }
                     @if (groupNeed > 0)
                     {
-                        <span class="mix-need" title="Σύνολο όσων λείπουν για @securityMonths μήνες">
+                        <span class="mix-need" title="Σύνολο όσων λείπουν για @securityDays ημέρες">
                             Ασφαλείας @groupNeed
                         </span>
                     }
@@ -150,7 +150,7 @@
                             <th class="text-end col-qnt">Ποσότητα</th>
                             <th class="text-end col-qnt" title="Μέσος όρος ανά μήνα για την επιλεγμένη περίοδο">Μ.Ο./μήνα</th>
                             <th class="text-end col-qnt" title="Πόσα υπάρχουν εδώ -- σε παρένθεση όσα αναμένονται">Εδώ (αναμ.)</th>
-                            <th class="text-end col-qnt" title="Μ.Ο./μήνα × @securityMonths μήνες μείον ό,τι ήδη έχουμε (εδώ + αναμενόμενα)">Ασφαλείας</th>
+                            <th class="text-end col-qnt" title="Ημερήσιος ρυθμός × @securityDays ημέρες μείον ό,τι ήδη έχουμε (εδώ + αναμενόμενα)">Ασφαλείας</th>
                             <th class="col-share">%</th>
                         </tr>
                     </thead>
@@ -167,7 +167,7 @@
                                 </td>
                                 @{ var need = SecurityStock(m.QNT, m.StockHere, m.StockExpected); }
                                 <td class="text-end col-qnt @(need > 0 ? "text-danger fw-bold" : "text-muted")"
-                                    title="@(need > 0 ? $"Λείπουν {need} για {securityMonths} μήνες" : "Το απόθεμα επαρκεί")">
+                                    title="@(need > 0 ? $"Λείπουν {need} για {securityDays} ημέρες" : "Το απόθεμα επαρκεί")">
                                     @(need > 0 ? need.ToString() : "—")
                                 </td>
                                 <td class="col-share">
@@ -347,24 +347,30 @@
 
     private string MonthlyAverage(int total) => MonthlyAverageValue(total).ToString("0");
 
-    // Απόθεμα ασφαλείας: πόσα λείπουν για να καλυφθούν οι επόμενοι μήνες.
-    // Μ.Ο./μήνα × μήνες − ό,τι ήδη έχουμε (εδώ + αναμενόμενα).
-    // Χρησιμοποιεί τον στρογγυλοποιημένο Μ.Ο. που βλέπει ο χρήστης, ώστε να
-    // μπορεί να επαληθεύσει το νούμερο με το μάτι.
-    private int securityMonths = 3;
+    // Απόθεμα ασφαλείας: πόσα λείπουν για να καλυφθούν οι επόμενες ημέρες.
+    // Ημερήσιος ρυθμός × ημέρες κάλυψης − ό,τι ήδη έχουμε (εδώ + αναμενόμενα).
+    // Με ημέρες αντί για μήνες ο υπολογισμός δεν εξαρτάται από το μήκος του μήνα:
+    // 90 ημέρες σημαίνουν ακριβώς 90 ημέρες κατανάλωσης.
+    private int securityDays = 90;
+
+    private double DaysInPeriod => Math.Max((toDate.Date - fromDate.Date).TotalDays + 1, 1d);
+
+    private string SecurityMonthsLabel =>
+        Math.Round(securityDays / 30.44, 1).ToString("0.#", CultureInfo.InvariantCulture);
 
     private int SecurityStock(int total, int stockHere, int stockExpected) =>
-        MonthlyAverageValue(total) * securityMonths - (stockHere + stockExpected);
+        (int)Math.Round(total / DaysInPeriod * securityDays, MidpointRounding.AwayFromZero)
+        - (stockHere + stockExpected);
 
     // Το σύνολο του είδους βγαίνει από τις γραμμές του -- η παραγγελία γίνεται
     // ανά μείγμα, οπότε τα πλεονάσματα ενός μείγματος δεν καλύπτουν άλλο.
     private int GroupSecurityStock(TreatmentMixGroup g) =>
         g.Mixes.Sum(m => Math.Max(0, SecurityStock(m.QNT, m.StockHere, m.StockExpected)));
 
-    private void OnSecurityMonthsChanged(ChangeEventArgs e)
+    private void OnSecurityDaysChanged(ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out var months))
-            securityMonths = Math.Clamp(months, 1, 24);
+        if (int.TryParse(e.Value?.ToString(), out var days))
+            securityDays = Math.Clamp(days, 1, 730);
     }
 
     private void ToggleTreatment(string treatment)
@@ -436,7 +442,7 @@
     {
         isExporting = true;
         errorMessage = "";
-        var bytes = await new OrdersService(dataService).DownloadTreatmentMixStatsExcel(fromDate, toDate, selectedCompany, selectedDoctor, securityMonths);
+        var bytes = await new OrdersService(dataService).DownloadTreatmentMixStatsExcel(fromDate, toDate, selectedCompany, selectedDoctor, securityDays);
         isExporting = false;
 
         if (bytes == null)

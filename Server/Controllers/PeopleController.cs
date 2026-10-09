@@ -311,6 +311,20 @@ namespace StallmedManager.Server.Controllers
                 HashCode.Combine(key.Treatment.ToUpperInvariant(), key.Mix.ToUpperInvariant());
         }
 
+        // Οι κωδικοί μέσα στο κείμενο του μείγματος, π.χ. "P-012 Olive 50, P-093 5 mix
+        // grasses 50" -> "P-012, P-093". Η Belta έχει πολλά αλλεργιογόνα ανά θεραπεία,
+        // η Stallmedicals συνήθως ένα -- και τα Staloral κανένα, οπότε βγαίνει κενό.
+        private static readonly System.Text.RegularExpressions.Regex AllergenCodePattern =
+            new(@"\b[A-Z]-\d+\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private static string ExtractAllergenCodes(string? mixLabel)
+        {
+            if (string.IsNullOrWhiteSpace(mixLabel)) return "";
+            return string.Join(", ", AllergenCodePattern.Matches(mixLabel)
+                .Select(m => m.Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+
         private static string NormalizeMix(string? allergen)
         {
             if (string.IsNullOrWhiteSpace(allergen))
@@ -338,8 +352,10 @@ namespace StallmedManager.Server.Controllers
             var query = context.WebOrders
                 .Where(x => x.Ordered >= fromDate && x.Ordered < toExclusive &&
                             x.TreatmentDescription != null &&
-                            (x.TreatmentDescription.StartsWith("BELTA") ||
-                             x.TreatmentDescription.StartsWith("STALORAL")) &&
+                            // Ρητά ανεξάρτητο από κεφαλαία/πεζά: η βάση γράφει άλλοτε
+                            // "STALORAL 300" και άλλοτε "Staloral 300 (MT)".
+                            (x.TreatmentDescription.ToUpper().StartsWith("BELTA") ||
+                             x.TreatmentDescription.ToUpper().StartsWith("STALORAL")) &&
                             x.Status != "5" &&
                             // Εξαιρούνται οι παραγγελίες αποθήκης, σε όποια γραφή κι αν είναι.
                             (x.Patient == null ||
@@ -355,7 +371,7 @@ namespace StallmedManager.Server.Controllers
                 query = query.Where(x => x.Doctor == doctor);
 
             var raw = query
-                .Select(x => new { x.TreatmentDescription, x.Allergen, x.QNT })
+                .Select(x => new { x.TreatmentDescription, x.TreatmentID, x.Allergen, x.QNT })
                 .ToList();
 
             // ---- Στοκ: οι παραγγελίες αποθήκης, χωρίς περιορισμό ημερομηνίας ----
@@ -378,8 +394,26 @@ namespace StallmedManager.Server.Controllers
 
             var stockRaw = stockQuery
                 .AsNoTracking()
-                .Select(x => new { x.TreatmentDescription, x.Allergen, x.QNT, x.Status })
+                .Select(x => new { x.TreatmentDescription, x.TreatmentID, x.Allergen, x.QNT, x.Status })
                 .ToList();
+
+            // Κωδικός σκευάσματος ανά όνομα είδους. Μαζεύεται και από τις παραγγελίες
+            // και από την αποθήκη, ώστε να υπάρχει και σε είδη που έχουν μόνο στοκ.
+            var treatmentCodes = raw
+                .Select(x => new { x.TreatmentDescription, x.TreatmentID })
+                .Concat(stockRaw.Select(x => new { x.TreatmentDescription, x.TreatmentID }))
+                .Where(x => x.TreatmentDescription != null)
+                .GroupBy(x => x.TreatmentDescription!.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => string.Join("/", g.Select(x => x.TreatmentID?.Trim())
+                                           .Where(c => !string.IsNullOrEmpty(c))
+                                           .Distinct()
+                                           .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)),
+                    StringComparer.OrdinalIgnoreCase);
+
+            string CodeFor(string treatment) =>
+                treatmentCodes.TryGetValue(treatment, out var code) ? code : "";
 
             // Status 3 = Received (είναι εδώ), Status 2 = Manufacturing (αναμένεται)
             int Here(IEnumerable<dynamic> rows) => rows.Where(r => (string?)r.Status == "3").Sum(r => (int?)r.QNT ?? 0);
@@ -401,6 +435,7 @@ namespace StallmedManager.Server.Controllers
                 .Select(g => new TreatmentMixGroup
                 {
                     Treatment = g.Key,
+                    TreatmentCode = CodeFor(g.Key),
                     TotalQNT = g.Sum(x => x.QNT ?? 0),
                     StockHere = stockByTreatment.TryGetValue(g.Key, out var st) ? st.Here : 0,
                     StockExpected = stockByTreatment.TryGetValue(g.Key, out var st2) ? st2.Expected : 0,
@@ -410,6 +445,7 @@ namespace StallmedManager.Server.Controllers
                         .Select(mg => new TreatmentMixRow
                         {
                             Allergen = mg.First().Label,
+                            AllergenCodes = ExtractAllergenCodes(mg.First().Label),
                             QNT = mg.Sum(x => x.QNT ?? 0),
                             StockHere = stockByMix.TryGetValue((g.Key, mg.First().Label), out var sm) ? sm.Here : 0,
                             StockExpected = stockByMix.TryGetValue((g.Key, mg.First().Label), out var sm2) ? sm2.Expected : 0
@@ -439,6 +475,7 @@ namespace StallmedManager.Server.Controllers
                     group = new TreatmentMixGroup
                     {
                         Treatment = treatment,
+                        TreatmentCode = CodeFor(treatment),
                         TotalQNT = 0,
                         StockHere = stockByTreatment.TryGetValue(treatment, out var tot) ? tot.Here : entry.Value.Here,
                         StockExpected = stockByTreatment.TryGetValue(treatment, out var tot2) ? tot2.Expected : entry.Value.Expected
@@ -450,6 +487,7 @@ namespace StallmedManager.Server.Controllers
                     group.Mixes.Add(new TreatmentMixRow
                     {
                         Allergen = mix,
+                        AllergenCodes = ExtractAllergenCodes(mix),
                         QNT = 0,
                         StockHere = entry.Value.Here,
                         StockExpected = entry.Value.Expected
@@ -492,34 +530,38 @@ namespace StallmedManager.Server.Controllers
             [FromQuery] DateTime toDate,
             [FromQuery] string? company,
             [FromQuery] string? doctor,
-            [FromQuery] int securityMonths = 3)
+            [FromQuery] int securityDays = 90)
         {
             var groups = BuildTreatmentMixStats(fromDate, toDate, company, doctor);
             var companyLabel = company == "1" ? "SM" : company == "2" ? "BM" : "SM + BM";
             var doctorLabel = string.IsNullOrWhiteSpace(doctor) ? "" : $"  --  {doctor}";
 
-            // Ίδιοι υπολογισμοί με την οθόνη: ο μήνας είναι 30,44 ημέρες και ο Μ.Ο.
-            // στρογγυλοποιείται ΠΡΙΝ πολλαπλασιαστεί, ώστε τα νούμερα να συμφωνούν.
-            var months = Math.Max(((toDate.Date - fromDate.Date).TotalDays + 1) / 30.44, 1d);
-            var coverMonths = Math.Clamp(securityMonths, 1, 24);
+            // Ίδιοι υπολογισμοί με την οθόνη: ο Μ.Ο. ανά μήνα είναι μόνο για εμφάνιση,
+            // ενώ το απόθεμα ασφαλείας βγαίνει από τον ημερήσιο ρυθμό επί τις ημέρες
+            // κάλυψης -- έτσι δεν παίζει ρόλο το μήκος του μήνα.
+            var periodDays = Math.Max((toDate.Date - fromDate.Date).TotalDays + 1, 1d);
+            var months = Math.Max(periodDays / 30.44, 1d);
+            var coverDays = Math.Clamp(securityDays, 1, 730);
             int Avg(int total) => (int)Math.Round(total / months, MidpointRounding.AwayFromZero);
             int Need(int total, int here, int expected) =>
-                Math.Max(0, Avg(total) * coverMonths - (here + expected));
+                Math.Max(0, (int)Math.Round(total / periodDays * coverDays, MidpointRounding.AwayFromZero)
+                            - (here + expected));
 
             using var workbook = new XLWorkbook();
             var ws = workbook.Worksheets.Add("Μείγματα ανά είδος");
 
-            const int lastCol = 7;
+            const int lastCol = 9;
 
             // ── ΤΙΤΛΟΣ ──
-            ws.Cell(1, 1).Value = $"Μείγματα ανά είδος ({companyLabel})  {fromDate:dd/MM/yyyy} - {toDate:dd/MM/yyyy}{doctorLabel}  --  απόθεμα ασφαλείας για {coverMonths} μήνες";
+            ws.Cell(1, 1).Value = $"Μείγματα ανά είδος ({companyLabel})  {fromDate:dd/MM/yyyy} - {toDate:dd/MM/yyyy}{doctorLabel}  --  απόθεμα ασφαλείας για {coverDays} ημέρες";
             ws.Range(1, 1, 1, lastCol).Merge();
             ws.Cell(1, 1).Style.Font.Bold = true;
             ws.Cell(1, 1).Style.Font.FontSize = 13;
 
             // ── HEADERS ──
             const int headerRow = 3;
-            var headers = new[] { "ΕΙΔΟΣ", "ΜΕΙΓΜΑ", "ΠΟΣΟΤΗΤΑ", "Μ.Ο./ΜΗΝΑ", "ΕΔΩ", "ΑΝΑΜΕΝΟΝΤΑΙ", "ΑΣΦΑΛΕΙΑΣ" };
+            var headers = new[] { "ΚΩΔ. ΕΙΔΟΥΣ", "ΕΙΔΟΣ", "ΚΩΔ. ΑΛΛΕΡΓΙΟΓΟΝΟΥ", "ΜΕΙΓΜΑ",
+                                  "ΠΟΣΟΤΗΤΑ", "Μ.Ο./ΜΗΝΑ", "ΕΔΩ", "ΑΝΑΜΕΝΟΝΤΑΙ", "ΑΣΦΑΛΕΙΑΣ" };
             for (int i = 0; i < headers.Length; i++)
             {
                 var cell = ws.Cell(headerRow, i + 1);
@@ -538,17 +580,19 @@ namespace StallmedManager.Server.Controllers
                 foreach (var m in g.Mixes)
                 {
                     var need = Need(m.QNT, m.StockHere, m.StockExpected);
-                    ws.Cell(row, 1).Value = g.Treatment;
-                    ws.Cell(row, 2).Value = m.Allergen;
-                    ws.Cell(row, 3).Value = m.QNT;
-                    ws.Cell(row, 4).Value = Avg(m.QNT);
-                    ws.Cell(row, 5).Value = m.StockHere;
-                    ws.Cell(row, 6).Value = m.StockExpected;
-                    ws.Cell(row, 7).Value = need;
+                    ws.Cell(row, 1).Value = g.TreatmentCode;
+                    ws.Cell(row, 2).Value = g.Treatment;
+                    ws.Cell(row, 3).Value = m.AllergenCodes;
+                    ws.Cell(row, 4).Value = m.Allergen;
+                    ws.Cell(row, 5).Value = m.QNT;
+                    ws.Cell(row, 6).Value = Avg(m.QNT);
+                    ws.Cell(row, 7).Value = m.StockHere;
+                    ws.Cell(row, 8).Value = m.StockExpected;
+                    ws.Cell(row, 9).Value = need;
                     if (need > 0)
                     {
-                        ws.Cell(row, 7).Style.Font.Bold = true;
-                        ws.Cell(row, 7).Style.Font.FontColor = XLColor.FromHtml("#C00000");
+                        ws.Cell(row, 9).Style.Font.Bold = true;
+                        ws.Cell(row, 9).Style.Font.FontColor = XLColor.FromHtml("#C00000");
                     }
                     ws.Range(row, 1, row, lastCol).Style.Fill.BackgroundColor = alt++ % 2 == 0
                         ? XLColor.White
@@ -557,14 +601,14 @@ namespace StallmedManager.Server.Controllers
                 }
 
                 // ── ΥΠΟΣΥΝΟΛΟ ΕΙΔΟΥΣ ──
-                ws.Range(row, 1, row, 2).Merge();
+                ws.Range(row, 1, row, 4).Merge();
                 ws.Cell(row, 1).Value = $"Σύνολο {g.Treatment}";
                 ws.Cell(row, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-                ws.Cell(row, 3).Value = g.TotalQNT;
-                ws.Cell(row, 4).Value = Avg(g.TotalQNT);
-                ws.Cell(row, 5).Value = g.StockHere;
-                ws.Cell(row, 6).Value = g.StockExpected;
-                ws.Cell(row, 7).Value = g.Mixes.Sum(m => Need(m.QNT, m.StockHere, m.StockExpected));
+                ws.Cell(row, 5).Value = g.TotalQNT;
+                ws.Cell(row, 6).Value = Avg(g.TotalQNT);
+                ws.Cell(row, 7).Value = g.StockHere;
+                ws.Cell(row, 8).Value = g.StockExpected;
+                ws.Cell(row, 9).Value = g.Mixes.Sum(m => Need(m.QNT, m.StockHere, m.StockExpected));
                 var subRange = ws.Range(row, 1, row, lastCol);
                 subRange.Style.Font.Bold = true;
                 subRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#D6E4F0");
@@ -572,14 +616,14 @@ namespace StallmedManager.Server.Controllers
             }
 
             // ── GRAND TOTAL ──
-            ws.Range(row, 1, row, 2).Merge();
+            ws.Range(row, 1, row, 4).Merge();
             ws.Cell(row, 1).Value = "ΓΕΝΙΚΟ ΣΥΝΟΛΟ";
             ws.Cell(row, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-            ws.Cell(row, 3).Value = groups.Sum(g => g.TotalQNT);
-            ws.Cell(row, 4).Value = Avg(groups.Sum(g => g.TotalQNT));
-            ws.Cell(row, 5).Value = groups.Sum(g => g.StockHere);
-            ws.Cell(row, 6).Value = groups.Sum(g => g.StockExpected);
-            ws.Cell(row, 7).Value = groups.Sum(g => g.Mixes.Sum(m => Need(m.QNT, m.StockHere, m.StockExpected)));
+            ws.Cell(row, 5).Value = groups.Sum(g => g.TotalQNT);
+            ws.Cell(row, 6).Value = Avg(groups.Sum(g => g.TotalQNT));
+            ws.Cell(row, 7).Value = groups.Sum(g => g.StockHere);
+            ws.Cell(row, 8).Value = groups.Sum(g => g.StockExpected);
+            ws.Cell(row, 9).Value = groups.Sum(g => g.Mixes.Sum(m => Need(m.QNT, m.StockHere, m.StockExpected)));
             var totalRange = ws.Range(row, 1, row, lastCol);
             totalRange.Style.Fill.BackgroundColor = XLColor.FromHtml("#2E75B6");
             totalRange.Style.Font.FontColor = XLColor.White;
@@ -587,16 +631,18 @@ namespace StallmedManager.Server.Controllers
 
             // ── ΓΡΑΜΜΑΤΟΣΕΙΡΑ / ΣΤΟΙΧΙΣΗ / BORDERS ──
             ws.Range(1, 1, row, lastCol).Style.Font.FontName = "Arial";
-            ws.Range(headerRow + 1, 3, row, lastCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(headerRow + 1, 5, row, lastCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.Range(headerRow, 1, row, lastCol).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             ws.Range(headerRow, 1, row, lastCol).Style.Border.InsideBorder = XLBorderStyleValues.Hair;
 
             // ── COLUMN WIDTHS ──
             ws.Columns(1, lastCol).AdjustToContents(headerRow, row);
-            ws.Column(1).Width = Math.Min(Math.Max(ws.Column(1).Width, 30), 60);
-            ws.Column(2).Width = Math.Min(Math.Max(ws.Column(2).Width, 30), 80);
-            ws.Column(2).Style.Alignment.WrapText = true;
-            for (int c = 3; c <= lastCol; c++)
+            ws.Column(1).Width = Math.Max(ws.Column(1).Width, 12);
+            ws.Column(2).Width = Math.Min(Math.Max(ws.Column(2).Width, 30), 60);
+            ws.Column(3).Width = Math.Min(Math.Max(ws.Column(3).Width, 16), 30);
+            ws.Column(4).Width = Math.Min(Math.Max(ws.Column(4).Width, 30), 80);
+            ws.Column(4).Style.Alignment.WrapText = true;
+            for (int c = 5; c <= lastCol; c++)
                 ws.Column(c).Width = Math.Max(ws.Column(c).Width, 12);
 
             ws.SheetView.FreezeRows(headerRow);
