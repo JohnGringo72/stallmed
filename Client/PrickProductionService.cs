@@ -43,6 +43,13 @@ namespace StallmedManager.Client
             return await dataService.Get<List<PendingReceiptSummaryDto>>($"api/prickproduction/pending-summary{query}");
         }
 
+        public async Task<List<StockReceiptLogDto>> GetReceiptsLog(DateTime fromDate, DateTime toDate)
+        {
+            return await dataService.Get<List<StockReceiptLogDto>>(
+                $"api/prickproduction/receipts-log?fromDate={fromDate:yyyy-MM-dd}&toDate={toDate:yyyy-MM-dd}")
+                ?? new();
+        }
+
         public async Task<ProductionOrderDto> CreateOrder(CreateProductionOrderRequest req)
         {
             return await dataService.Post<CreateProductionOrderRequest, ProductionOrderDto>("api/prickproduction/orders", req);

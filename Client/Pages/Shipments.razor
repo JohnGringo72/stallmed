@@ -723,7 +723,7 @@
 
     private async Task PrintOrder(DoctorOrderViewDto order)
     {
-        var bytes = await new PrickDoctorOrderService(dataService).PrintPickingSheet(order.OrderID);
+        var bytes = await new PrickDoctorOrderService(dataService).PrintPickingSheet(order.OrderID, lineSortField, lineSortAsc);
         if (bytes != null)
             await JS.InvokeVoidAsync("downloadFileFromBytes", $"{order.OrderCode}_Προετοιμασία.pdf", bytes);
         else

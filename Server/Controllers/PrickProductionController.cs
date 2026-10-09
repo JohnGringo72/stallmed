@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
@@ -489,6 +489,63 @@ namespace StallmedManager.Server.Controllers
         }
 
         // ---- Καταχώρηση παραλαβής (καλεί sp_ReceiveProduction) ----
+        // ---- Ιστορικό παραλαβών: τι καταχωρήθηκε, από ποιον, πότε ----
+        // Η σελίδα Παραλαβής δείχνει μόνο τι περιμένουμε. Μόλις καταχωρηθεί κάτι
+        // η γραμμή φεύγει, οπότε ο χρήστης δεν έχει τρόπο να επιβεβαιώσει τι πέρασε.
+        [HttpGet("receipts-log")]
+        public async Task<ActionResult<List<StockReceiptLogDto>>> GetReceiptsLog(
+            [FromQuery] DateTime fromDate, [FromQuery] DateTime toDate)
+        {
+            // Το toDate έρχεται ως μεσάνυχτα -- πιάνουμε ολόκληρη την τελευταία μέρα
+            var firstDay = fromDate.Date;
+            var lastDay = toDate.Date;
+
+            var rows = await (
+                from r in _context.StockReceipts
+                where r.ReceivedDate >= firstDay && r.ReceivedDate <= lastDay
+                join a in _context.AllergenCodes on r.CodePrick equals a.CodePrick into ac
+                from a in ac.DefaultIfEmpty()
+                join p in _context.ProductTypes on r.ProductTypeCode equals p.ProductTypeCode into pt
+                from p in pt.DefaultIfEmpty()
+                join u in _context.Users on r.CreatedBy equals u.IdUser into us
+                from u in us.DefaultIfEmpty()
+                select new StockReceiptLogDto
+                {
+                    ReceiptID = r.ReceiptID,
+                    CodePrick = r.CodePrick,
+                    AllergenDescription = a != null ? a.Description : null,
+                    ProductTypeCode = r.ProductTypeCode,
+                    ProductDescription = p != null ? p.Description : null,
+                    Company = a != null ? a.Company : null,
+                    QuantityReceived = r.QuantityReceived,
+                    QuantityRemaining = r.QuantityRemaining,
+                    ReceivedDate = r.ReceivedDate,
+                    CreatedAt = r.CreatedAt,
+                    CreatedByName = u != null ? (u.Firstname + " " + u.Lastname).Trim() : null,
+                    Notes = r.Notes
+                })
+                .AsNoTracking()
+                .ToListAsync();
+
+            // Σήμανση πιθανής διπλοκαταχώρησης: ίδιος κωδικός + τύπος + ημέρα,
+            // περασμένα πάνω από μία φορά.
+            var duplicateKeys = rows
+                .GroupBy(x => new { x.CodePrick, x.ProductTypeCode, x.ReceivedDate })
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToHashSet();
+
+            foreach (var row in rows)
+                row.PossibleDuplicate = duplicateKeys.Contains(
+                    new { row.CodePrick, row.ProductTypeCode, row.ReceivedDate });
+
+            return Ok(rows
+                .OrderByDescending(x => x.ReceivedDate)
+                .ThenByDescending(x => x.CreatedAt)
+                .ThenBy(x => x.CodePrick)
+                .ToList());
+        }
+
         [HttpPost("receive")]
         public async Task<ActionResult<ReceiveStockResult>> ReceiveStock([FromBody] ReceiveStockRequest req)
         {

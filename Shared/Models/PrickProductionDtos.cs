@@ -128,4 +128,25 @@ namespace StallmedManager.Shared.Models
         public List<ImportProductionOrderGroupPreview> Groups { get; set; } = new();
         public int? CreatedBy { get; set; }
     }
+
+    // Ιστορικό παραλαβών: τι καταχωρήθηκε, από ποιον και πότε ακριβώς.
+    // Χωρίς αυτό ο χρήστης της αποθήκης δεν έχει τρόπο να δει αν πέρασε κάτι.
+    public class StockReceiptLogDto
+    {
+        public long ReceiptID { get; set; }
+        public string CodePrick { get; set; } = "";
+        public string? AllergenDescription { get; set; }
+        public string ProductTypeCode { get; set; } = "";
+        public string? ProductDescription { get; set; }
+        public string? Company { get; set; }
+        public int QuantityReceived { get; set; }
+        public int QuantityRemaining { get; set; }
+        public DateTime ReceivedDate { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public string? CreatedByName { get; set; }
+        public string? Notes { get; set; }
+        // true όταν ο ίδιος κωδικός+τύπος έχει περαστεί πάνω από μία φορά
+        // την ίδια ημέρα παραλαβής -- πιθανή διπλοκαταχώρηση.
+        public bool PossibleDuplicate { get; set; }
+    }
 }

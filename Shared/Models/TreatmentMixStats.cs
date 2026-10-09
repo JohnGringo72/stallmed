@@ -1,12 +1,9 @@
-namespace StallmedManager.Shared.Models
+﻿namespace StallmedManager.Shared.Models
 {
     // Στατιστικό μειγμάτων (WebOrders.Allergen) ανά είδος (WebOrders.TreatmentDescription)
     public class TreatmentMixGroup
     {
         public string Treatment { get; set; } = "";
-        // Κωδικός σκευάσματος (WebOrders.TreatmentID). Αν το ίδιο όνομα έχει
-        // περισσότερους από έναν κωδικούς, μπαίνουν όλοι χωρισμένοι με "/".
-        public string TreatmentCode { get; set; } = "";
         public int TotalQNT { get; set; }
         // Στοκ αποθήκης (ασθενής "A A"): τι υπάρχει εδώ και τι αναμένεται.
         // Received (3) = εδώ, Manufacturing (2) = αναμένεται.

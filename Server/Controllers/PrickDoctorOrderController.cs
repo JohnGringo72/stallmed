@@ -1648,8 +1648,40 @@ namespace StallmedManager.Server.Controllers
         // ---- Φύλλο προετοιμασίας παραγγελίας (picking list) σε PDF ----
         // Τυπώνεται για να μαζέψει η αποθήκη τα είδη: ReadyToShip -> ό,τι δεσμεύτηκε,
         // αλλιώς -> ζητούμενο μείον ακυρωμένο. Ακυρωμένες γραμμές δεν τυπώνονται.
+        // Ταξινόμηση των γραμμών του φύλλου προετοιμασίας. Τα ονόματα των πεδίων
+        // είναι τα ίδια με τις επικεφαλίδες της οθόνης, ώστε το χαρτί να βγαίνει
+        // με τη σειρά που βλέπει ο χρήστης. Χωρίς παράμετρο: αλφαβητικά ανά κωδικό,
+        // όπως είναι γυρισμένη η κασετίνα στην αποθήκη.
+        private static List<DoctorOrderLine> SortPickingLines(
+            List<DoctorOrderLine> lines, Func<DoctorOrderLine, int> qty, string? sort, bool asc)
+        {
+            IOrderedEnumerable<DoctorOrderLine> sorted = (sort ?? "").ToLowerInvariant() switch
+            {
+                "type" => lines.OrderBy(l => l.ProductTypeCode, StringComparer.OrdinalIgnoreCase),
+                "req" => lines.OrderBy(l => l.QuantityRequested),
+                "alloc" => lines.OrderBy(l => l.QuantityAllocated),
+                "canc" => lines.OrderBy(l => l.QuantityCancelled),
+                "pending" => lines.OrderBy(l => l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled),
+                "qty" => lines.OrderBy(qty),
+                "status" => lines.OrderBy(l => l.LineStatus, StringComparer.OrdinalIgnoreCase),
+                // Τα πεδία διαθέσιμου/δεσμευμένου αλλού δεν υπάρχουν στη γραμμή
+                // και δεν έχουν νόημα στο χαρτί -- πέφτουν στον κωδικό.
+                _ => lines.OrderBy(l => l.CodePrick, StringComparer.OrdinalIgnoreCase)
+            };
+
+            // Σταθερή δευτερεύουσα σειρά: δύο γραμμές με ίδια τιμή να μη βγαίνουν
+            // κάθε φορά αλλιώς, αλλιώς ο αποθηκάριος χάνει τη θέση του.
+            var tidy = sorted
+                .ThenBy(l => l.CodePrick, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(l => l.ProductTypeCode, StringComparer.OrdinalIgnoreCase);
+
+            // Το ίδιο Reverse κάνει και η οθόνη, ώστε χαρτί και λίστα να συμφωνούν.
+            return asc ? tidy.ToList() : tidy.Reverse().ToList();
+        }
+
         [HttpGet("print/{orderId}")]
-        public async Task<IActionResult> PrintPickingSheet(long orderId)
+        public async Task<IActionResult> PrintPickingSheet(
+            long orderId, [FromQuery] string? sort = null, [FromQuery] bool asc = true)
         {
             var order = await _context.DoctorOrders.Include(o => o.Doctor)
                 .FirstOrDefaultAsync(o => o.OrderID == orderId);
@@ -1663,7 +1695,8 @@ namespace StallmedManager.Server.Controllers
                 ? l.QuantityAllocated
                 : l.QuantityRequested - l.QuantityCancelled;
 
-            var printLines = lines.Where(l => QtyToPick(l) > 0).ToList();
+            var printLines = SortPickingLines(
+                lines.Where(l => QtyToPick(l) > 0).ToList(), QtyToPick, sort, asc);
             if (printLines.Count == 0)
                 return BadRequest("Δεν υπάρχουν είδη για προετοιμασία σε αυτή την παραγγελία.");
 

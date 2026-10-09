@@ -1,4 +1,4 @@
-using StallmedManager.Shared.Models;
+﻿using StallmedManager.Shared.Models;
 
 namespace StallmedManager.Client
 {
@@ -81,9 +81,14 @@ namespace StallmedManager.Client
             return await dataService.GetBytes("api/prickdoctororder/import/template");
         }
 
-        public async Task<byte[]> PrintPickingSheet(long orderId)
+        // Η σειρά ταξινόμησης της οθόνης ταξιδεύει μέχρι το PDF, ώστε ο αποθηκάριος
+        // να μαζεύει με τη σειρά που βλέπει. Χωρίς sort: αλφαβητικά ανά κωδικό.
+        public async Task<byte[]> PrintPickingSheet(long orderId, string? sort = null, bool asc = true)
         {
-            return await dataService.GetBytes($"api/prickdoctororder/print/{orderId}");
+            var query = string.IsNullOrWhiteSpace(sort)
+                ? $"?asc={asc.ToString().ToLowerInvariant()}"
+                : $"?sort={Uri.EscapeDataString(sort)}&asc={asc.ToString().ToLowerInvariant()}";
+            return await dataService.GetBytes($"api/prickdoctororder/print/{orderId}{query}");
         }
 
         public async Task<ImportPreviewResult> ImportPreview(byte[] fileBytes, string fileName)

@@ -40,6 +40,42 @@
         box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
 
+    /* Ιστορικό παραλαβών -- κλειστό από προεπιλογή, ανοίγει με κλικ */
+    .log-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin: 16px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+
+    .log-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 14px;
+        cursor: pointer;
+        user-select: none;
+        background: #f8f9fa;
+    }
+
+    .log-header:hover { background: #eef1f4; }
+
+    .log-arrow {
+        display: inline-block;
+        transition: transform 0.15s;
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+
+    .log-arrow.open { transform: rotate(90deg); }
+
+    .log-body { padding: 12px 14px; }
+
+    /* Σταθερό παράθυρο με δική του κύλιση, ώστε η σελίδα να μη γίνεται ατελείωτη */
+    .log-window { max-height: 420px; overflow-y: auto; }
+
     .company-badge {
         display: inline-block;
         padding: 3px 10px;
@@ -195,6 +231,100 @@
     }
 }
 
+<!-- ================= ΙΣΤΟΡΙΚΟ ΠΑΡΑΛΑΒΩΝ ================= -->
+<div class="log-card">
+    <div class="log-header" @onclick="ToggleLog">
+        <span class="log-arrow @(logOpen ? "open" : "")">▶</span>
+        <strong>📜 Τελευταίες παραλαβές</strong>
+        <span class="text-muted small ms-2">τι καταχωρήθηκε, από ποιον και πότε</span>
+        @if (logOpen && !logLoading)
+        {
+            <span class="ms-auto badge bg-primary">@receiptLog.Sum(x => x.QuantityReceived) τεμάχια σε @receiptLog.Count γραμμές</span>
+        }
+    </div>
+
+    @if (logOpen)
+    {
+        <div class="log-body">
+            <div class="d-flex flex-wrap gap-2 align-items-end mb-2">
+                <button class="btn btn-sm btn-outline-primary" @onclick="() => SetLogRange(0)"
+                        title="@Hint("Μόνο οι σημερινές παραλαβές")">Σήμερα</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetLogRange(1)"
+                        title="@Hint("Σήμερα και χθες")">Χθες</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetLogRange(7)"
+                        title="@Hint("Οι τελευταίες 7 ημέρες")">7 ημέρες</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetLogRange(30)"
+                        title="@Hint("Οι τελευταίες 30 ημέρες")">30 ημέρες</button>
+                <div>
+                    <label class="form-label mb-0 small">Από</label>
+                    <input type="date" class="form-control form-control-sm"
+                           value="@logFrom.ToString("yyyy-MM-dd")" @onchange="OnLogFromChanged" />
+                </div>
+                <div>
+                    <label class="form-label mb-0 small">Έως</label>
+                    <input type="date" class="form-control form-control-sm"
+                           value="@logTo.ToString("yyyy-MM-dd")" @onchange="OnLogToChanged" />
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="LoadLog"
+                        title="@Hint("Επαναφόρτωση του ιστορικού")">Ανανέωση</button>
+            </div>
+
+            @if (logLoading)
+            {
+                <p class="text-muted mb-0"><em>Φορτώνω...</em></p>
+            }
+            else if (receiptLog.Count == 0)
+            {
+                <div class="alert alert-warning mb-0">
+                    <strong>Καμία παραλαβή σε αυτό το διάστημα.</strong>
+                    Αν περίμενες να υπάρχει κάτι, δεν καταχωρήθηκε ποτέ.
+                </div>
+            }
+            else
+            {
+                @if (receiptLog.Any(x => x.PossibleDuplicate))
+                {
+                    <div class="alert alert-danger py-2">
+                        ⚠️ Υπάρχουν κωδικοί που καταχωρήθηκαν <strong>πάνω από μία φορά</strong>
+                        την ίδια ημέρα — σημειωμένοι με κόκκινο παρακάτω. Έλεγξέ τους.
+                    </div>
+                }
+                <div class="log-window">
+                    <table class="table table-sm table-hover mb-0 sticky-head">
+                        <thead>
+                            <tr>
+                                <th>Ημ. παραλαβής</th>
+                                <th>Κωδικός</th>
+                                <th>Αλλεργιογόνο</th>
+                                <th>Τύπος</th>
+                                <th class="text-end">Ήρθαν</th>
+                                <th class="text-end">Υπόλοιπο</th>
+                                <th>Ποιος</th>
+                                <th>Πότε</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in receiptLog)
+                            {
+                                <tr class="@(r.PossibleDuplicate ? "table-danger" : "")">
+                                    <td>@r.ReceivedDate.ToString("dd/MM/yyyy")</td>
+                                    <td><strong>@r.CodePrick</strong></td>
+                                    <td><small>@r.AllergenDescription</small></td>
+                                    <td>@r.ProductTypeCode <small class="text-muted">@r.ProductDescription</small></td>
+                                    <td class="text-end fw-bold">@r.QuantityReceived</td>
+                                    <td class="text-end @(r.QuantityRemaining > 0 ? "" : "text-muted")">@r.QuantityRemaining</td>
+                                    <td><small>@(string.IsNullOrWhiteSpace(r.CreatedByName) ? "—" : r.CreatedByName)</small></td>
+                                    <td><small class="text-muted">@r.CreatedAt.ToString("dd/MM HH:mm")</small></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+</div>
+
 @if (showImportPopup)
 {
     <div class="popup-overlay" @onclick="CloseImportPopup">
@@ -282,6 +412,15 @@
     private string status = "idle";
     private string topBannerMessage = "";
 
+    // --- Ιστορικό παραλαβών ---
+    // Η λίστα από πάνω δείχνει μόνο τι περιμένουμε. Χωρίς ιστορικό ο χρήστης
+    // της αποθήκης δεν μπορεί να επιβεβαιώσει αν πέρασε την παραλαβή της ημέρας.
+    private bool logOpen = false;
+    private bool logLoading = false;
+    private DateTime logFrom = DateTime.Today;
+    private DateTime logTo = DateTime.Today;
+    private List<StockReceiptLogDto> receiptLog = new();
+
     // --- Import Excel ---
     private bool showImportPopup = false;
     private bool importLoading = false;
@@ -364,6 +503,46 @@
 
         status = "loaded";
         StateHasChanged();
+
+        // Το ιστορικό ακολουθεί κάθε ανανέωση, ώστε ό,τι μόλις καταχωρήθηκε
+        // να φαίνεται αμέσως από κάτω.
+        if (logOpen)
+            await LoadLog();
+    }
+
+    // ---- Ιστορικό παραλαβών ----
+
+    private async Task ToggleLog()
+    {
+        logOpen = !logOpen;
+        if (logOpen && receiptLog.Count == 0)
+            await LoadLog();
+    }
+
+    private async Task LoadLog()
+    {
+        logLoading = true;
+        StateHasChanged();
+        receiptLog = await new PrickProductionService(dataService).GetReceiptsLog(logFrom, logTo);
+        logLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task SetLogRange(int daysBack)
+    {
+        logTo = DateTime.Today;
+        logFrom = DateTime.Today.AddDays(-daysBack);
+        await LoadLog();
+    }
+
+    private async Task OnLogFromChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d)) { logFrom = d; await LoadLog(); }
+    }
+
+    private async Task OnLogToChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d)) { logTo = d; await LoadLog(); }
     }
 
     private async Task OnStockCheckInput(ChangeEventArgs e)
