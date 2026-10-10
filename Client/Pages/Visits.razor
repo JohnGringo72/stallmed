@@ -89,6 +89,77 @@
     </div>
 </div>
 
+@* ===== Εναλλαγή: Λίστα επισκέψεων / Στατιστικά παραμέλησης ===== *@
+<div class="btn-group mb-3">
+    <button class="btn @(showStats ? "btn-outline-primary" : "btn-primary")" @onclick="() => showStats = false">📋 Επισκέψεις</button>
+    <button class="btn @(showStats ? "btn-primary" : "btn-outline-primary")" @onclick="ShowStats">📊 Πού πρέπει να πάμε</button>
+</div>
+
+@if (showStats)
+{
+    @if (statsLoading)
+    {
+        <p><em>Φορτώνω...</em></p>
+    }
+    else
+    {
+        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            <div class="btn-group btn-group-sm">
+                <button class="btn @(regionFilter == "" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => regionFilter = ""'>Όλες οι περιοχές</button>
+                <button class="btn @(regionFilter == "ΑΘΗΝΑ" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => regionFilter = "ΑΘΗΝΑ"'>ΑΘΗΝΑ</button>
+                <button class="btn @(regionFilter == "ΕΠΑΡΧΕΙΑ" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => regionFilter = "ΕΠΑΡΧΕΙΑ"'>ΕΠΑΡΧΕΙΑ</button>
+            </div>
+            <span class="text-muted small">
+                @FilteredStats.Count() γιατροί — οι πιο παραμελημένοι πρώτοι. Κόκκινο: 90+ μέρες, πορτοκαλί: 45+.
+            </span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th style="width:90px" class="text-end">Μέρες</th>
+                        <th>Γιατρός</th>
+                        <th style="width:130px">Περιοχή</th>
+                        <th style="width:120px">Τελευταία</th>
+                        <th style="width:180px">Από ποιον</th>
+                        <th style="width:110px" class="text-end d-none d-md-table-cell">Σύνολο επισκ.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in FilteredStats)
+                    {
+                        <tr>
+                            <td class="text-end">
+                                <span class="badge @(s.DaysSince > 90 ? "bg-danger" : s.DaysSince > 45 ? "bg-warning text-dark" : "bg-success")" style="font-size:0.9rem;">
+                                    @s.DaysSince
+                                </span>
+                            </td>
+                            <td>@s.DoctorName</td>
+                            <td>
+                                @if (s.DoctorID != null)
+                                {
+                                    @* Οι περιοχές στη βάση έχουν λάθη -- διορθώνονται επιτόπου εδώ. *@
+                                    <select class="form-select form-select-sm" value="@(s.Region ?? "")"
+                                            @onchange="e => SetRegion(s, e.Value?.ToString())">
+                                        <option value="">—</option>
+                                        <option value="ΑΘΗΝΑ">ΑΘΗΝΑ</option>
+                                        <option value="ΕΠΑΡΧΕΙΑ">ΕΠΑΡΧΕΙΑ</option>
+                                    </select>
+                                }
+                            </td>
+                            <td>@s.LastVisitDate.ToString("dd/MM/yyyy")</td>
+                            <td><span class="badge @(s.LastVisitBy == UserFullNameSafe() ? "bg-primary" : "bg-secondary")">@s.LastVisitBy</span></td>
+                            <td class="text-end d-none d-md-table-cell">@s.TotalVisits</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+else
+{
+
 @* ===== Φίλτρα λίστας ===== *@
 <div class="row g-2 mb-2 align-items-end">
     <div class="col-6 col-md-2">
@@ -167,6 +238,8 @@ else
 
 }
 
+}
+
 @code {
     [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
     private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
@@ -196,6 +269,33 @@ else
 
     // Μόνο πωλητές + admin -- ο server το επιβάλλει ούτως ή άλλως (VendorOrAdmin).
     private bool allowed;
+
+    // ---- Στατιστικά «πού πρέπει να πάμε» ----
+    private bool showStats = false;
+    private bool statsLoading = false;
+    private List<SalesVisitStatsRow> stats = new();
+    private string regionFilter = "";
+
+    private IEnumerable<SalesVisitStatsRow> FilteredStats =>
+        string.IsNullOrEmpty(regionFilter) ? stats : stats.Where(s => s.Region == regionFilter);
+
+    private async Task ShowStats()
+    {
+        showStats = true;
+        statsLoading = true;
+        stats = await Service.GetVisitStats();
+        statsLoading = false;
+    }
+
+    private async Task SetRegion(SalesVisitStatsRow s, string? region)
+    {
+        if (s.DoctorID == null) return;
+        s.Region = string.IsNullOrEmpty(region) ? null : region;
+        await Service.SetDoctorRegion(new SetDoctorRegionRequest { DoctorID = s.DoctorID.Value, Region = s.Region });
+    }
+
+    private string UserFullNameSafe()
+        => ($"{userManager.User?.Firstname} {userManager.User?.Lastname}").Trim();
 
     protected override async Task OnInitializedAsync()
     {

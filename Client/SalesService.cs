@@ -21,6 +21,9 @@ namespace StallmedManager.Client
             return await dataService.Get<List<SalesVisitViewDto>>($"api/sales/visits{qs}") ?? new();
         }
 
+        public async Task<List<SalesVisitStatsRow>> GetVisitStats()
+            => await dataService.Get<List<SalesVisitStatsRow>>("api/sales/visits/stats") ?? new();
+
         public async Task<SalesVisitViewDto?> GetLastVisit(int? doctorId, string? doctorName)
         {
             var qs = doctorId.HasValue
@@ -40,6 +43,9 @@ namespace StallmedManager.Client
             var qs = string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}";
             return await dataService.Get<List<SalesDoctorOptionDto>>($"api/sales/doctors{qs}") ?? new();
         }
+
+        public async Task<SalesSaveResult?> SetDoctorRegion(SetDoctorRegionRequest req)
+            => await dataService.Post<SetDoctorRegionRequest, SalesSaveResult>("api/sales/doctors/set-region", req);
 
         public async Task<List<IssueUserDto>> GetUsers()
             => await dataService.Get<List<IssueUserDto>>("api/sales/users") ?? new();

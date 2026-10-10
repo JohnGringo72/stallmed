@@ -109,6 +109,62 @@ namespace StallmedManager.Server.Controllers
             });
         }
 
+        // Στατιστικά ανά γιατρό: τελευταία επίσκεψη (από οποιονδήποτε), σύνολο,
+        // και μέρες από τότε -- ταξινομημένα με τους πιο παραμελημένους πρώτους.
+        [HttpGet("visits/stats")]
+        [Authorize(Policy = "VendorOrAdmin")]
+        public async Task<ActionResult<List<SalesVisitStatsRow>>> GetVisitStats()
+        {
+            var raw = await _context.SalesVisits
+                .Select(v => new { v.DoctorID, v.DoctorName, v.VisitDate, v.UserID, v.VisitID })
+                .ToListAsync();
+
+            var names = await UserNames(raw.Select(v => v.UserID));
+            var docInfo = await _context.Doctors
+                .Select(d => new { d.DoctorID, d.FullNameGreek, d.Region })
+                .ToDictionaryAsync(d => d.DoctorID);
+
+            var rows = raw
+                .GroupBy(v => v.DoctorID.HasValue ? $"id:{v.DoctorID}" : $"nm:{v.DoctorName}")
+                .Select(g =>
+                {
+                    var last = g.OrderByDescending(v => v.VisitDate).ThenByDescending(v => v.VisitID).First();
+                    var did = last.DoctorID;
+                    var info = did.HasValue && docInfo.TryGetValue(did.Value, out var d) ? d : null;
+                    return new SalesVisitStatsRow
+                    {
+                        DoctorID = did,
+                        DoctorName = info?.FullNameGreek ?? last.DoctorName,
+                        TotalVisits = g.Count(),
+                        LastVisitDate = last.VisitDate,
+                        LastVisitBy = names.TryGetValue(last.UserID, out var n) ? n : $"user #{last.UserID}",
+                        DaysSince = (int)(DateTime.Today - last.VisitDate.Date).TotalDays,
+                        Region = info?.Region
+                    };
+                })
+                .OrderByDescending(r => r.DaysSince)
+                .ToList();
+
+            return Ok(rows);
+        }
+
+        // Ορισμός περιοχής γιατρού (ΑΘΗΝΑ/ΕΠΑΡΧΕΙΑ) -- από τη λίστα στατιστικών,
+        // γιατί οι πόλεις στη βάση έχουν λάθη και διορθώνονται εκεί επιτόπου.
+        [HttpPost("doctors/set-region")]
+        [Authorize(Policy = "VendorOrAdmin")]
+        public async Task<ActionResult<SalesSaveResult>> SetDoctorRegion([FromBody] SetDoctorRegionRequest req)
+        {
+            var valid = new[] { "ΑΘΗΝΑ", "ΕΠΑΡΧΕΙΑ" };
+            if (!string.IsNullOrEmpty(req.Region) && !valid.Contains(req.Region))
+                return Ok(new SalesSaveResult { Success = false, Message = "Μη έγκυρη περιοχή." });
+
+            var doctor = await _context.Doctors.FindAsync(req.DoctorID);
+            if (doctor == null) return NotFound();
+            doctor.Region = string.IsNullOrEmpty(req.Region) ? null : req.Region;
+            await _context.SaveChangesAsync();
+            return Ok(new SalesSaveResult { Success = true });
+        }
+
         [HttpPost("visits/save")]
         [Authorize(Policy = "VendorOrAdmin")]
         public async Task<ActionResult<SalesSaveResult>> SaveVisit([FromBody] SaveSalesVisitRequest req)

@@ -43,6 +43,8 @@ namespace StallmedManager.Shared.Models
         // Ελληνικό όνομα (ο FullName είναι greeklish) -- συμπληρώνεται από το
         // sales module· όπου υπάρχει, οι σελίδες πωλητών δείχνουν αυτό.
         public string? FullNameGreek { get; set; }
+        // Περιοχή για τους πωλητές: "ΑΘΗΝΑ" ή "ΕΠΑΡΧΕΙΑ" (NULL = αταξινόμητος).
+        public string? Region { get; set; }
         public int? LegacyIdSM { get; set; }
         public int? LegacyIdBM { get; set; }
         public string? Specialty { get; set; }

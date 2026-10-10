@@ -85,6 +85,25 @@ namespace StallmedManager.Shared.Models
         public string? City { get; set; }
     }
 
+    // Στατιστικά ανά γιατρό: πόσες μέρες έχουν να τον επισκεφθούν (οποιοσδήποτε
+    // πωλητής) -- οι πιο παραμελημένοι πρώτοι, για να ξέρουν πού να πάνε.
+    public class SalesVisitStatsRow
+    {
+        public int? DoctorID { get; set; }
+        public string DoctorName { get; set; } = "";
+        public int TotalVisits { get; set; }
+        public DateTime LastVisitDate { get; set; }
+        public string LastVisitBy { get; set; } = "";
+        public int DaysSince { get; set; }
+        public string? Region { get; set; }      // ΑΘΗΝΑ / ΕΠΑΡΧΕΙΑ / null
+    }
+
+    public class SetDoctorRegionRequest
+    {
+        public int DoctorID { get; set; }
+        public string? Region { get; set; }      // "ΑΘΗΝΑ", "ΕΠΑΡΧΕΙΑ" ή null
+    }
+
     public class SalesSaveResult
     {
         public bool Success { get; set; }
