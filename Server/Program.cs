@@ -36,6 +36,14 @@ builder.Services.AddAuthorization(options =>
             ctx.User.Identity?.IsAuthenticated == true &&
             ctx.User.Claims.Any(c => c.Type == System.Security.Claims.ClaimTypes.Role &&
                 string.Equals(c.Value?.Trim(), "admin", StringComparison.OrdinalIgnoreCase))));
+
+    // Sales module (Επισκέψεις/Εξοδολόγιο): μόνο πωλητές (vendor) και admin.
+    options.AddPolicy("VendorOrAdmin", policy =>
+        policy.RequireAssertion(ctx =>
+            ctx.User.Identity?.IsAuthenticated == true &&
+            ctx.User.Claims.Any(c => c.Type == System.Security.Claims.ClaimTypes.Role &&
+                (string.Equals(c.Value?.Trim(), "vendor", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(c.Value?.Trim(), "admin", StringComparison.OrdinalIgnoreCase)))));
 });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");

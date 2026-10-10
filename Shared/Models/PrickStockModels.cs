@@ -40,6 +40,9 @@ namespace StallmedManager.Shared.Models
         [Key]
         public int DoctorID { get; set; }
         public string FullName { get; set; }
+        // Ελληνικό όνομα (ο FullName είναι greeklish) -- συμπληρώνεται από το
+        // sales module· όπου υπάρχει, οι σελίδες πωλητών δείχνουν αυτό.
+        public string? FullNameGreek { get; set; }
         public int? LegacyIdSM { get; set; }
         public int? LegacyIdBM { get; set; }
         public string? Specialty { get; set; }

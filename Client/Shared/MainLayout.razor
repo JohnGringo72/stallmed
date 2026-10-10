@@ -74,6 +74,12 @@
                                 }
                             </a>
                         </li>
+                        @* Visits μόνο για πωλητές + admin -- το ίδιο επιβάλλει και ο server. *@
+                        @if (userManager.IsVendor || userManager.IsAdmin)
+                        {
+                            <li><a class="dropdown-item" href="/visits" @onclick="CloseMenu">Visits</a></li>
+                        }
+                        <li><a class="dropdown-item" href="/expenses" @onclick="CloseMenu">Εξοδολόγιο</a></li>
                     </ul>
                 </div>
             }

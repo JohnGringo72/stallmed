@@ -1,0 +1,290 @@
+@page "/visits"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+@inject IJSRuntime JS
+
+<PageTitle>Επισκέψεις</PageTitle>
+
+<style>
+    .visit-suggestions {
+        position: absolute; z-index: 1050; background: white;
+        border: 1px solid #dee2e6; border-radius: 6px; width: 100%;
+        max-height: 260px; overflow-y: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+    }
+    .visit-suggestion-row { padding: 6px 10px; cursor: pointer; }
+    .visit-suggestion-row:hover { background: #f1f3f5; }
+    .last-visit-info { font-size: 0.88rem; }
+</style>
+
+<div class="sbt-page-header">
+    <img src="images/icons/icon-mytask.svg" alt="" class="sbt-page-icon" />
+    <h3 class="mb-3">Επισκέψεις Πωλητών</h3>
+</div>
+
+@if (!loading && !allowed)
+{
+    <div class="alert alert-warning">Η σελίδα είναι διαθέσιμη μόνο σε πωλητές και διαχειριστές.</div>
+}
+
+@if (allowed)
+{
+
+@if (!string.IsNullOrEmpty(banner))
+{
+    <div class="alert alert-success alert-dismissible">
+        @banner
+        <button type="button" class="btn-close" @onclick="() => banner = string.Empty"></button>
+    </div>
+}
+
+@* ===== Νέα επίσκεψη ===== *@
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2">
+                <label class="form-label mb-1">Ημερομηνία</label>
+                <InputDate @bind-Value="newDate" class="form-control" />
+            </div>
+            <div class="col-12 col-md-4 position-relative">
+                <label class="form-label mb-1">Γιατρός</label>
+                <input class="form-control" placeholder="Γράψε όνομα γιατρού..."
+                       value="@newDoctorText" @oninput="e => OnDoctorSearch(e.Value?.ToString() ?? "")" />
+                @if (doctorSuggestions.Count > 0)
+                {
+                    <div class="visit-suggestions">
+                        @foreach (var d in doctorSuggestions)
+                        {
+                            <div class="visit-suggestion-row" @onclick="() => SelectDoctor(d)">
+                                <strong>@d.DisplayName</strong>
+                                @if (!string.IsNullOrEmpty(d.City))
+                                {
+                                    <span class="text-muted"> · @d.City</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label mb-1">Σημείωση (προαιρετικά)</label>
+                <input class="form-control" @bind="newNotes" />
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary" @onclick="AddVisit"
+                        disabled="@(busy || string.IsNullOrWhiteSpace(newDoctorText))">+ Καταχώρηση</button>
+            </div>
+        </div>
+        @if (lastVisit != null)
+        {
+            <div class="mt-2 last-visit-info @(lastVisit.UserID == userManager.User?.IdUser ? "text-primary" : "text-danger")">
+                ℹ️ Τελευταία επίσκεψη στον <strong>@lastVisit.DoctorName</strong>:
+                <strong>@lastVisit.UserName</strong> στις <strong>@lastVisit.VisitDate.ToString("dd/MM/yyyy")</strong>
+            </div>
+        }
+        else if (lastVisitChecked && selectedDoctor != null)
+        {
+            <div class="mt-2 last-visit-info text-success">✅ Καμία καταγεγραμμένη επίσκεψη σε αυτόν τον γιατρό.</div>
+        }
+    </div>
+</div>
+
+@* ===== Φίλτρα λίστας ===== *@
+<div class="row g-2 mb-2 align-items-end">
+    <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Από</label>
+        <InputDate @bind-Value="filterFrom" class="form-control" />
+    </div>
+    <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Έως</label>
+        <InputDate @bind-Value="filterTo" class="form-control" />
+    </div>
+    <div class="col-6 col-md-3">
+        <label class="form-label mb-1">Πωλητής</label>
+        <select class="form-select" @bind="filterUserId">
+            <option value="">Όλοι</option>
+            @foreach (var u in users)
+            {
+                <option value="@u.IdUser">@u.FullName</option>
+            }
+        </select>
+    </div>
+    <div class="col-6 col-md-3">
+        <label class="form-label mb-1">Αναζήτηση γιατρού</label>
+        <input class="form-control" @bind="filterSearch" @onkeyup="OnFilterKeyUp" placeholder="Enter για αναζήτηση" />
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-outline-secondary" @onclick="Load">🔍 Εμφάνιση</button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (visits.Count == 0)
+{
+    <div class="alert alert-light border">Καμία επίσκεψη στο διάστημα αυτό.</div>
+}
+else
+{
+    <div class="mb-1 text-muted small">@visits.Count επισκέψεις</div>
+    <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle">
+            <thead>
+                <tr>
+                    <th style="width:110px">Ημερομηνία</th>
+                    <th>Γιατρός</th>
+                    <th style="width:180px">Πωλητής</th>
+                    <th>Σημείωση</th>
+                    <th style="width:50px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var v in visits)
+                {
+                    var mine = v.UserID == userManager.User?.IdUser;
+                    <tr>
+                        <td>@v.VisitDate.ToString("dd/MM/yyyy")</td>
+                        <td>@v.DoctorName</td>
+                        <td>
+                            <span class="badge @(mine ? "bg-primary" : "bg-secondary")">@v.UserName</span>
+                        </td>
+                        <td class="text-muted">@v.Notes</td>
+                        <td class="text-end">
+                            @if (mine || userManager.IsAdmin)
+                            {
+                                <button class="btn btn-sm btn-outline-danger py-0" @onclick="() => DeleteVisit(v)"
+                                        title="@Hint("Διαγραφή επίσκεψης")">×</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+}
+
+@code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+    private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
+
+    private SalesService Service => new SalesService(dataService);
+
+    private List<SalesVisitViewDto> visits = new();
+    private List<IssueUserDto> users = new();
+    private bool loading = true;
+    private bool busy = false;
+    private string banner = "";
+
+    // Φίλτρα: προεπιλογή οι τελευταίες 60 ημέρες.
+    private DateTime? filterFrom = DateTime.Today.AddDays(-60);
+    private DateTime? filterTo = DateTime.Today;
+    private string filterUserId = "";
+    private string filterSearch = "";
+
+    // Νέα επίσκεψη
+    private DateTime? newDate = DateTime.Today;
+    private string newDoctorText = "";
+    private string newNotes = "";
+    private SalesDoctorOptionDto? selectedDoctor;
+    private List<SalesDoctorOptionDto> doctorSuggestions = new();
+    private SalesVisitViewDto? lastVisit;
+    private bool lastVisitChecked = false;
+
+    // Μόνο πωλητές + admin -- ο server το επιβάλλει ούτως ή άλλως (VendorOrAdmin).
+    private bool allowed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        allowed = userManager.IsVendor || userManager.IsAdmin;
+        if (!allowed) { loading = false; return; }
+        users = await Service.GetUsers();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        int? uid = int.TryParse(filterUserId, out var id) ? id : null;
+        visits = await Service.GetVisits(
+            filterFrom ?? DateTime.Today.AddDays(-60),
+            filterTo ?? DateTime.Today,
+            uid,
+            string.IsNullOrWhiteSpace(filterSearch) ? null : filterSearch.Trim());
+        loading = false;
+    }
+
+    private async Task OnFilterKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Load();
+    }
+
+    private async Task OnDoctorSearch(string text)
+    {
+        newDoctorText = text;
+        selectedDoctor = null;
+        lastVisit = null;
+        lastVisitChecked = false;
+        if (text.Trim().Length >= 2)
+            doctorSuggestions = await Service.SearchDoctors(text.Trim());
+        else
+            doctorSuggestions.Clear();
+    }
+
+    private async Task SelectDoctor(SalesDoctorOptionDto d)
+    {
+        selectedDoctor = d;
+        newDoctorText = d.DisplayName;
+        doctorSuggestions.Clear();
+        lastVisit = await Service.GetLastVisit(d.DoctorID, null);
+        lastVisitChecked = true;
+    }
+
+    private async Task AddVisit()
+    {
+        if (string.IsNullOrWhiteSpace(newDoctorText) || userManager.User == null) return;
+        busy = true;
+        var result = await Service.SaveVisit(new SaveSalesVisitRequest
+        {
+            UserID = userManager.User.IdUser,
+            DoctorID = selectedDoctor?.DoctorID,
+            DoctorName = newDoctorText.Trim(),
+            VisitDate = newDate ?? DateTime.Today,
+            Notes = newNotes
+        });
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            banner = result?.Message ?? "Η καταχώρηση απέτυχε.";
+            return;
+        }
+        banner = $"✅ Καταχωρήθηκε επίσκεψη στον {newDoctorText.Trim()}.";
+        newDoctorText = "";
+        newNotes = "";
+        selectedDoctor = null;
+        lastVisit = null;
+        lastVisitChecked = false;
+        await Load();
+    }
+
+    private async Task DeleteVisit(SalesVisitViewDto v)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Διαγραφή επίσκεψης στον «{v.DoctorName}» ({v.VisitDate:dd/MM/yyyy});");
+        if (!ok) return;
+        var result = await Service.DeleteVisit(new DeleteSalesVisitRequest
+        {
+            VisitID = v.VisitID,
+            UserID = userManager.User?.IdUser ?? 0
+        });
+        if (result != null && !result.Success && !string.IsNullOrEmpty(result.Message))
+        {
+            banner = result.Message;
+            return;
+        }
+        await Load();
+    }
+}

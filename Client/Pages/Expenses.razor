@@ -1,0 +1,301 @@
+@page "/expenses"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+
+<PageTitle>Εξοδολόγιο</PageTitle>
+
+<style>
+    .exp-table input[type=number] { max-width: 90px; text-align: right; }
+    .exp-table input[type=text] { min-width: 140px; }
+    .exp-total-row td { font-weight: 700; background: #f8f9fa; }
+    .exp-weekend { background: #fcf8f2; }
+</style>
+
+<div class="sbt-page-header">
+    <img src="images/icons/icon-mytask.svg" alt="" class="sbt-page-icon" />
+    <h3 class="mb-3">Εξοδολόγιο</h3>
+</div>
+
+@if (!string.IsNullOrEmpty(banner))
+{
+    <div class="alert alert-success alert-dismissible">
+        @banner
+        <button type="button" class="btn-close" @onclick="() => banner = string.Empty"></button>
+    </div>
+}
+
+@* ===== Γρήγορη καταχώρηση εξόδου: κατηγορία + ποσό + ημερομηνία
+       (προεπιλογή σήμερα, αλλάζει ελεύθερα και σε παλιότερη) ===== *@
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <strong class="d-block mb-2">➕ Νέο έξοδο</strong>
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2">
+                <label class="form-label mb-1">Ημερομηνία</label>
+                <InputDate @bind-Value="quickDate" class="form-control" />
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label mb-1">Ονομασία εξόδου</label>
+                <select class="form-select" @bind="quickCategory">
+                    <option value="Fuel">Καύσιμα</option>
+                    <option value="Tolls">Διόδια</option>
+                    <option value="Lodging">Διαμονή</option>
+                    <option value="Meals">Γεύματα</option>
+                    <option value="Parking">Parking</option>
+                    <option value="Tickets">Εισιτήρια-Ταξί</option>
+                    <option value="Misc">Διάφορα</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label mb-1">Ποσό (€)</label>
+                <input type="number" step="0.01" min="0" class="form-control" @bind="quickAmount" />
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label mb-1">Προορισμός (προαιρετικά)</label>
+                <input type="text" class="form-control" @bind="quickDestination" />
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-success" @onclick="QuickAdd" disabled="@(busy || quickAmount <= 0)">+ Καταχώρηση</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-2 mb-3 align-items-end">
+    @if (userManager.IsAdmin)
+    {
+        <div class="col-6 col-md-3">
+            <label class="form-label mb-1">Πωλητής</label>
+            <select class="form-select" value="@selectedUserId" @onchange="OnUserChanged">
+                @foreach (var u in users)
+                {
+                    <option value="@u.IdUser">@u.FullName</option>
+                }
+            </select>
+        </div>
+    }
+    <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Μήνας</label>
+        <select class="form-select" value="@month" @onchange="OnMonthChanged">
+            @for (int m = 1; m <= 12; m++)
+            {
+                <option value="@m">@MonthName(m)</option>
+            }
+        </select>
+    </div>
+    <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Έτος</label>
+        <select class="form-select" value="@year" @onchange="OnYearChanged">
+            @for (int y = 2024; y <= DateTime.Today.Year + 1; y++)
+            {
+                <option value="@y">@y</option>
+            }
+        </select>
+    </div>
+    <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Αρ. Κυκλοφορίας</label>
+        <input class="form-control" @bind="vehiclePlate" />
+    </div>
+    <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Χιλιόμετρα</label>
+        <input type="number" class="form-control" @bind="kilometers" />
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" @onclick="Save" disabled="@busy">💾 Αποθήκευση</button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle exp-table">
+            <thead>
+                <tr class="table-light">
+                    <th style="width:110px">Ημερομηνία</th>
+                    <th>Προορισμός</th>
+                    <th>Καύσιμα</th>
+                    <th>Διόδια</th>
+                    <th>Διαμονή</th>
+                    <th>Γεύματα</th>
+                    <th>Parking</th>
+                    <th>Εισιτήρια-Ταξί</th>
+                    <th>Διάφορα</th>
+                    <th style="width:90px" class="text-end">Σύνολο</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in days)
+                {
+                    var weekend = d.ExpenseDate.DayOfWeek == DayOfWeek.Saturday || d.ExpenseDate.DayOfWeek == DayOfWeek.Sunday;
+                    <tr class="@(weekend ? "exp-weekend" : "")">
+                        <td>@d.ExpenseDate.ToString("dd/MM") <small class="text-muted">@DayAbbr(d.ExpenseDate)</small></td>
+                        <td><input type="text" class="form-control form-control-sm" @bind="d.Destination" /></td>
+                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" @bind="d.Fuel" /></td>
+                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" @bind="d.Tolls" /></td>
+                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" @bind="d.Lodging" /></td>
+                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" @bind="d.Meals" /></td>
+                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" @bind="d.Parking" /></td>
+                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" @bind="d.Tickets" /></td>
+                        <td><input type="number" step="0.01" min="0" class="form-control form-control-sm" @bind="d.Misc" /></td>
+                        <td class="text-end">@RowTotal(d).ToString("0.00")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="exp-total-row">
+                    <td colspan="2" class="text-end">ΣΥΝΟΛΑ:</td>
+                    <td class="text-end">@days.Sum(x => x.Fuel).ToString("0.00")</td>
+                    <td class="text-end">@days.Sum(x => x.Tolls).ToString("0.00")</td>
+                    <td class="text-end">@days.Sum(x => x.Lodging).ToString("0.00")</td>
+                    <td class="text-end">@days.Sum(x => x.Meals).ToString("0.00")</td>
+                    <td class="text-end">@days.Sum(x => x.Parking).ToString("0.00")</td>
+                    <td class="text-end">@days.Sum(x => x.Tickets).ToString("0.00")</td>
+                    <td class="text-end">@days.Sum(x => x.Misc).ToString("0.00")</td>
+                    <td class="text-end">@days.Sum(x => RowTotal(x)).ToString("0.00") €</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
+
+    private SalesService Service => new SalesService(dataService);
+
+    private List<IssueUserDto> users = new();
+    private List<SalesExpenseDayDto> days = new();
+    private int year = DateTime.Today.Year;
+    private int month = DateTime.Today.Month;
+    private string selectedUserId = "";
+    private string? vehiclePlate;
+    private int? kilometers;
+    private bool loading = true;
+    private bool busy = false;
+    private string banner = "";
+
+    private int TargetUserId => userManager.IsAdmin && int.TryParse(selectedUserId, out var id)
+        ? id
+        : userManager.User?.IdUser ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (userManager.IsAdmin)
+        {
+            users = await Service.GetUsers();
+            selectedUserId = (userManager.User?.IdUser ?? 0).ToString();
+        }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        var acting = userManager.User?.IdUser ?? 0;
+        var data = await Service.GetExpenses(acting, TargetUserId, year, month);
+
+        // Πλήρες πλέγμα μήνα: μία γραμμή για κάθε ημέρα, γεμάτη όπου υπάρχουν δεδομένα.
+        var existing = (data?.Days ?? new()).ToDictionary(d => d.ExpenseDate.Date);
+        var daysInMonth = DateTime.DaysInMonth(year, month);
+        days = Enumerable.Range(1, daysInMonth)
+            .Select(i =>
+            {
+                var date = new DateTime(year, month, i);
+                return existing.TryGetValue(date, out var row)
+                    ? row
+                    : new SalesExpenseDayDto { ExpenseDate = date };
+            }).ToList();
+
+        vehiclePlate = data?.VehiclePlate;
+        kilometers = data?.Kilometers;
+        loading = false;
+    }
+
+    // Γρήγορη καταχώρηση ενός εξόδου
+    private DateTime? quickDate = DateTime.Today;
+    private string quickCategory = "Fuel";
+    private decimal quickAmount;
+    private string? quickDestination;
+
+    private async Task QuickAdd()
+    {
+        if (quickAmount <= 0) return;
+        busy = true;
+        var d = (quickDate ?? DateTime.Today).Date;
+        var result = await Service.AddExpense(new AddSalesExpenseRequest
+        {
+            ActingUserID = userManager.User?.IdUser ?? 0,
+            UserID = TargetUserId,
+            ExpenseDate = d,
+            Category = quickCategory,
+            Amount = quickAmount,
+            Destination = quickDestination
+        });
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            banner = result?.Message ?? "Η καταχώρηση απέτυχε.";
+            return;
+        }
+        banner = $"✅ Καταχωρήθηκε έξοδο {quickAmount:0.00} € ({CategoryLabel(quickCategory)}) στις {d:dd/MM/yyyy}.";
+        quickAmount = 0;
+        quickDestination = null;
+        // Ο πίνακας γυρνάει στον μήνα της καταχώρησης για να τη δεις αμέσως.
+        year = d.Year;
+        month = d.Month;
+        await Load();
+    }
+
+    private static string CategoryLabel(string c) => c switch
+    {
+        "Fuel" => "Καύσιμα", "Tolls" => "Διόδια", "Lodging" => "Διαμονή", "Meals" => "Γεύματα",
+        "Parking" => "Parking", "Tickets" => "Εισιτήρια-Ταξί", "Misc" => "Διάφορα", _ => c
+    };
+
+    private async Task OnUserChanged(ChangeEventArgs e) { selectedUserId = e.Value?.ToString() ?? ""; await Load(); }
+    private async Task OnMonthChanged(ChangeEventArgs e) { month = int.Parse(e.Value?.ToString() ?? "1"); await Load(); }
+    private async Task OnYearChanged(ChangeEventArgs e) { year = int.Parse(e.Value?.ToString() ?? "2026"); await Load(); }
+
+    private async Task Save()
+    {
+        busy = true;
+        var result = await Service.SaveExpenses(new SaveSalesExpenseMonthRequest
+        {
+            ActingUserID = userManager.User?.IdUser ?? 0,
+            UserID = TargetUserId,
+            Year = year,
+            Month = month,
+            VehiclePlate = vehiclePlate,
+            Kilometers = kilometers,
+            Days = days
+        });
+        busy = false;
+        banner = result?.Success == true
+            ? $"✅ Αποθηκεύτηκε το εξοδολόγιο {MonthName(month)} {year}."
+            : (result?.Message ?? "Η αποθήκευση απέτυχε.");
+        await Load();
+    }
+
+    private static decimal RowTotal(SalesExpenseDayDto d)
+        => d.Fuel + d.Tolls + d.Lodging + d.Meals + d.Parking + d.Tickets + d.Misc;
+
+    private static string MonthName(int m) => m switch
+    {
+        1 => "Ιανουάριος", 2 => "Φεβρουάριος", 3 => "Μάρτιος", 4 => "Απρίλιος",
+        5 => "Μάιος", 6 => "Ιούνιος", 7 => "Ιούλιος", 8 => "Αύγουστος",
+        9 => "Σεπτέμβριος", 10 => "Οκτώβριος", 11 => "Νοέμβριος", 12 => "Δεκέμβριος",
+        _ => m.ToString()
+    };
+
+    private static string DayAbbr(DateTime d) => d.DayOfWeek switch
+    {
+        DayOfWeek.Monday => "Δευ", DayOfWeek.Tuesday => "Τρι", DayOfWeek.Wednesday => "Τετ",
+        DayOfWeek.Thursday => "Πεμ", DayOfWeek.Friday => "Παρ", DayOfWeek.Saturday => "Σαβ",
+        DayOfWeek.Sunday => "Κυρ", _ => ""
+    };
+}
