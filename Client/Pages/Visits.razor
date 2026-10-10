@@ -49,7 +49,7 @@
             <div class="col-12 col-md-4 position-relative">
                 <label class="form-label mb-1">Γιατρός</label>
                 <input class="form-control" placeholder="Γράψε όνομα γιατρού..."
-                       value="@newDoctorText" @oninput="e => OnDoctorSearch(e.Value?.ToString() ?? "")" />
+                       value="@newDoctorText" @oninput="e => OnDoctorSearch(e.Value?.ToString() ?? string.Empty)" />
                 @if (doctorSuggestions.Count > 0)
                 {
                     <div class="visit-suggestions">
