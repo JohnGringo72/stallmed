@@ -148,12 +148,19 @@
                 (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
             const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 
-            // Πάτημα ειδοποίησης με ανοιχτή την εφαρμογή: πλοήγηση χωρίς επαναφόρτωση.
+            // Μηνύματα από τον service worker:
+            //  sbt-navigate: πάτημα ειδοποίησης με ανοιχτή την εφαρμογή -> πλοήγηση χωρίς επαναφόρτωση
+            //  sbt-refresh:  ήρθε push -> η εφαρμογή ανανεώνει αμέσως ό,τι δείχνει
+            let refreshRef = null;
             if ("serviceWorker" in navigator) {
                 navigator.serviceWorker.addEventListener("message", function (e) {
-                    if (!e.data || e.data.type !== "sbt-navigate") return;
-                    if (window.Blazor && typeof Blazor.navigateTo === "function") Blazor.navigateTo(e.data.url);
-                    else window.location.href = e.data.url;
+                    if (!e.data) return;
+                    if (e.data.type === "sbt-navigate") {
+                        if (window.Blazor && typeof Blazor.navigateTo === "function") Blazor.navigateTo(e.data.url);
+                        else window.location.href = e.data.url;
+                    } else if (e.data.type === "sbt-refresh" && refreshRef) {
+                        refreshRef.invokeMethodAsync("OnPushReceived").catch(function () { });
+                    }
                 });
             }
             register();
@@ -187,6 +194,8 @@
                     const sub = await reg.pushManager.getSubscription();
                     return sub ? toPayload(sub) : null;
                 },
+                // Το MainLayout δηλώνει ποιος ακούει τα "ήρθε push" (null = κανείς).
+                onRefresh: function (dotnetRef) { refreshRef = dotnetRef; },
                 // Για την οθόνη πληροφοριών του καμπανακιού.
                 info: async function () {
                     const reg = ("serviceWorker" in navigator) ? await navigator.serviceWorker.getRegistration() : null;

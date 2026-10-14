@@ -46,6 +46,10 @@ namespace StallmedManager.Client
         public async Task<byte[]> DownloadAttachment(long attachmentId)
             => await dataService.GetBytes($"api/issues/attachments/file/{attachmentId}");
 
+        // TIFF (φαξ) μετατρεμμένο σε PNG από τον server, μόνο για προβολή.
+        public async Task<byte[]> PreviewTiff(long attachmentId)
+            => await dataService.GetBytes($"api/issues/attachments/preview/{attachmentId}");
+
         public async Task DeleteAttachment(long attachmentId)
             => await dataService.Post<object, object>($"api/issues/attachments/delete/{attachmentId}", new { });
 

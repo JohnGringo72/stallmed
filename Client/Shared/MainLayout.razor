@@ -159,15 +159,19 @@
         catch (OperationCanceledException) { /* αποσύνδεση ή κλείσιμο */ }
     }
 
-    private async Task CheckMyIssuesAsync()
+    private Task CheckMyIssuesAsync() => CheckMyIssuesCoreAsync();
+
+    // Επιστρέφει true αν βρέθηκε νέα κίνηση (και ειδοποιήθηκε η σελίδα Tasks να ανανεωθεί).
+    private async Task<bool> CheckMyIssuesCoreAsync()
     {
         var userId = userManager.User?.IdUser;
-        if (userId == null) return;
+        if (userId == null) return false;
+        var newActivity = false;
 
         try
         {
             var summary = await new IssuesService(dataService).GetMySummary(userId.Value);
-            if (summary == null) return;
+            if (summary == null) return false;
 
             myUnreadIssues = summary.UnreadCount;
             await push.SetBadgeAsync(myUnreadIssues);   // αριθμός πάνω στο εικονίδιο της εφαρμογής
@@ -198,6 +202,8 @@
                     }
                     catch (Exception) { }
                 }
+                // Όχι στον πρώτο έλεγχο: τότε η σελίδα μόλις φόρτωσε τα πάντα.
+                newActivity = lastNotifiedActivity != null;
                 lastNotifiedActivity = activity;
                 await localStorage.SetItemAsync("lastNotifiedActivity", lastNotifiedActivity);
             }
@@ -205,6 +211,31 @@
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception) { /* προσωρινό πρόβλημα δικτύου -- ξαναδοκιμάζει στο επόμενο λεπτό */ }
+
+        // Η σελίδα Tasks (αν είναι ανοιχτή) ανανεώνει λίστα και συνομιλία.
+        if (newActivity)
+            await notifications.RaiseActivityChanged();
+        return newActivity;
+    }
+
+    // Ο service worker έλαβε push: ανανέωση ΤΩΡΑ, όχι στον επόμενο έλεγχο του λεπτού.
+    [JSInvokable]
+    public async Task OnPushReceived()
+    {
+        // Αν το καμπανάκι δεν το είδε ως νέα κίνηση (π.χ. θέμα ομάδας που δεν μετράει
+        // στο καμπανάκι), η σελίδα ανανεώνεται ούτως ή άλλως.
+        if (!await CheckMyIssuesCoreAsync())
+            await notifications.RaiseActivityChanged();
+    }
+
+    private DotNetObjectReference<MainLayout>? selfRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        selfRef = DotNetObjectReference.Create(this);
+        try { await JS.InvokeVoidAsync("sbtPush.onRefresh", selfRef); }
+        catch (Exception) { /* παλιό index.html από cache -- απλώς χωρίς άμεση ανανέωση */ }
     }
 
     protected override async Task OnInitializedAsync()
@@ -280,5 +311,6 @@
         notifications.RefreshRequested -= CheckMyIssuesAsync;
         issuePollCts?.Cancel();
         issuePollCts?.Dispose();
+        selfRef?.Dispose();
     }
 }

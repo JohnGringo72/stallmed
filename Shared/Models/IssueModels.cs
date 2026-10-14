@@ -155,6 +155,8 @@ namespace StallmedManager.Shared.Models
         public DateTime? DueDate { get; set; }
         public int? ActingUserID { get; set; }       // ποιος κάνει την ενέργεια
         public string? ActingUserName { get; set; }
+        // Κείμενο για την ειδοποίηση push νέου θέματος (π.χ. το πρώτο σχόλιο). Δεν αποθηκεύεται.
+        public string? PushNote { get; set; }
     }
 
     public class AddIssueCommentRequest
@@ -163,6 +165,8 @@ namespace StallmedManager.Shared.Models
         public int? UserID { get; set; }
         public string? UserName { get; set; }
         public string CommentText { get; set; } = "";
+        // true = χωρίς ειδοποίηση push (αυτόματο μήνυμα που συνοδεύει άλλη ενέργεια)
+        public bool Silent { get; set; }
     }
 
     // ---- Διαγραφή σχολίου (μόνο από τον συντάκτη του) ----

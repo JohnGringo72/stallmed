@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using StallmedManager.Server.Models;
 using StallmedManager.Shared.Models;
 
@@ -18,16 +19,19 @@ namespace StallmedManager.Server.Controllers
         private readonly StallmedManager.Server.Services.QuoteEmailService _email;
         private readonly ILogger<IssuesController> _logger;
         private readonly StallmedManager.Server.Services.PushNotificationService _push;
+        private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
 
         public IssuesController(StallmedContext context,
             StallmedManager.Server.Services.QuoteEmailService email,
             ILogger<IssuesController> logger,
-            StallmedManager.Server.Services.PushNotificationService push)
+            StallmedManager.Server.Services.PushNotificationService push,
+            Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
         {
             _context = context;
             _email = email;
             _logger = logger;
             _push = push;
+            _cache = cache;
         }
 
         // Ορατότητα θεμάτων ανά χρήστη. Ο έλεγχος γίνεται ΣΤΟΝ SERVER με βάση τη βάση,
@@ -220,6 +224,7 @@ namespace StallmedManager.Server.Controllers
             IssueTask issue;
             int? previousAssignee = null;
             string? previousStatus = null;
+            string? previousTeam = null;
             var wasAssignedToAll = false;
             if (req.IssueID.HasValue)
             {
@@ -227,6 +232,7 @@ namespace StallmedManager.Server.Controllers
                 if (issue == null) return NotFound();
                 previousAssignee = issue.AssignedUserID;
                 previousStatus = issue.Status;
+                previousTeam = issue.AssignedTeam;
                 wasAssignedToAll = issue.AssignedToAll;
 
                 if (!hasTarget && previousAssignee != null)
@@ -295,7 +301,7 @@ namespace StallmedManager.Server.Controllers
             }
 
             await PushForSavedIssueAsync(issue, req.IssueID.HasValue, previousAssignee, previousStatus,
-                wasAssignedToAll, req.ActingUserID, req.ActingUserName);
+                wasAssignedToAll, previousTeam, req.ActingUserID, req.ActingUserName, req.PushNote);
 
             return Ok(new IssueSaveResult { Success = true, IssueID = issue.IssueID, IssueCode = issue.IssueCode });
         }
@@ -372,12 +378,21 @@ namespace StallmedManager.Server.Controllers
                 .Select(u => u.IdUser)
                 .ToListAsync();
 
+        // Ενεργά μέλη μιας ομάδας (SALES / SM / BM / TECO).
+        private async Task<List<int>> TeamUserIdsAsync(string team) =>
+            await _context.Users
+                .Where(u => u.Active && u.Team == team)
+                .Select(u => u.IdUser)
+                .ToListAsync();
+
         // Όσοι "εμπλέκονται" -- ίδιος κανόνας με το καμπανάκι (my-summary): ανατεθειμένο,
-        // το άνοιξε, αφορά, ή έχει σχολιάσει. Τα «Προς όλους» αφορούν όλους.
+        // το άνοιξε, αφορά, ή έχει σχολιάσει. Τα «Προς όλους» αφορούν όλους, τα «προς ομάδα»
+        // όλα τα μέλη της.
         private async Task<HashSet<int>> InvolvedUserIdsAsync(IssueTask issue)
         {
             var ids = new HashSet<int>();
             if (issue.AssignedToAll) ids.UnionWith(await AllTaskUserIdsAsync());
+            if (!string.IsNullOrEmpty(issue.AssignedTeam)) ids.UnionWith(await TeamUserIdsAsync(issue.AssignedTeam));
             if (issue.AssignedUserID.HasValue) ids.Add(issue.AssignedUserID.Value);
             if (issue.CreatedBy.HasValue) ids.Add(issue.CreatedBy.Value);
             if (issue.RegardingUserID.HasValue) ids.Add(issue.RegardingUserID.Value);
@@ -389,14 +404,21 @@ namespace StallmedManager.Server.Controllers
             return ids;
         }
 
+        // Μία αποθήκευση = το πολύ ΜΙΑ ειδοποίηση ανά χρήστη (η πρώτη που του ταιριάζει).
+        // pushNote: κείμενο που μπαίνει στην ειδοποίηση νέου θέματος (π.χ. το πρώτο σχόλιο),
+        // αφού το ίδιο το σχόλιο γράφεται σιωπηλά.
         private async Task PushForSavedIssueAsync(IssueTask issue, bool existed, int? previousAssignee,
-            string? previousStatus, bool wasAssignedToAll, int? actingUserId, string? actingUserName)
+            string? previousStatus, bool wasAssignedToAll, string? previousTeam,
+            int? actingUserId, string? actingUserName, string? pushNote)
         {
             try
             {
                 var by = string.IsNullOrWhiteSpace(actingUserName) ? "" : $" · {actingUserName}";
                 var url = IssueUrl(issue.IssueID);
                 var tag = $"issue-{issue.IssueID}";
+                var newBody = string.IsNullOrWhiteSpace(pushNote)
+                    ? issue.Title ?? ""
+                    : $"{issue.Title}\n💬 {pushNote.Trim()}";
                 var alreadyNotified = new HashSet<int>();
                 if (actingUserId.HasValue) alreadyNotified.Add(actingUserId.Value);   // ποτέ στον εαυτό σου
 
@@ -405,7 +427,7 @@ namespace StallmedManager.Server.Controllers
                     && !alreadyNotified.Contains(issue.AssignedUserID.Value))
                 {
                     _push.Queue(new[] { issue.AssignedUserID.Value },
-                        $"📌 Νέο θέμα {issue.IssueCode}{by}", issue.Title ?? "", url, tag);
+                        $"📌 Νέο θέμα {issue.IssueCode}{by}", newBody, url, tag);
                     alreadyNotified.Add(issue.AssignedUserID.Value);
                 }
 
@@ -413,11 +435,19 @@ namespace StallmedManager.Server.Controllers
                 if (issue.AssignedToAll && !wasAssignedToAll)
                 {
                     var all = (await AllTaskUserIdsAsync()).Where(id => !alreadyNotified.Contains(id)).ToList();
-                    _push.Queue(all, $"📢 Νέο θέμα προς όλους {issue.IssueCode}{by}", issue.Title ?? "", url, tag);
+                    _push.Queue(all, $"📢 Νέο θέμα προς όλους {issue.IssueCode}{by}", newBody, url, tag);
                     alreadyNotified.UnionWith(all);
                 }
 
-                // 3) Αλλαγή στάτους σε υπάρχον θέμα: σε όσους εμπλέκονται
+                // 3) Ανατέθηκε σε (άλλη) ομάδα: όλα τα μέλη της
+                if (!string.IsNullOrEmpty(issue.AssignedTeam) && issue.AssignedTeam != previousTeam)
+                {
+                    var members = (await TeamUserIdsAsync(issue.AssignedTeam)).Where(id => !alreadyNotified.Contains(id)).ToList();
+                    _push.Queue(members, $"👥 Νέο θέμα για {Teams.Label(issue.AssignedTeam)} {issue.IssueCode}{by}", newBody, url, tag);
+                    alreadyNotified.UnionWith(members);
+                }
+
+                // 4) Αλλαγή στάτους σε υπάρχον θέμα: σε όσους εμπλέκονται
                 if (existed && !string.Equals(previousStatus, issue.Status, StringComparison.OrdinalIgnoreCase))
                 {
                     var ids = (await InvolvedUserIdsAsync(issue)).Where(id => !alreadyNotified.Contains(id));
@@ -634,15 +664,20 @@ namespace StallmedManager.Server.Controllers
                 await MarkReadInternal(req.IssueID, req.UserID.Value);
 
             // Push σε όσους εμπλέκονται (εκτός από αυτόν που έγραψε), σαν μήνυμα σε συνομιλία.
-            try
+            // Σιωπηλό: αυτόματο μήνυμα που συνοδεύει άλλη ενέργεια με δική της ειδοποίηση
+            // (αλλαγή στάτους, πρώτο σχόλιο νέου θέματος) -- αλλιώς ερχόταν διπλή.
+            if (!req.Silent)
             {
-                var recipients = await InvolvedUserIdsAsync(issue);
-                if (req.UserID.HasValue) recipients.Remove(req.UserID.Value);
-                var from = string.IsNullOrWhiteSpace(req.UserName) ? "Νέο μήνυμα" : req.UserName;
-                _push.Queue(recipients, $"💬 {from} · {issue.IssueCode}", req.CommentText.Trim(),
-                    IssueUrl(issue.IssueID), $"issue-{issue.IssueID}");
+                try
+                {
+                    var recipients = await InvolvedUserIdsAsync(issue);
+                    if (req.UserID.HasValue) recipients.Remove(req.UserID.Value);
+                    var from = string.IsNullOrWhiteSpace(req.UserName) ? "Νέο μήνυμα" : req.UserName;
+                    _push.Queue(recipients, $"💬 {from} · {issue.IssueCode}", req.CommentText.Trim(),
+                        IssueUrl(issue.IssueID), $"issue-{issue.IssueID}");
+                }
+                catch (Exception ex) { _logger.LogError(ex, "Αποτυχία push για σχόλιο στο {Code}", issue.IssueCode); }
             }
-            catch (Exception ex) { _logger.LogError(ex, "Αποτυχία push για σχόλιο στο {Code}", issue.IssueCode); }
 
             return Ok(new IssueSaveResult { Success = true, IssueID = req.IssueID });
         }
@@ -723,6 +758,12 @@ namespace StallmedManager.Server.Controllers
                     file.FileName, file.Length);
                 return BadRequest($"Το αρχείο δεν αποθηκεύτηκε ({file.Length / 1024} KB). Ίσως είναι πολύ μεγάλο.");
             }
+
+            // Όπως στα σχόλια: η δική σου κίνηση δεν σου εμφανίζεται ως αδιάβαστη
+            // (αλλιώς ο δημιουργός νέου θέματος με αρχεία έπαιρνε ειδοποίηση για το δικό του θέμα).
+            if (userId.HasValue)
+                await MarkReadInternal(issueId, userId.Value);
+
             return Ok(new { Success = true });
         }
 
@@ -744,6 +785,35 @@ namespace StallmedManager.Server.Controllers
             }
 
             return File(att.FileData, MimeFor(att.FileName, att.ContentType), att.FileName ?? "attachment");
+        }
+
+        // ---- Προβολή TIFF (φαξ) ως PNG -- οι browsers δεν ανοίγουν TIFF ----
+        // Τα συνημμένα δεν αλλάζουν, οπότε η μετατροπή κρατιέται λίγη ώρα στη μνήμη.
+        [HttpGet("attachments/preview/{attachmentId:long}")]
+        public async Task<ActionResult> PreviewAttachment(long attachmentId)
+        {
+            var cacheKey = $"tiff-preview-{attachmentId}";
+            if (_cache.TryGetValue(cacheKey, out byte[]? cached) && cached != null)
+                return File(cached, "image/png");
+
+            var att = await _context.IssueAttachments.FindAsync(attachmentId);
+            if (att == null || att.FileData == null || att.FileData.Length == 0) return NotFound();
+            if (!StallmedManager.Server.Services.TiffPreview.IsTiff(att.FileName, att.ContentType))
+                return BadRequest("Η προβολή αφορά μόνο αρχεία TIFF.");
+            if (!OperatingSystem.IsWindows())
+                return StatusCode(501, "Η μετατροπή TIFF γίνεται μόνο σε server Windows.");
+
+            try
+            {
+                var png = StallmedManager.Server.Services.TiffPreview.ToPng(att.FileData);
+                _cache.Set(cacheKey, png, TimeSpan.FromMinutes(10));
+                return File(png, "image/png");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Αποτυχία μετατροπής TIFF για προβολή: {FileName}", att.FileName);
+                return StatusCode(422, "Το TIFF δεν μπόρεσε να μετατραπεί -- κατέβασέ το με το ⬇.");
+            }
         }
 
         [HttpPost("attachments/delete/{attachmentId:long}")]

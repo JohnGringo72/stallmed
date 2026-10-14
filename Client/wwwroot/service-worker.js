@@ -21,7 +21,13 @@ self.addEventListener('push', (event) => {
         data: { url: data.url || '/' }
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    event.waitUntil(Promise.all([
+        self.registration.showNotification(title, options),
+        // Ανοιχτά παράθυρα της εφαρμογής: ανανεώνουν αμέσως λίστα/συνομιλία, χωρίς refresh.
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((all) => {
+            all.forEach((client) => client.postMessage({ type: 'sbt-refresh', tag: data.tag || null }));
+        })
+    ]));
 });
 
 // Πάτημα στην ειδοποίηση: αν η εφαρμογή είναι ήδη ανοιχτή πάει εκεί, αλλιώς την ανοίγει.

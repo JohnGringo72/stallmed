@@ -6,6 +6,7 @@
 @inject IJSRuntime JS
 @inject NotificationsState notifications
 @inject PushClientService push
+@implements IDisposable
 
 <PageTitle>Tasks / Issues</PageTitle>
 
@@ -501,6 +502,13 @@ else
                     {
                         <p class="text-white p-3 mb-0"><em>Φορτώνω...</em></p>
                     }
+                    else if (previewIsTiff)
+                    {
+                        @* Φαξ: όλες οι σελίδες η μία κάτω από την άλλη -- κύλιση, όχι σμίκρυνση *@
+                        <div style="max-height:75vh; overflow:auto">
+                            <img src="@previewUrl" style="width:100%" />
+                        </div>
+                    }
                     else if (previewIsImage)
                     {
                         <img src="@previewUrl" style="max-width:100%; max-height:75vh" />
@@ -746,6 +754,89 @@ else
     {
         users = await Service.GetUsers();
         await Load();
+
+        // Αυτόματη ανανέωση σαν chat: με push αμέσως, αλλιώς από τον έλεγχο του καμπανακιού,
+        // και όσο είναι ανοιχτή μια συνομιλία, έλεγχος κάθε λίγα δευτερόλεπτα.
+        notifications.ActivityChanged += OnActivityChanged;
+        livePollCts = new CancellationTokenSource();
+        _ = PollOpenIssueAsync(livePollCts.Token);
+    }
+
+    // ---- Αυτόματη ανανέωση (χωρίς refresh από τον χρήστη) ----
+    // Δεν πειράζει ό,τι πληκτρολογεί ο χρήστης: το πεδίο μηνύματος και η φόρμα
+    // επεξεργασίας είναι ξεχωριστά πεδία από τη λίστα και τη συνομιλία που ανανεώνονται.
+    private static readonly TimeSpan OpenIssuePollInterval = TimeSpan.FromSeconds(10);
+    private CancellationTokenSource? livePollCts;
+    private bool liveRefreshing;
+
+    private async Task PollOpenIssueAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(OpenIssuePollInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                if (details != null) await InvokeAsync(() => RefreshLiveAsync(listToo: false));
+            }
+        }
+        catch (OperationCanceledException) { /* έφυγε από τη σελίδα */ }
+    }
+
+    private Task OnActivityChanged() => InvokeAsync(() => RefreshLiveAsync(listToo: true));
+
+    private async Task RefreshLiveAsync(bool listToo)
+    {
+        // Όχι πάνω σε ενέργεια του χρήστη (αποστολή, ανέβασμα, αποθήκευση) ούτε δύο μαζί.
+        if (liveRefreshing || busy || preparingFiles) return;
+        liveRefreshing = true;
+        try
+        {
+            if (listToo)
+            {
+                // Χωρίς το «φορτώνω...» του Load: η λίστα αλλάζει αθόρυβα.
+                var fresh = await Service.GetIssues(string.IsNullOrEmpty(filterStatus) ? null : filterStatus,
+                                                    string.IsNullOrWhiteSpace(searchText) ? null : searchText.Trim(),
+                                                    userManager.User?.IdUser,
+                                                    showArchived);
+                if (fresh != null) issues = fresh;
+            }
+
+            var open = details;
+            if (open != null)
+            {
+                var latest = await Service.GetIssue(open.Issue.IssueID, userManager.User?.IdUser);
+                // Μόνο αν άλλαξε κάτι, και αν ο χρήστης δεν άλλαξε θέμα στο μεταξύ.
+                if (latest != null && details == open
+                    && (latest.Issue.UpdatedAt != open.Issue.UpdatedAt
+                        || latest.Comments.Count != open.Comments.Count
+                        || latest.Attachments.Count != open.Attachments.Count))
+                {
+                    details = latest;
+                    // Το βλέπει μπροστά του: μετράει ως διαβασμένο, δεν ανάβει το καμπανάκι.
+                    var userId = userManager.User?.IdUser;
+                    if (userId.HasValue)
+                    {
+                        await Service.MarkRead(latest.Issue.IssueID, userId.Value);
+                        var row = issues.FirstOrDefault(i => i.IssueID == latest.Issue.IssueID);
+                        if (row != null) row.IsUnread = false;
+                        await notifications.RequestRefresh();
+                    }
+                }
+            }
+            StateHasChanged();
+        }
+        catch (Exception) { /* προσωρινό πρόβλημα δικτύου -- ξαναδοκιμάζει στον επόμενο έλεγχο */ }
+        finally
+        {
+            liveRefreshing = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        notifications.ActivityChanged -= OnActivityChanged;
+        livePollCts?.Cancel();
+        livePollCts?.Dispose();
     }
 
     // Τρέχει και όταν η σελίδα είναι ήδη ανοιχτή και πατηθεί ειδοποίηση για άλλο θέμα.
@@ -856,7 +947,9 @@ else
             Priority = editPriority,
             DueDate = editDueDate,
             ActingUserID = userManager.User?.IdUser,
-            ActingUserName = UserFullName()
+            ActingUserName = UserFullName(),
+            // Το πρώτο σχόλιο μπαίνει μέσα στην ειδοποίηση «Νέο θέμα» (το ίδιο γράφεται σιωπηλά).
+            PushNote = editId == null && !string.IsNullOrWhiteSpace(firstComment) ? firstComment.Trim() : null
         });
         busy = false;
         if (result == null || !result.Success)
@@ -878,7 +971,8 @@ else
                     IssueID = result.IssueID,
                     UserID = userManager.User?.IdUser,
                     UserName = UserFullName(),
-                    CommentText = firstComment.Trim()
+                    CommentText = firstComment.Trim(),
+                    Silent = true   // ήρθε ήδη μέσα στην ειδοποίηση «Νέο θέμα»
                 });
             pendingFiles.Clear();
             fileMessage = "";
@@ -990,6 +1084,10 @@ else
     private async Task OpenDetails(long id)
     {
         showTaskDetails = false;
+        // Τα μηνύματα σφάλματος αφορούν το θέμα που ήταν ανοιχτό -- αλλιώς «κολλούσαν»
+        // και εμφανίζονταν σε όποιο θέμα άνοιγες μετά.
+        detailsMessage = "";
+        deleteMessage = "";
         details = await Service.GetIssue(id, userManager.User?.IdUser);
 
         // "Το είδα" ανά χρήστη: δεν επηρεάζει τους υπόλοιπους.
@@ -1008,6 +1106,8 @@ else
     {
         details = null;
         newComment = "";
+        detailsMessage = "";
+        deleteMessage = "";
     }
 
     // Γρήγορη αλλαγή στάτους από την κορυφή του παραθύρου — αποθηκεύεται αμέσως
@@ -1050,7 +1150,8 @@ else
             IssueID = iss.IssueID,
             UserID = userManager.User?.IdUser,
             UserName = UserFullName(),
-            CommentText = $"⏩ Άλλαξε το στάτους σε «{StatusLabel(newStatus)}»"
+            CommentText = $"⏩ Άλλαξε το στάτους σε «{StatusLabel(newStatus)}»",
+            Silent = true   // η αλλαγή στάτους στέλνει ήδη δική της ειδοποίηση
         });
         details = await Service.GetIssue(iss.IssueID, userManager.User?.IdUser);
         busy = false;
@@ -1113,6 +1214,7 @@ else
     private IssueAttachmentDto? previewAtt;
     private string? previewUrl;
     private bool previewIsImage;
+    private bool previewIsTiff;
 
     private static string GuessContentType(IssueAttachmentDto att)
     {
@@ -1131,8 +1233,41 @@ else
         };
     }
 
+    private static bool IsTiff(IssueAttachmentDto att)
+    {
+        var ext = Path.GetExtension(att.FileName ?? "").ToLowerInvariant();
+        return ext is ".tif" or ".tiff" || att.ContentType == "image/tiff";
+    }
+
+    // TIFF: ο server το δίνει ως PNG (οι browsers δεν ανοίγουν TIFF). Αν αποτύχει, κατέβασμα.
+    private async Task ViewTiff(IssueAttachmentDto att)
+    {
+        previewAtt = att;
+        previewUrl = null;
+        previewIsImage = true;
+        previewIsTiff = true;
+        StateHasChanged();
+
+        var png = await Service.PreviewTiff(att.AttachmentID);
+        if (png == null || png.Length == 0)
+        {
+            previewAtt = null;
+            previewIsTiff = false;
+            detailsMessage = "Το TIFF δεν μπόρεσε να προβληθεί -- κατεβαίνει στον υπολογιστή.";
+            await DownloadAttachment(att);
+            return;
+        }
+        previewUrl = await JS.InvokeAsync<string>("createObjectUrlFromBytes", "image/png", png);
+    }
+
     private async Task ViewAttachment(IssueAttachmentDto att)
     {
+        if (IsTiff(att))
+        {
+            await ViewTiff(att);
+            return;
+        }
+        previewIsTiff = false;
         var contentType = GuessContentType(att);
         var isImage = contentType.StartsWith("image/");
         var isPdf = contentType == "application/pdf";
@@ -1169,14 +1304,18 @@ else
     // τα δίνει στον εγγενή προβολέα του τηλεφώνου.
     private async Task OpenInNewTab(IssueAttachmentDto att)
     {
-        var bytes = await Service.DownloadAttachment(att.AttachmentID);
+        // TIFF: ανοίγει η μετατροπή σε PNG, αφού το αρχικό δεν το δείχνει κανένας browser.
+        var tiff = IsTiff(att);
+        var bytes = tiff
+            ? await Service.PreviewTiff(att.AttachmentID)
+            : await Service.DownloadAttachment(att.AttachmentID);
         if (bytes == null || bytes.Length == 0)
         {
             detailsMessage = "Το αρχείο δεν κατέβηκε. Δοκίμασε ξανά.";
             return;
         }
         await JS.InvokeVoidAsync("openFileFromBytes",
-            att.FileName ?? "attachment", GuessContentType(att), bytes);
+            att.FileName ?? "attachment", tiff ? "image/png" : GuessContentType(att), bytes);
     }
 
     private async Task DownloadAttachment(IssueAttachmentDto att)
