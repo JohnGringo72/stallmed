@@ -15,6 +15,8 @@
         public bool Active { get; set; }
         // "All" = βλέπει όλα τα θέματα, "Own" = μόνο τα δικά του
         public string TasksVisibility { get; set; } = "Own";
+        // Ομάδα: SALES / SM / BM / TECO, ή κενό
+        public string? Team { get; set; }
         // false = ο κωδικός δεν είναι ακόμη hashed (παλιός χρήστης που δεν
         // ξανασυνδέθηκε -- αναβαθμίζεται αυτόματα στην επόμενη είσοδο)
         public bool HasEncryptedPassword { get; set; }
@@ -36,6 +38,7 @@
         public string Role { get; set; } = "";
         public bool Active { get; set; } = true;
         public string? TasksVisibility { get; set; }   // "All" ή "Own"
+        public string? Team { get; set; }
         public string? Password { get; set; }       // υποχρεωτικός μόνο στη δημιουργία
     }
 

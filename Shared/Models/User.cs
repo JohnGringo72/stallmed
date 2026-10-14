@@ -13,6 +13,8 @@ namespace StallmedManager.Shared.Models
         public string? PasswordEncrypted { get; set; }
         public string? AMKA { get; set; }
         public bool ForcePasswordChange { get; set; } = false;
+        // Ομάδα του χρήστη: SALES / SM / BM / TECO, ή κενό (sql/teams.sql)
+        public string? Team { get; set; }
         public string Firstname { get; set; }
         public string Lastname { get; set; }
         public string Role { get; set; }

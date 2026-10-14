@@ -49,6 +49,17 @@ namespace StallmedManager.Server.Controllers
             return string.Equals(user.Role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
         }
 
+        // Η ομάδα του χρήστη -- τα θέματα της ομάδας του τα βλέπει κι ας έχει
+        // ορατότητα «μόνο τα δικά μου».
+        private async Task<string?> TeamOf(int? userId)
+        {
+            if (userId == null || userId <= 0) return null;
+            return await _context.Users
+                .Where(u => u.IdUser == userId.Value)
+                .Select(u => u.Team)
+                .FirstOrDefaultAsync();
+        }
+
         // ---- Λίστα με προαιρετικά φίλτρα ----
         [HttpGet]
         public async Task<ActionResult<List<IssueListItemDto>>> GetIssues(
@@ -62,9 +73,13 @@ namespace StallmedManager.Server.Controllers
 
             // Όποιος δεν βλέπει τα πάντα, βλέπει όσα άνοιξε ο ίδιος ή του ανατέθηκαν.
             if (!await SeesAllIssues(userId))
+            {
+                var myTeam = await TeamOf(userId);
                 query = query.Where(i => i.CreatedBy == userId
                                       || i.AssignedUserID == userId
-                                      || i.AssignedToAll);
+                                      || i.AssignedToAll
+                                      || (myTeam != null && i.AssignedTeam == myTeam));
+            }
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(i => i.Status == status);
             if (regardingUserId.HasValue)
@@ -123,6 +138,7 @@ namespace StallmedManager.Server.Controllers
                 AssignedUserID = i.AssignedUserID,
                 AssignedName = i.AssignedName,
                 AssignedToAll = i.AssignedToAll,
+                AssignedTeam = i.AssignedTeam,
                 Status = i.Status,
                 Priority = i.Priority,
                 DueDate = i.DueDate,
@@ -145,8 +161,11 @@ namespace StallmedManager.Server.Controllers
             if (issue == null) return NotFound();
 
             // Χωρίς αυτόν τον έλεγχο, όποιος ήξερε το id θα έβλεπε ξένο θέμα.
-            if (!await SeesAllIssues(userId) && !issue.AssignedToAll &&
-                issue.CreatedBy != userId && issue.AssignedUserID != userId)
+            var myTeam = await TeamOf(userId);
+            var minePersonally = issue.CreatedBy == userId || issue.AssignedUserID == userId;
+            var mineByTeam = issue.AssignedTeam != null && issue.AssignedTeam == myTeam;
+
+            if (!await SeesAllIssues(userId) && !issue.AssignedToAll && !minePersonally && !mineByTeam)
             {
                 return NotFound();
             }
@@ -188,7 +207,10 @@ namespace StallmedManager.Server.Controllers
             // Κάθε ΝΕΟ θέμα πρέπει να έχει αποδέκτη -- αλλιώς δεν το χρεώνεται κανείς.
             // Στα παλιά (πριν τον κανόνα) επιτρέπεται να μείνει κενό, ώστε να μη
             // μπλοκάρει η αλλαγή στάτους· απαγορεύεται όμως να ΑΦΑΙΡΕΘΕΙ ανάθεση.
-            if (req.AssignedUserID == null && !req.AssignedToAll && !req.IssueID.HasValue)
+            var team = Teams.Normalize(req.AssignedTeam);
+            var hasTarget = req.AssignedUserID != null || req.AssignedToAll || team != null;
+
+            if (!hasTarget && !req.IssueID.HasValue)
                 return Ok(new IssueSaveResult
                 {
                     Success = false,
@@ -207,7 +229,7 @@ namespace StallmedManager.Server.Controllers
                 previousStatus = issue.Status;
                 wasAssignedToAll = issue.AssignedToAll;
 
-                if (req.AssignedUserID == null && !req.AssignedToAll && previousAssignee != null)
+                if (!hasTarget && previousAssignee != null)
                     return Ok(new IssueSaveResult
                     {
                         Success = false,
@@ -239,10 +261,13 @@ namespace StallmedManager.Server.Controllers
             issue.Description = req.Description;
             issue.RegardingUserID = req.RegardingUserID;
             issue.RegardingName = req.RegardingName;
-            // «Προς όλους» και συγκεκριμένος αποδέκτης αλληλοαποκλείονται
+            // Οι τρεις μορφές ανάθεσης αλληλοαποκλείονται: όλοι / ομάδα / πρόσωπο
             issue.AssignedToAll = req.AssignedToAll;
-            issue.AssignedUserID = req.AssignedToAll ? null : req.AssignedUserID;
-            issue.AssignedName = req.AssignedToAll ? "Προς όλους" : req.AssignedName;
+            issue.AssignedTeam = req.AssignedToAll ? null : team;
+            issue.AssignedUserID = (req.AssignedToAll || team != null) ? null : req.AssignedUserID;
+            issue.AssignedName = req.AssignedToAll ? "Προς όλους"
+                               : team != null ? Teams.Label(team)
+                               : req.AssignedName;
             issue.Status = string.IsNullOrEmpty(req.Status) ? "Open" : req.Status;
             issue.Priority = string.IsNullOrEmpty(req.Priority) ? "Normal" : req.Priority;
             issue.DueDate = req.DueDate;
@@ -742,7 +767,8 @@ namespace StallmedManager.Server.Controllers
                 {
                     IdUser = u.IdUser,
                     FullName = (u.Firstname + " " + u.Lastname).Trim(),
-                    Role = u.Role
+                    Role = u.Role,
+                    Team = u.Team
                 }).ToListAsync();
             return Ok(users);
         }

@@ -126,6 +126,7 @@ else if (status == "loaded")
                     <th>Username</th>
                     <th>Email</th>
                     <th>Ρόλος</th>
+                    <th>Ομάδα</th>
                     <th>Θέματα</th>
                     <th>Κατάσταση</th>
                     <th>Κωδικός</th>
@@ -141,6 +142,16 @@ else if (status == "loaded")
                         <td>@u.Username</td>
                         <td>@u.Email</td>
                         <td><span class="role-badge" style="background-color:@RoleColor(u.Role)">@u.Role</span></td>
+                        <td>
+                            @if (string.IsNullOrEmpty(u.Team))
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">@Teams.Label(u.Team)</span>
+                            }
+                        </td>
                         <td>
                             @if (u.TasksVisibility == "All")
                             {
@@ -252,6 +263,17 @@ else if (status == "loaded")
                                 <div class="form-text">Προσοχή: νέος ρόλος δεν ξεκλειδώνει από μόνος του δικαιώματα. Τα δικαιώματα ορίζονται στον κώδικα (σήμερα: admin, warehouse).</div>
                             </div>
                         }
+                        <div class="col-12">
+                            <label class="form-label mb-1">Ομάδα</label>
+                            <select class="form-control" @bind="editUser.Team">
+                                <option value="">— καμία —</option>
+                                @foreach (var team in Teams.All)
+                                {
+                                    <option value="@team.Code">@team.Label</option>
+                                }
+                            </select>
+                            <div class="form-text">Καθορίζει ποια θέματα ομάδας βλέπει, και πού εμφανίζεται στη λίστα ανάθεσης.</div>
+                        </div>
                         <div class="col-12">
                             <label class="form-label mb-1">Ορατότητα θεμάτων (Tasks)</label>
                             <select class="form-control" @bind="editUser.TasksVisibility">
@@ -468,7 +490,8 @@ else if (status == "loaded")
             AMKA = u.AMKA,
             Role = u.Role,
             Active = u.Active,
-            TasksVisibility = u.TasksVisibility
+            TasksVisibility = u.TasksVisibility,
+            Team = u.Team
         };
         roleChoice = roles.Contains(u.Role) ? u.Role : NewRoleOption;
         newRoleName = roles.Contains(u.Role) ? "" : u.Role;

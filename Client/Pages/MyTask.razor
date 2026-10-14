@@ -11,23 +11,6 @@
 
 <style>
     .issue-row { cursor: pointer; }
-    /* Αναζητήσιμη λίστα για το «Αφορά» -- οι γιατροί είναι πολλοί για απλό select */
-    .search-menu {
-        position: absolute; z-index: 1056; left: 12px; right: 12px;
-        max-height: 260px; overflow-y: auto;
-        background: #fff; border: 1px solid #ced4da; border-radius: 6px;
-        box-shadow: 0 6px 16px rgba(0,0,0,.15);
-    }
-    .search-group {
-        padding: 4px 12px; font-size: .75rem; font-weight: 700;
-        color: #6c757d; background: #f8f9fa; position: sticky; top: 0;
-    }
-    .search-item {
-        display: block; width: 100%; text-align: left; border: 0; background: none;
-        padding: 6px 12px; font-size: .9rem;
-    }
-    .search-item:hover { background: #e9ecef; }
-    .search-item.active { background: #0d6efd; color: #fff; }
     th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     th.sortable:hover { background: #f1f3f5; }
     .chat-box {
@@ -144,6 +127,10 @@ else
                             {
                                 <span class="badge bg-info text-dark">👥 Προς όλους</span>
                             }
+                            else if (!string.IsNullOrEmpty(i.AssignedTeam))
+                            {
+                                <span class="badge bg-primary">🏢 @Teams.Label(i.AssignedTeam)</span>
+                            }
                             else
                             {
                                 @(string.IsNullOrEmpty(i.AssignedName) ? "—" : i.AssignedName)
@@ -204,53 +191,30 @@ else
                         </div>
                     </div>
                     <div class="row g-2 mb-2">
-                        <div class="col-md-6 position-relative">
-                            <label class="form-label mb-1">Αφορά (υπάλληλο / γιατρό)</label>
-                            <div class="input-group">
-                                <input class="form-control" placeholder="Γράψε όνομα για αναζήτηση…"
-                                       value="@(regardingOpen ? regardingSearch : RegardingLabel())"
-                                       @oninput="OnRegardingInput"
-                                       @onfocus="OpenRegarding"
-                                       @onblur="CloseRegarding" />
-                                @if (!string.IsNullOrEmpty(editRegardingKey))
-                                {
-                                    <button class="btn btn-outline-secondary" type="button"
-                                            title="Καθαρισμός" @onclick="ClearRegarding">✕</button>
-                                }
-                            </div>
-                            @if (regardingOpen)
-                            {
-                                var opts = FilteredRegarding();
-                                var lastGroup = "";
-                                <div class="search-menu">
-                                    @if (opts.Count == 0)
-                                    {
-                                        <div class="px-3 py-2 text-muted small">Δεν βρέθηκε κανείς</div>
-                                    }
-                                    @foreach (var o in opts)
-                                    {
-                                        if (o.Group != lastGroup)
-                                        {
-                                            lastGroup = o.Group;
-                                            <div class="search-group">@o.Group</div>
-                                        }
-                                        <button type="button"
-                                                class="search-item @(o.Key == editRegardingKey ? "active" : "")"
-                                                @onmousedown:preventDefault="true"
-                                                @onmousedown="@(() => PickRegarding(o))">@o.Label</button>
-                                    }
-                                </div>
-                            }
-                        </div>
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label class="form-label mb-1">Ανάθεση σε</label>
                             <select class="form-select" value="@assignValue" @onchange="OnAssignChanged">
                                 <option value="">— επίλεξε —</option>
-                                <option value="all">👥 Προς όλους</option>
-                                @foreach (var u in users)
+                                @foreach (var team in Teams.All)
                                 {
-                                    <option value="@u.IdUser">@u.FullName@(string.IsNullOrEmpty(u.Role) ? "" : $" ({u.Role})")</option>
+                                    <optgroup label="@team.Label">
+                                        <option value="team:@team.Code">🏢 Όλη η @team.Label</option>
+                                        @foreach (var u in MembersOf(team.Code))
+                                        {
+                                            <option value="@u.IdUser">@u.FullName</option>
+                                        }
+                                    </optgroup>
                                 }
+                                @if (Ungrouped().Any())
+                                {
+                                    <optgroup label="Χωρίς ομάδα">
+                                        @foreach (var u in Ungrouped())
+                                        {
+                                            <option value="@u.IdUser">@u.FullName</option>
+                                        }
+                                    </optgroup>
+                                }
+                                <option value="all">👥 Προς όλους</option>
                             </select>
                         </div>
                     </div>
@@ -384,9 +348,8 @@ else
                             {
                             <table class="table table-sm mb-2">
                                 <tbody>
-                                    <tr><th style="width:130px">Αφορά</th><td>@(string.IsNullOrEmpty(iss.RegardingName) ? "—" : iss.RegardingName)</td></tr>
                                     <tr><th>Άνοιξε</th><td>@(string.IsNullOrEmpty(iss.CreatedByName) ? "—" : iss.CreatedByName) · @iss.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
-                                    <tr><th>Ανάθεση</th><td>@(iss.AssignedToAll ? "👥 Προς όλους" : string.IsNullOrEmpty(iss.AssignedName) ? "—" : iss.AssignedName)</td></tr>
+                                    <tr><th>Ανάθεση</th><td>@AssignmentLabel(iss)</td></tr>
                                     <tr><th>Προθεσμία</th><td>@(iss.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td></tr>
                                     <tr><th>Προτεραιότητα</th><td>@PriorityLabel(iss.Priority)</td></tr>
                                     <tr><th>Τελ. ενημέρωση</th><td>@iss.UpdatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
@@ -559,7 +522,6 @@ else
         }
     }
     private List<IssueUserDto> users = new();
-    private List<DoctorOptionDto> doctors = new();
     private bool loading = true;
     private bool busy = false;
     private string searchText = "";
@@ -571,24 +533,33 @@ else
     private string editCode = "";
     private string editTitle = "";
     private string? editDescription;
-    // «Αφορά»: μία τιμή για δύο πηγές — "u:<IdUser>" για χρήστη, "d:<DoctorID>"
-    // για γιατρό. Ο γιατρός αποθηκεύεται μόνο ως όνομα (RegardingName snapshot,
-    // RegardingUserID = null), όπως προβλέπει το σχήμα του issues_module.sql.
-    private string editRegardingKey = "";
-    // Αναζήτηση στο «Αφορά»: οι γιατροί είναι εκατοντάδες, δεν βρίσκονται με scroll.
-    private string regardingSearch = "";
-    private bool regardingOpen;
     private int? editAssignedUserId;
     private bool editAssignedToAll;
+    private string? editAssignedTeam;
 
-    // Μία λίστα για δύο πράγματα: συγκεκριμένος χρήστης ή «προς όλους»
+    private static string AssignmentLabel(IssueTask iss) =>
+        iss.AssignedToAll ? "👥 Προς όλους"
+        : !string.IsNullOrEmpty(iss.AssignedTeam) ? $"🏢 {Teams.Label(iss.AssignedTeam)}"
+        : string.IsNullOrEmpty(iss.AssignedName) ? "—" : iss.AssignedName;
+
+    private IEnumerable<IssueUserDto> MembersOf(string team) =>
+        users.Where(u => string.Equals(u.Team, team, StringComparison.OrdinalIgnoreCase));
+
+    // Όποιος δεν έχει ομάδα πρέπει να παραμένει επιλέξιμος -- π.χ. ο admin.
+    private IEnumerable<IssueUserDto> Ungrouped() =>
+        users.Where(u => Teams.Normalize(u.Team) == null);
+
+    // Μία λίστα για τρία πράγματα: πρόσωπο, ομάδα ή «προς όλους»
     private string assignValue =>
-        editAssignedToAll ? "all" : (editAssignedUserId?.ToString() ?? "");
+        editAssignedToAll ? "all"
+        : editAssignedTeam != null ? $"team:{editAssignedTeam}"
+        : (editAssignedUserId?.ToString() ?? "");
 
     private void OnAssignChanged(ChangeEventArgs e)
     {
         var value = e.Value?.ToString() ?? "";
         editAssignedToAll = value == "all";
+        editAssignedTeam = value.StartsWith("team:") ? Teams.Normalize(value[5..]) : null;
         editAssignedUserId = int.TryParse(value, out var id) ? id : null;
     }
     private string editPriority = "Normal";
@@ -713,7 +684,6 @@ else
     protected override async Task OnInitializedAsync()
     {
         users = await Service.GetUsers();
-        doctors = await Service.GetDoctors();
         await Load();
     }
 
@@ -755,10 +725,9 @@ else
         editCode = "";
         editTitle = "";
         editDescription = null;
-        // Προεπιλογή: το θέμα αφορά αυτόν που το γράφει (αλλάζεται ελεύθερα).
-        editRegardingKey = userManager.User?.IdUser is int uid ? $"u:{uid}" : "";
         editAssignedUserId = null;
         editAssignedToAll = false;
+        editAssignedTeam = null;
         editPriority = "Normal";
         editStatus = "Open";
         editDueDate = DateTime.Today.AddDays(7);   // προεπιλογή: 1 εβδομάδα
@@ -776,108 +745,14 @@ else
         editCode = iss.IssueCode;
         editTitle = iss.Title;
         editDescription = iss.Description;
-        if (iss.RegardingUserID != null)
-        {
-            editRegardingKey = $"u:{iss.RegardingUserID}";
-        }
-        else
-        {
-            // Γιατρός: κρατιέται μόνο το όνομα, οπότε το ξαναβρίσκουμε στη λίστα.
-            var doc = doctors.FirstOrDefault(d => d.FullName == iss.RegardingName);
-            editRegardingKey = doc != null ? $"d:{doc.DoctorID}" : "";
-        }
         editAssignedUserId = iss.AssignedUserID;
         editAssignedToAll = iss.AssignedToAll;
+        editAssignedTeam = Teams.Normalize(iss.AssignedTeam);
         editPriority = iss.Priority;
         editStatus = iss.Status;
         editDueDate = iss.DueDate;
         editMessage = "";
         showEdit = true;
-    }
-
-    // ---- Αναζήτηση στο «Αφορά» ----
-
-    private record RegardingOption(string Key, string Label, string Group);
-
-    private static string UserLabel(IssueUserDto u) =>
-        string.IsNullOrEmpty(u.Role) ? u.FullName : $"{u.FullName} ({u.Role})";
-
-    // Ο τόνος δεν πρέπει να εμποδίζει την εύρεση: «Γιαννης» βρίσκει «Γιάννης».
-    private static string SearchKey(string? text)
-    {
-        if (string.IsNullOrEmpty(text)) return "";
-        var sb = new System.Text.StringBuilder(text.Length);
-        foreach (var ch in text.Normalize(System.Text.NormalizationForm.FormD))
-            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch)
-                != System.Globalization.UnicodeCategory.NonSpacingMark)
-                sb.Append(char.ToUpperInvariant(ch));
-        return sb.ToString();
-    }
-
-    private IEnumerable<RegardingOption> AllRegardingOptions()
-    {
-        foreach (var u in users)
-            yield return new RegardingOption($"u:{u.IdUser}", UserLabel(u), "Πωλητές / Υπάλληλοι");
-        foreach (var d in doctors)
-            yield return new RegardingOption($"d:{d.DoctorID}", d.FullName, "Γιατροί");
-    }
-
-    private List<RegardingOption> FilteredRegarding()
-    {
-        var options = AllRegardingOptions();
-        var needle = SearchKey(regardingSearch);
-        if (needle.Length > 0)
-            options = options.Where(o => SearchKey(o.Label).Contains(needle));
-        // Αρκετά για να βρεθεί κάποιος, χωρίς να γεμίσει η οθόνη
-        return options.Take(60).ToList();
-    }
-
-    private string RegardingLabel()
-    {
-        var (_, name) = ResolveRegarding();
-        if (editRegardingKey.StartsWith("u:") && int.TryParse(editRegardingKey[2..], out var uid))
-        {
-            var u = users.FirstOrDefault(x => x.IdUser == uid);
-            if (u != null) return UserLabel(u);
-        }
-        return name ?? "";
-    }
-
-    private void OpenRegarding()
-    {
-        regardingSearch = "";
-        regardingOpen = true;
-    }
-
-    private void CloseRegarding() => regardingOpen = false;
-
-    private void OnRegardingInput(ChangeEventArgs e)
-    {
-        regardingSearch = e.Value?.ToString() ?? "";
-        regardingOpen = true;
-    }
-
-    private void PickRegarding(RegardingOption option)
-    {
-        editRegardingKey = option.Key;
-        regardingSearch = "";
-        regardingOpen = false;
-    }
-
-    private void ClearRegarding()
-    {
-        editRegardingKey = "";
-        regardingSearch = "";
-        regardingOpen = false;
-    }
-
-    private (int? userId, string? name) ResolveRegarding()
-    {
-        if (editRegardingKey.StartsWith("u:") && int.TryParse(editRegardingKey[2..], out var uid))
-            return (uid, users.FirstOrDefault(u => u.IdUser == uid)?.FullName);
-        if (editRegardingKey.StartsWith("d:") && int.TryParse(editRegardingKey[2..], out var did))
-            return (null, doctors.FirstOrDefault(d => d.DoctorID == did)?.FullName);
-        return (null, null);
     }
 
     private void CloseEdit()
@@ -894,25 +769,23 @@ else
             return;
         }
         // Θέμα χωρίς αποδέκτη δεν προχωράει: μένει στη λίστα χωρίς να το κοιτάξει κανείς.
-        if (editAssignedUserId == null && !editAssignedToAll)
+        if (editAssignedUserId == null && !editAssignedToAll && editAssignedTeam == null)
         {
-            editMessage = "Διάλεξε σε ποιον ανατίθεται το θέμα, ή «Προς όλους».";
+            editMessage = "Διάλεξε πρόσωπο, ομάδα ή «Προς όλους».";
             return;
         }
         busy = true;
-        var (regUserId, regName) = ResolveRegarding();
         var result = await Service.SaveIssue(new SaveIssueRequest
         {
             IssueID = editId,
             Title = editTitle,
             Description = editDescription,
-            RegardingUserID = regUserId,
-            RegardingName = regName,
-            AssignedUserID = editAssignedToAll ? null : editAssignedUserId,
-            AssignedName = editAssignedToAll
-                ? "Προς όλους"
+            AssignedUserID = (editAssignedToAll || editAssignedTeam != null) ? null : editAssignedUserId,
+            AssignedName = editAssignedToAll ? "Προς όλους"
+                : editAssignedTeam != null ? Teams.Label(editAssignedTeam)
                 : users.FirstOrDefault(u => u.IdUser == editAssignedUserId)?.FullName,
             AssignedToAll = editAssignedToAll,
+            AssignedTeam = editAssignedTeam,
             Status = editStatus,
             Priority = editPriority,
             DueDate = editDueDate,
@@ -1011,6 +884,9 @@ else
             RegardingName = iss.RegardingName,
             AssignedUserID = iss.AssignedUserID,
             AssignedName = iss.AssignedName,
+            // Χωρίς αυτά, η αλλαγή στάτους έσβηνε την ανάθεση σε όλους/ομάδα
+            AssignedToAll = iss.AssignedToAll,
+            AssignedTeam = iss.AssignedTeam,
             Status = newStatus,
             Priority = iss.Priority,
             DueDate = iss.DueDate,

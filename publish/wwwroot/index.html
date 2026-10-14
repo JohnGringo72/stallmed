@@ -9,6 +9,14 @@
     <link href="css/app.css" rel="stylesheet" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="alternate icon" type="image/png" href="favicon.png" />
+    <!-- Εγκατάσταση στο κινητό (PWA): Android από το manifest, iPhone από τα apple-* -->
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#212529" />
+    <link rel="apple-touch-icon" href="images/app/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="SBT Suite" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <link href="StallmedManager.Client.styles.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 </head>
@@ -88,10 +96,93 @@
                     new Notification(title, { body: body, icon: "/favicon.png" });
                     return true;
                 } catch (e) {
-                    return false;
+                    // Android: μόνο μέσω service worker.
+                    if (!("serviceWorker" in navigator)) return false;
+                    navigator.serviceWorker.ready
+                        .then(function (r) { return r.showNotification(title, { body: body, icon: "/images/app/icon-192.png" }); })
+                        .catch(function () { });
+                    return true;
                 }
             }
         };
+
+        // ---- Ειδοποιήσεις Push (κινητό/desktop, και με κλειστή την εφαρμογή) ----
+        // Ο service worker (service-worker.js) δείχνει τις ειδοποιήσεις· εδώ γίνεται
+        // η εγγραφή της συσκευής. iPhone: μόνο iOS 16.4+ ΚΑΙ αφού μπει στην αρχική οθόνη.
+        window.sbtPush = (function () {
+            let regPromise = null;
+            function register() {
+                if (!("serviceWorker" in navigator)) return Promise.resolve(null);
+                if (!regPromise) {
+                    regPromise = navigator.serviceWorker.register("/service-worker.js", { scope: "/" })
+                        .then(function () { return navigator.serviceWorker.ready; })
+                        .catch(function () { return null; });
+                }
+                return regPromise;
+            }
+            function b64ToBytes(b64) {
+                const pad = "=".repeat((4 - b64.length % 4) % 4);
+                const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+                const out = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+                return out;
+            }
+            function toPayload(sub) {
+                const j = sub.toJSON();
+                return { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, userAgent: navigator.userAgent };
+            }
+            const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+            const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+            // Πάτημα ειδοποίησης με ανοιχτή την εφαρμογή: πλοήγηση χωρίς επαναφόρτωση.
+            if ("serviceWorker" in navigator) {
+                navigator.serviceWorker.addEventListener("message", function (e) {
+                    if (!e.data || e.data.type !== "sbt-navigate") return;
+                    if (window.Blazor && typeof Blazor.navigateTo === "function") Blazor.navigateTo(e.data.url);
+                    else window.location.href = e.data.url;
+                });
+            }
+            register();
+
+            return {
+                // "unsupported" | "ios-needs-install" | "default" | "granted" | "denied"
+                state: function () {
+                    if (isIos && !isStandalone) return "ios-needs-install";
+                    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window))
+                        return "unsupported";
+                    return Notification.permission;
+                },
+                // Ζητάει άδεια (πρέπει να κληθεί από κλικ) και επιστρέφει τη συνδρομή για τον server.
+                subscribe: async function (publicKey) {
+                    const perm = await Notification.requestPermission();
+                    if (perm !== "granted") return { error: perm };
+                    const reg = await register();
+                    if (!reg) return { error: "no-sw" };
+                    let sub = await reg.pushManager.getSubscription();
+                    if (!sub) {
+                        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+                    }
+                    return toPayload(sub);
+                },
+                // Υπάρχουσα συνδρομή της συσκευής (χωρίς να ρωτήσει τον χρήστη) -- ή null.
+                current: async function () {
+                    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+                    if (!("Notification" in window) || Notification.permission !== "granted") return null;
+                    const reg = await register();
+                    if (!reg) return null;
+                    const sub = await reg.pushManager.getSubscription();
+                    return sub ? toPayload(sub) : null;
+                },
+                // Αριθμός πάνω στο εικονίδιο της εφαρμογής (όπου υποστηρίζεται).
+                setBadge: function (count) {
+                    try {
+                        if (count > 0 && navigator.setAppBadge) navigator.setAppBadge(count);
+                        else if (navigator.clearAppBadge) navigator.clearAppBadge();
+                    } catch (e) { }
+                }
+            };
+        })();
 
         window.selectAll = function (id) {
             const el = document.getElementById(id);
