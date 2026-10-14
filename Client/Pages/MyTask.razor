@@ -415,7 +415,9 @@ else
                                     @foreach (var att in details.Attachments)
                                     {
                                         <li class="list-group-item d-flex justify-content-between align-items-center py-1">
-                                            <a href="javascript:void(0)" @onclick="() => ViewAttachment(att)" title="@Hint("Άνοιγμα σε νέα καρτέλα (εικόνες/PDF εμφανίζονται απευθείας)")">@att.FileName</a>
+                                            <button type="button" class="btn btn-link p-0 text-start text-break att-name"
+                                                    @onclick="() => ViewAttachment(att)"
+                                                    title="@Hint("Άνοιγμα του αρχείου")">@att.FileName</button>
                                             <span class="d-flex align-items-center gap-1">
                                                 <span class="text-muted small">@att.UploadedByName @att.CreatedAt.ToString("dd/MM")</span>
                                                 <button class="btn btn-sm btn-outline-secondary py-0" @onclick="() => DownloadAttachment(att)" title="@Hint("Κατέβασμα του αρχείου")">⬇</button>
@@ -496,6 +498,8 @@ else
                     }
                 </div>
                 <div class="modal-footer py-1">
+                    <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenInNewTab(previewAtt)"
+                            title="@Hint("Χρήσιμο σε κινητό, όπου τα PDF δεν εμφανίζονται πάντα εδώ")">🔗 Άνοιγμα σε νέα καρτέλα</button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => DownloadAttachment(previewAtt)">⬇ Κατέβασμα</button>
                     <button class="btn btn-sm btn-secondary" @onclick="ClosePreview">Κλείσιμο</button>
                 </div>
@@ -1031,8 +1035,12 @@ else
         using var ms = new MemoryStream();
         await e.File.OpenReadStream(maxAllowedSize: 15 * 1024 * 1024).CopyToAsync(ms);
         busy = true;
-        await Service.UploadAttachment(details.Issue.IssueID, ms.ToArray(), e.File.Name,
+        detailsMessage = "";
+        // Χωρίς έλεγχο, ένα αποτυχημένο ανέβασμα έδειχνε επιτυχημένο.
+        var uploaded = await Service.UploadAttachment(details.Issue.IssueID, ms.ToArray(), e.File.Name,
             userManager.User?.IdUser, UserFullName());
+        if (!uploaded)
+            detailsMessage = $"Το «{e.File.Name}» δεν ανέβηκε. Δοκίμασε ξανά ή με μικρότερο αρχείο.";
         details = await Service.GetIssue(details.Issue.IssueID, userManager.User?.IdUser);
         busy = false;
         await Load();
@@ -1081,6 +1089,7 @@ else
         if (bytes == null || bytes.Length == 0)
         {
             previewAtt = null;
+            detailsMessage = "Το αρχείο δεν κατέβηκε. Δοκίμασε ξανά ή κατέβασέ το με το ⬇.";
             return;
         }
         previewUrl = await JS.InvokeAsync<string>("createObjectUrlFromBytes", contentType, bytes);
@@ -1092,6 +1101,20 @@ else
             await JS.InvokeVoidAsync("revokeObjectUrl", previewUrl);
         previewAtt = null;
         previewUrl = null;
+    }
+
+    // Σε κινητά το <iframe> με blob URL συχνά μένει λευκό για PDF. Η νέα καρτέλα
+    // τα δίνει στον εγγενή προβολέα του τηλεφώνου.
+    private async Task OpenInNewTab(IssueAttachmentDto att)
+    {
+        var bytes = await Service.DownloadAttachment(att.AttachmentID);
+        if (bytes == null || bytes.Length == 0)
+        {
+            detailsMessage = "Το αρχείο δεν κατέβηκε. Δοκίμασε ξανά.";
+            return;
+        }
+        await JS.InvokeVoidAsync("openFileFromBytes",
+            att.FileName ?? "attachment", GuessContentType(att), bytes);
     }
 
     private async Task DownloadAttachment(IssueAttachmentDto att)

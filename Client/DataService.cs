@@ -1,4 +1,4 @@
-using Blazored.LocalStorage;
+﻿using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components;
 using StallmedManager.Shared.Models;
 using System.Net.Http.Json;
@@ -137,6 +137,31 @@ namespace StallmedManager.Client
             }
         }
 
+        // Ο τύπος βγαίνει από την κατάληξη: ο browser δεν τον δίνει όταν το
+        // αρχείο στέλνεται ως ωμά bytes.
+        private static string MimeFor(string fileName)
+        {
+            var ext = System.IO.Path.GetExtension(fileName ?? "").ToLowerInvariant();
+            return ext switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".gif" => "image/gif",
+                ".webp" => "image/webp",
+                ".bmp" => "image/bmp",
+                ".heic" => "image/heic",
+                ".pdf" => "application/pdf",
+                ".txt" => "text/plain",
+                ".csv" => "text/csv",
+                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".xls" => "application/vnd.ms-excel",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".doc" => "application/msword",
+                ".zip" => "application/zip",
+                _ => "application/octet-stream"
+            };
+        }
+
         public async Task<TResponse> PostFile<TResponse>(string path, byte[] fileBytes, string fileName)
         {
             if (userManager?.User == null)
@@ -145,6 +170,10 @@ namespace StallmedManager.Client
             request.Headers.Add("Authorization", "Bearer " + userManager.User.Token);
             var content = new MultipartFormDataContent();
             var byteContent = new ByteArrayContent(fileBytes);
+            // Χωρίς αυτό ο server λαμβάνει κενό ContentType και μετά δεν μπορεί
+            // να σερβίρει το αρχείο πίσω (τα συνημμένα δεν άνοιγαν).
+            byteContent.Headers.ContentType =
+                new System.Net.Http.Headers.MediaTypeHeaderValue(MimeFor(fileName));
             content.Add(byteContent, "file", fileName);
             request.Content = content;
             var response = await http.SendAsync(request);

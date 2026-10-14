@@ -539,6 +539,34 @@ namespace StallmedManager.Server.Controllers
         }
 
         // ---- Συνημμένα (ίδιο pattern με QuoteAttachments) ----
+        // Ο τύπος αρχείου βγαίνει από την κατάληξη όταν δεν τον στείλει ο client.
+        // Κενός τύπος έκανε το File(...) να πετάει εξαίρεση κατά το κατέβασμα.
+        private static string MimeFor(string? fileName, string? given = null)
+        {
+            if (!string.IsNullOrWhiteSpace(given) && given != "application/octet-stream")
+                return given;
+
+            var ext = Path.GetExtension(fileName ?? "").ToLowerInvariant();
+            return ext switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".gif" => "image/gif",
+                ".webp" => "image/webp",
+                ".bmp" => "image/bmp",
+                ".heic" => "image/heic",
+                ".pdf" => "application/pdf",
+                ".txt" => "text/plain",
+                ".csv" => "text/csv",
+                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".xls" => "application/vnd.ms-excel",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".doc" => "application/msword",
+                ".zip" => "application/zip",
+                _ => "application/octet-stream"
+            };
+        }
+
         [HttpPost("attachments/{issueId:long}")]
         public async Task<ActionResult> UploadAttachment(long issueId, IFormFile file,
             [FromQuery] int? userId, [FromQuery] string? userName)
@@ -553,14 +581,24 @@ namespace StallmedManager.Server.Controllers
             {
                 IssueID = issueId,
                 FileName = file.FileName,
-                ContentType = file.ContentType,
+                ContentType = MimeFor(file.FileName, file.ContentType),
                 FileData = ms.ToArray(),
                 UploadedBy = userId,
                 UploadedByName = userName,
                 CreatedAt = DateTime.Now
             });
             issue.UpdatedAt = DateTime.Now;
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                // Συνήθης αιτία: η στήλη FileData είναι BLOB (64KB) αντί LONGBLOB.
+                _logger.LogError(ex, "Αποτυχία αποθήκευσης συνημμένου {FileName} ({Bytes} bytes)",
+                    file.FileName, file.Length);
+                return BadRequest($"Το αρχείο δεν αποθηκεύτηκε ({file.Length / 1024} KB). Ίσως είναι πολύ μεγάλο.");
+            }
             return Ok(new { Success = true });
         }
 
@@ -569,7 +607,19 @@ namespace StallmedManager.Server.Controllers
         {
             var att = await _context.IssueAttachments.FindAsync(attachmentId);
             if (att == null) return NotFound();
-            return File(att.FileData, att.ContentType ?? "application/octet-stream", att.FileName ?? "attachment");
+
+            // Άδειο περιεχόμενο σημαίνει ότι το ανέβασμα δεν ολοκληρώθηκε ποτέ
+            // (π.χ. η στήλη FileData δεν χωράει το αρχείο). Χωρίς αυτόν τον έλεγχο
+            // το File(null, ...) πετούσε εξαίρεση και ο χρήστης έβλεπε απλώς
+            // το κουμπί να μην κάνει τίποτα.
+            if (att.FileData == null || att.FileData.Length == 0)
+            {
+                _logger.LogWarning("Το συνημμένο {AttachmentID} ({FileName}) δεν έχει περιεχόμενο",
+                    attachmentId, att.FileName);
+                return NotFound("Το αρχείο δεν έχει περιεχόμενο -- ανέβασέ το ξανά.");
+            }
+
+            return File(att.FileData, MimeFor(att.FileName, att.ContentType), att.FileName ?? "attachment");
         }
 
         [HttpPost("attachments/delete/{attachmentId:long}")]
