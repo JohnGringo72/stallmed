@@ -906,12 +906,14 @@ else
     private bool preparingFiles;
     private string fileMessage = "";
 
-    private static bool IsResizableImage(IBrowserFile file)
-    {
-        var type = file.ContentType?.ToLowerInvariant() ?? "";
-        // GIF χάνει την κίνηση, SVG δεν είναι φωτογραφία -- μένουν όπως είναι.
-        return type.StartsWith("image/") && type != "image/gif" && type != "image/svg+xml";
-    }
+    // ΜΟΝΟ τύποι που ανοίγει κάθε browser. Το RequestImageFileAsync του Blazor, αν ο browser
+    // δεν μπορεί να ανοίξει την εικόνα (π.χ. TIFF, HEIC σε Android), δεν βγάζει σφάλμα --
+    // περιμένει για πάντα. GIF (χάνει την κίνηση) και SVG μένουν επίσης όπως είναι.
+    private static readonly string[] ResizableTypes = { "image/jpeg", "image/png", "image/webp", "image/bmp" };
+    private static readonly TimeSpan ResizeTimeout = TimeSpan.FromSeconds(15);
+
+    private static bool IsResizableImage(IBrowserFile file) =>
+        ResizableTypes.Contains(file.ContentType?.ToLowerInvariant() ?? "");
 
     private static string MegaBytes(long bytes) => (bytes / 1024.0 / 1024.0).ToString("0.#");
 
@@ -922,12 +924,17 @@ else
         {
             try
             {
-                var resized = await file.RequestImageFileAsync("image/jpeg", MaxImageSide, MaxImageSide);
-                using var rs = new MemoryStream();
-                await resized.OpenReadStream(MaxFileBytes).CopyToAsync(rs);
-                // Μικρή εικόνα που θα μεγάλωνε ως JPEG (π.χ. screenshot): κρατάμε την αρχική.
-                if (rs.Length > 0 && rs.Length < file.Size)
-                    return (new PendingFile(Path.ChangeExtension(file.Name, ".jpg"), rs.ToArray()), null);
+                // Δικλείδα: αν η σμίκρυνση δεν τελειώσει εγκαίρως, ανεβαίνει η αρχική.
+                var resizeTask = file.RequestImageFileAsync("image/jpeg", MaxImageSide, MaxImageSide).AsTask();
+                if (await Task.WhenAny(resizeTask, Task.Delay(ResizeTimeout)) == resizeTask)
+                {
+                    var resized = await resizeTask;
+                    using var rs = new MemoryStream();
+                    await resized.OpenReadStream(MaxFileBytes).CopyToAsync(rs);
+                    // Μικρή εικόνα που θα μεγάλωνε ως JPEG (π.χ. screenshot): κρατάμε την αρχική.
+                    if (rs.Length > 0 && rs.Length < file.Size)
+                        return (new PendingFile(Path.ChangeExtension(file.Name, ".jpg"), rs.ToArray()), null);
+                }
             }
             catch (Exception)
             {
