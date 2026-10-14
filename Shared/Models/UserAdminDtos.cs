@@ -45,6 +45,17 @@
         public string Password { get; set; } = "";
     }
 
+    // Κατάσταση ανοιχτής συνεδρίας, ελεγμένη στον server
+    public class SessionStatusDto
+    {
+        // false = ο χρήστης δεν υπάρχει πια ή απενεργοποιήθηκε -> αποσύνδεση
+        public bool Valid { get; set; }
+        public int IdUser { get; set; }
+        public string? Role { get; set; }
+        public bool ForcePasswordChange { get; set; }
+        public string? TasksVisibility { get; set; }
+    }
+
     // Αλλαγή κωδικού από τον ίδιο τον χρήστη
     public class ChangePasswordRequest
     {

@@ -88,6 +88,33 @@
             };
         }
 
+        // ---- Τρέχουσα κατάσταση του συνδεδεμένου χρήστη ----
+        // Το token ζει έναν χρόνο και η εφαρμογή κρατά τον χρήστη στο localStorage,
+        // οπότε μια ανοιχτή συνεδρία δεν μαθαίνει ποτέ τι άλλαξε στη βάση. Η οθόνη
+        // ρωτάει εδώ στο ξεκίνημα: υποχρέωση αλλαγής κωδικού, ρόλος, απενεργοποίηση.
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        [HttpGet]
+        [Route("api/auth/me")]
+        public async Task<ActionResult<SessionStatusDto>> Me([FromQuery] int userId)
+        {
+            var user = await context.Users
+                .Where(u => u.IdUser == userId)
+                .Select(u => new { u.IdUser, u.Active, u.Role, u.ForcePasswordChange, u.TasksVisibility })
+                .FirstOrDefaultAsync();
+
+            if (user == null || !user.Active)
+                return Ok(new SessionStatusDto { Valid = false });
+
+            return Ok(new SessionStatusDto
+            {
+                Valid = true,
+                IdUser = user.IdUser,
+                Role = user.Role,
+                ForcePasswordChange = user.ForcePasswordChange,
+                TasksVisibility = user.TasksVisibility
+            });
+        }
+
         // ---- Αλλαγή κωδικού από τον ίδιο τον χρήστη ----
         // Δεν απαιτεί ρόλο: τη χρειάζεται και ο χρήστης που μπήκε με τον
         // προεπιλεγμένο κωδικό και είναι υποχρεωμένος να τον αλλάξει.

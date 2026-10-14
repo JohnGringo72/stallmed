@@ -31,8 +31,42 @@ namespace StallmedManager.Client
 				user = null;
 			}
 			if (user == null) navigationManager.NavigateTo("/login");
+            else await RefreshFromServer();
             if (StatusChanged != null) StatusChanged(this, new EventArgs());
 			return true;
+		}
+
+		// Το token ζει έναν χρόνο και ο χρήστης μένει στο localStorage: μια ανοιχτή
+		// συνεδρία δεν θα μάθαινε ποτέ ότι άλλαξε ο ρόλος της, ότι απενεργοποιήθηκε,
+		// ή ότι της ζητείται αλλαγή κωδικού. Γι' αυτό ρωτάμε τον server.
+		private async Task RefreshFromServer()
+		{
+			try
+			{
+				var request = new HttpRequestMessage(HttpMethod.Get, $"api/auth/me?userId={user.IdUser}");
+				request.Headers.Add("Authorization", "Bearer " + user.Token);
+				var response = await http.SendAsync(request);
+				if (!response.IsSuccessStatusCode) return;
+
+				var status = await response.Content.ReadFromJsonAsync<SessionStatusDto>();
+				if (status == null) return;
+
+				if (!status.Valid)
+				{
+					await Logout();
+					navigationManager.NavigateTo("/login");
+					return;
+				}
+
+				user.ForcePasswordChange = status.ForcePasswordChange;
+				user.Role = status.Role ?? user.Role;
+				user.TasksVisibility = status.TasksVisibility;
+				await localStorage.SetItemAsync("user", user);
+			}
+			catch (Exception)
+			{
+				// Χωρίς δίκτυο κρατάμε ό,τι ξέραμε -- δεν κλειδώνουμε τον χρήστη έξω.
+			}
 		}
 
 		public User User => user;

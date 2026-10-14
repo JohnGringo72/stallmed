@@ -123,7 +123,7 @@ else
                 <tr>
                     <th class="sortable" @onclick='() => SortBy("code")'>Κωδικός<span>@SortArrow("code")</span></th>
                     <th class="sortable" @onclick='() => SortBy("title")'>Τίτλος<span>@SortArrow("title")</span></th>
-                    <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("regarding")'>Αφορά<span>@SortArrow("regarding")</span></th>
+                    <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("assigned")'>Ανάθεση<span>@SortArrow("assigned")</span></th>
                     <th class="sortable d-none d-lg-table-cell" @onclick='() => SortBy("createdby")'>Άνοιξε<span>@SortArrow("createdby")</span></th>
                     <th class="sortable d-none d-lg-table-cell" @onclick='() => SortBy("created")'>Ημερομηνία<span>@SortArrow("created")</span></th>
                     <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("due")'>Προθεσμία<span>@SortArrow("due")</span></th>
@@ -138,7 +138,7 @@ else
                     <tr class="issue-row" @onclick="() => OpenDetails(i.IssueID)">
                         <td><strong>@i.IssueCode</strong></td>
                         <td>@i.Title</td>
-                        <td class="d-none d-md-table-cell">@(string.IsNullOrEmpty(i.RegardingName) ? "—" : i.RegardingName)</td>
+                        <td class="d-none d-md-table-cell">@(string.IsNullOrEmpty(i.AssignedName) ? "—" : i.AssignedName)</td>
                         <td class="d-none d-lg-table-cell">@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : i.CreatedByName)</td>
                         <td class="d-none d-lg-table-cell">@i.CreatedAt.ToString("dd/MM/yyyy")</td>
                         <td class="d-none d-md-table-cell">@(i.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td>
@@ -527,7 +527,7 @@ else
             IOrderedEnumerable<IssueListItemDto> sorted = sortField switch
             {
                 "title" => visible.OrderBy(i => i.Title, StringComparer.CurrentCultureIgnoreCase),
-                "regarding" => visible.OrderBy(i => i.RegardingName ?? "", StringComparer.CurrentCultureIgnoreCase),
+                "assigned" => visible.OrderBy(i => i.AssignedName ?? "", StringComparer.CurrentCultureIgnoreCase),
                 "createdby" => visible.OrderBy(i => i.CreatedByName ?? "", StringComparer.CurrentCultureIgnoreCase),
                 "created" => visible.OrderBy(i => i.CreatedAt),
                 "due" => visible.OrderBy(i => i.DueDate == null).ThenBy(i => i.DueDate), // χωρίς προθεσμία στο τέλος
