@@ -1,0 +1,57 @@
+@using StallmedManager.Shared.Models
+@inject UserManager userManager
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@* 🏠 σε κάθε σελίδα: με πάτημα, η σελίδα που βλέπει ο χρήστης γίνεται η αρχική του.
+   Πράσινο = αυτή ΕΙΝΑΙ ήδη η αρχική του. *@
+<div class="d-flex align-items-center gap-2">
+    <button class="btn btn-sm @(IsStartPage ? "btn-outline-success" : "btn-outline-light")"
+            @onclick="SetAsStart" disabled="@(busy || IsStartPage || CurrentPath == null)"
+            title="@(IsStartPage ? $"Αυτή είναι η αρχική σου σελίδα ({StartPages.Label(userManager.StartPagePath)})" : "Κάνε αυτή τη σελίδα αρχική μου -- θα ανοίγει όταν μπαίνω")">
+        @(IsStartPage ? "🏠 ✓" : "🏠")
+    </button>
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <span class="small text-white-50">@message</span>
+    }
+</div>
+
+@code {
+    private bool busy;
+    private string? message;
+
+    // Η τρέχουσα σελίδα όπως αποθηκεύεται ("/" για Home), ή null αν δεν μπορεί να γίνει αρχική (π.χ. login).
+    private string? CurrentPath
+    {
+        get
+        {
+            var relative = "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+            if (relative.Split('?', '#')[0].TrimEnd('/') == "") return "/";
+            return StartPages.Normalize(relative);
+        }
+    }
+
+    private bool IsStartPage =>
+        CurrentPath != null && string.Equals(CurrentPath, userManager.StartPagePath, StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        message = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SetAsStart()
+    {
+        var path = CurrentPath;
+        if (path == null) return;
+        busy = true;
+        var result = await userManager.SetStartPage(path);
+        message = result?.Message ?? "Δεν αποθηκεύτηκε -- δοκίμασε ξανά.";
+        busy = false;
+    }
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}

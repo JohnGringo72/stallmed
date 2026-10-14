@@ -1,4 +1,5 @@
 ﻿@inject UserManager userManager;
+@inject NavigationManager navigationManager
 
 @if (!initialized)
 {
@@ -26,6 +27,14 @@ else
     protected override async Task OnInitializedAsync()
     {
         await userManager.Initialize();
+
+        // Άνοιγμα της εφαρμογής στο Home (π.χ. από το εικονίδιο στο κινητό): πάμε στην
+        // αρχική σελίδα του χρήστη. Γίνεται μόνο εδώ, μία φορά -- το «HOME» του μενού
+        // συνεχίζει να ανοίγει το Home κανονικά.
+        var path = "/" + navigationManager.ToBaseRelativePath(navigationManager.Uri).Split('?', '#')[0].TrimEnd('/');
+        if (userManager.IsLoggedIn && path == "/" && userManager.StartPagePath != "/")
+            navigationManager.NavigateTo(userManager.StartPagePath, replace: true);
+
         initialized = true;
     }
 }

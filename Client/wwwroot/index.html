@@ -91,10 +91,11 @@
                 try { return await Notification.requestPermission(); } catch (e) { return "denied"; }
             },
             // url: σελίδα που ανοίγει με το πάτημα (π.χ. το συγκεκριμένο θέμα).
-            show: function (title, body, url) {
+            // tag: ίδιο με το push του server (issue-{id}) -- αντικαθιστά αντί να διπλασιάζει.
+            show: function (title, body, url, tag) {
                 if (!("Notification" in window) || Notification.permission !== "granted") return false;
                 try {
-                    const n = new Notification(title, { body: body, icon: "/favicon.png" });
+                    const n = new Notification(title, { body: body, icon: "/images/app/icon-192.png", tag: tag || undefined });
                     n.onclick = function () {
                         window.focus();
                         if (url && window.Blazor && typeof Blazor.navigateTo === "function") Blazor.navigateTo(url);
@@ -108,7 +109,8 @@
                     navigator.serviceWorker.ready
                         .then(function (r) {
                             return r.showNotification(title, {
-                                body: body, icon: "/images/app/icon-192.png", data: { url: url || "/" }
+                                body: body, icon: "/images/app/icon-192.png", badge: "/images/app/badge-96.png",
+                                tag: tag || undefined, data: { url: url || "/" }
                             });
                         })
                         .catch(function () { });

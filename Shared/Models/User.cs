@@ -24,6 +24,8 @@ namespace StallmedManager.Shared.Models
         // και για να φαίνεται η τελευταία σύνδεση στη διαχείριση.
         // Ορατότητα θεμάτων: "All" ή "Own". NULL = προεπιλογή ανά ρόλο.
         public string? TasksVisibility { get; set; }
+        // Αρχική σελίδα του χρήστη, π.χ. "/mytasks". NULL = Home (sql/user_start_page.sql)
+        public string? StartPage { get; set; }
         public DateTime? CreatedAt { get; set; }
         public DateTime? LastLogin { get; set; }
         [NotMapped]

@@ -282,6 +282,22 @@ else if (status == "loaded")
                             </select>
                             <div class="form-text">Ανεξάρτητο από τον ρόλο -- ορίζεται ξεχωριστά για κάθε χρήστη.</div>
                         </div>
+                        <div class="col-12">
+                            <label class="form-label mb-1">Αρχική σελίδα</label>
+                            <select class="form-control" @bind="editUser.StartPage">
+                                @foreach (var sp in StartPages.Known)
+                                {
+                                    <option value="@(sp.Path == "/" ? "" : sp.Path)">@sp.Label</option>
+                                }
+                                @* Σελίδα που διάλεξε ο ίδιος με το 🏠 και δεν είναι στη λίστα *@
+                                @if (!string.IsNullOrEmpty(editUser.StartPage)
+                                     && !StartPages.Known.Any(k => string.Equals(k.Path, editUser.StartPage, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    <option value="@editUser.StartPage">@editUser.StartPage</option>
+                                }
+                            </select>
+                            <div class="form-text">Ανοίγει όταν μπαίνει. Ο χρήστης μπορεί να την αλλάξει και μόνος του με το 🏠 σε όποια σελίδα βρίσκεται.</div>
+                        </div>
                         @if (editUser.IdUser == null)
                         {
                             <div class="col-6">
@@ -491,7 +507,8 @@ else if (status == "loaded")
             Role = u.Role,
             Active = u.Active,
             TasksVisibility = u.TasksVisibility,
-            Team = u.Team
+            Team = u.Team,
+            StartPage = u.StartPage ?? ""
         };
         roleChoice = roles.Contains(u.Role) ? u.Role : NewRoleOption;
         newRoleName = roles.Contains(u.Role) ? "" : u.Role;

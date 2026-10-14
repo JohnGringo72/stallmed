@@ -106,6 +106,7 @@
         @if (userManager.IsLoggedIn)
         {
             <div class="d-flex flex-wrap align-items-center gap-3 ms-auto mt-2 mt-lg-0">
+                <StartPageButton />
                 <PushToggle />
                 <label class="form-check-label text-white d-flex align-items-center gap-1" style="cursor:pointer;" title="Εμφανίζει επεξηγηματικές υποδείξεις (tooltips) πάνω από τα κουμπιά">
                     <input type="checkbox" class="form-check-input" checked="@uiPrefs.ShowHints" @onchange="OnShowHintsChanged" />
@@ -174,6 +175,10 @@
             var activity = summary.NewestActivityAt;
             if (activity.HasValue && (lastNotifiedActivity == null || activity > lastNotifiedActivity))
             {
+                // Πρώτα να ξέρουμε σίγουρα αν η συσκευή έχει push: χωρίς αυτή την αναμονή,
+                // στο άνοιγμα της εφαρμογής ο έλεγχος προλάβαινε το push και έβγαινε διπλή.
+                await InitPushAsync();
+
                 // Την πρώτη φορά δεν ειδοποιούμε -- θα έβγαζε παλιές κινήσεις ως "νέες".
                 // Με ενεργό push η ειδοποίηση έρχεται ήδη από τον server -- όχι δεύτερη.
                 if (lastNotifiedActivity != null && !push.Active)
@@ -186,8 +191,10 @@
                     // το σήμα στο μενού πρέπει να συνεχίσει να δουλεύει κανονικά.
                     try
                     {
+                        // Ίδιο tag με το push του server (issue-{id}): αν κάποτε βγουν και οι δύο,
+                        // η μία αντικαθιστά την άλλη αντί να εμφανίζονται διπλές.
                         await JS.InvokeVoidAsync("sbtNotify.show", title, summary.NewestTitle ?? "",
-                            $"/mytasks?issue={summary.NewestIssueID}");
+                            $"/mytasks?issue={summary.NewestIssueID}", $"issue-{summary.NewestIssueID}");
                     }
                     catch (Exception) { }
                 }
@@ -213,13 +220,20 @@
     }
 
     // Μία φορά ανά χρήστη που συνδέεται (και ξανά μετά από logout/login).
+    // Κρατάμε το Task, ώστε όποιος καλεί ενώ τρέχει ακόμα να περιμένει το ΙΔΙΟ αποτέλεσμα
+    // και όχι να συνεχίζει νομίζοντας ότι η συσκευή δεν έχει push.
     private int? pushInitializedFor;
-    private async Task InitPushAsync()
+    private Task? pushInitTask;
+    private Task InitPushAsync()
     {
         var userId = userManager.User?.IdUser;
-        if (userId == null || pushInitializedFor == userId) return;
-        pushInitializedFor = userId;
-        await push.InitializeAsync();
+        if (userId == null) return Task.CompletedTask;
+        if (pushInitializedFor != userId || pushInitTask == null)
+        {
+            pushInitializedFor = userId;
+            pushInitTask = push.InitializeAsync();
+        }
+        return pushInitTask;
     }
 
     private async Task OnShowHintsChanged(ChangeEventArgs e)
@@ -256,6 +270,7 @@
         await push.UnregisterAsync();
         await push.SetBadgeAsync(0);
         pushInitializedFor = null;
+        pushInitTask = null;
         await userManager.Logout();
         Navigation.NavigateTo("/login");
     }

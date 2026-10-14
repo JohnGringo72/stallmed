@@ -17,6 +17,8 @@
         public string TasksVisibility { get; set; } = "Own";
         // Ομάδα: SALES / SM / BM / TECO, ή κενό
         public string? Team { get; set; }
+        // Αρχική σελίδα, π.χ. "/mytasks". Κενό = Home
+        public string? StartPage { get; set; }
         // false = ο κωδικός δεν είναι ακόμη hashed (παλιός χρήστης που δεν
         // ξανασυνδέθηκε -- αναβαθμίζεται αυτόματα στην επόμενη είσοδο)
         public bool HasEncryptedPassword { get; set; }
@@ -39,7 +41,15 @@
         public bool Active { get; set; } = true;
         public string? TasksVisibility { get; set; }   // "All" ή "Own"
         public string? Team { get; set; }
+        public string? StartPage { get; set; }      // κενό = Home
         public string? Password { get; set; }       // υποχρεωτικός μόνο στη δημιουργία
+    }
+
+    // Ο ίδιος ο χρήστης ορίζει την αρχική του σελίδα (κουμπί 🏠)
+    public class SetStartPageRequest
+    {
+        public int IdUser { get; set; }
+        public string? StartPage { get; set; }      // κενό = Home
     }
 
     public class SetUserPasswordRequest
@@ -57,6 +67,7 @@
         public string? Role { get; set; }
         public bool ForcePasswordChange { get; set; }
         public string? TasksVisibility { get; set; }
+        public string? StartPage { get; set; }
     }
 
     // Αλλαγή κωδικού από τον ίδιο τον χρήστη

@@ -63,6 +63,7 @@ namespace StallmedManager.Server.Controllers
             Active = u.Active,
             TasksVisibility = NormalizeVisibility(u.TasksVisibility, u.Role),
             Team = u.Team,
+            StartPage = u.StartPage,
             HasEncryptedPassword = PasswordHasher.IsHashed(u.PasswordEncrypted),
             ForcePasswordChange = u.ForcePasswordChange,
             LastLogin = u.LastLogin
@@ -129,7 +130,8 @@ namespace StallmedManager.Server.Controllers
                     Active = req.Active,
                     TasksVisibility = NormalizeVisibility(req.TasksVisibility, role),
                     Team = Teams.Normalize(req.Team),
-                    Password = "",                                   // ποτέ απλό κείμενο
+                    StartPage = StartPages.Normalize(req.StartPage),
+                    Password = "",                                 // ποτέ απλό κείμενο
                     PasswordEncrypted = _hasher.Hash(req.Password.Trim()),
                     ForcePasswordChange = false,
                     CreatedAt = DateTime.Now
@@ -165,6 +167,7 @@ namespace StallmedManager.Server.Controllers
             existing.Active = req.Active;
             existing.TasksVisibility = NormalizeVisibility(req.TasksVisibility, role);
             existing.Team = Teams.Normalize(req.Team);
+            existing.StartPage = StartPages.Normalize(req.StartPage);
             await _context.SaveChangesAsync();
 
             return Ok(new UserSaveResult { Success = true, IdUser = existing.IdUser, Message = "Οι αλλαγές αποθηκεύτηκαν." });

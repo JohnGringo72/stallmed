@@ -83,13 +83,17 @@
                    title="@Hint("Εμφανίζει και όσα έχουν αρχειοθετηθεί")">📦 Αρχειοθετημένα</label>
         </div>
     </div>
-    <div class="col-auto">
-        <div class="form-check form-switch mb-0">
-            <input class="form-check-input" type="checkbox" id="onlyMineSwitch" @bind="onlyMine" />
-            <label class="form-check-label" for="onlyMineSwitch"
-                   title="@Hint("Όσα άνοιξα εγώ και όσα μου έχουν ανατεθεί")">👤 Τα δικά μου</label>
+    @* Μόνο για όσους βλέπουν όλα τα θέματα -- οι υπόλοιποι βλέπουν ήδη μόνο τα δικά τους. *@
+    @if (userManager.SeesAllTasks)
+    {
+        <div class="col-auto">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="onlyMineSwitch" @bind="onlyMine" />
+                <label class="form-check-label" for="onlyMineSwitch"
+                       title="@Hint("Όσα άνοιξα εγώ και όσα μου έχουν ανατεθεί")">👤 Τα δικά μου</label>
+            </div>
         </div>
-    </div>
+    }
     @if (!string.IsNullOrEmpty(notifyMessage))
     {
         <div class="col-auto"><span class="text-danger small">@notifyMessage</span></div>
@@ -287,6 +291,14 @@ else
                         <div class="mb-2">
                             <label class="form-label mb-1">📎 Αρχεία (π.χ. συνταγή — προαιρετικά, μπορείς πολλά μαζί)</label>
                             <InputFile OnChange="OnNewFilesSelected" multiple class="form-control form-control-sm" />
+                            @if (preparingFiles)
+                            {
+                                <em class="small text-muted">Προετοιμασία αρχείων...</em>
+                            }
+                            @if (!string.IsNullOrEmpty(fileMessage))
+                            {
+                                <div class="small text-danger">@fileMessage</div>
+                            }
                             @if (pendingFiles.Any())
                             {
                                 <ul class="list-group mt-1">
@@ -428,7 +440,7 @@ else
                                     }
                                 </ul>
                             }
-                            <InputFile OnChange="OnAttachmentSelected" class="form-control form-control-sm" />
+                            <InputFile OnChange="OnAttachmentSelected" multiple class="form-control form-control-sm" />
                             @if (busy)
                             {
                                 <em class="small text-muted">Επεξεργάζομαι...</em>
@@ -784,6 +796,7 @@ else
         editDueDate = DateTime.Today.AddDays(7);   // προεπιλογή: 1 εβδομάδα
         editMessage = "";
         pendingFiles.Clear();
+        fileMessage = "";
         firstComment = "";
         showEdit = true;
     }
@@ -868,6 +881,7 @@ else
                     CommentText = firstComment.Trim()
                 });
             pendingFiles.Clear();
+            fileMessage = "";
             firstComment = "";
             busy = false;
         }
@@ -882,14 +896,83 @@ else
             details = await Service.GetIssue(result.IssueID, userManager.User?.IdUser);
     }
 
-    private async Task OnNewFilesSelected(InputFileChangeEventArgs e)
+    // ---- Αρχεία: προετοιμασία πριν το ανέβασμα ----
+    // Οι φωτογραφίες του κινητού (3-12 MB) μικραίνουν στη συσκευή σε JPEG έως 1920px
+    // (~300-700 KB), όπως κάνουν Viber/WhatsApp: ανεβαίνουν γρήγορα και δεν φουσκώνει η βάση.
+    // Τα υπόλοιπα (PDF, Excel κλπ.) ανεβαίνουν όπως είναι, μέχρι το όριο.
+    private const long MaxFileBytes = 15 * 1024 * 1024;
+    private const int MaxFilesAtOnce = 20;
+    private const int MaxImageSide = 1920;
+    private bool preparingFiles;
+    private string fileMessage = "";
+
+    private static bool IsResizableImage(IBrowserFile file)
     {
-        foreach (var file in e.GetMultipleFiles(10))
+        var type = file.ContentType?.ToLowerInvariant() ?? "";
+        // GIF χάνει την κίνηση, SVG δεν είναι φωτογραφία -- μένουν όπως είναι.
+        return type.StartsWith("image/") && type != "image/gif" && type != "image/svg+xml";
+    }
+
+    private static string MegaBytes(long bytes) => (bytes / 1024.0 / 1024.0).ToString("0.#");
+
+    // Επιστρέφει το αρχείο έτοιμο για ανέβασμα, ή μήνυμα λάθους για τον χρήστη.
+    private async Task<(PendingFile? File, string? Error)> PrepareFileAsync(IBrowserFile file)
+    {
+        if (IsResizableImage(file))
+        {
+            try
+            {
+                var resized = await file.RequestImageFileAsync("image/jpeg", MaxImageSide, MaxImageSide);
+                using var rs = new MemoryStream();
+                await resized.OpenReadStream(MaxFileBytes).CopyToAsync(rs);
+                // Μικρή εικόνα που θα μεγάλωνε ως JPEG (π.χ. screenshot): κρατάμε την αρχική.
+                if (rs.Length > 0 && rs.Length < file.Size)
+                    return (new PendingFile(Path.ChangeExtension(file.Name, ".jpg"), rs.ToArray()), null);
+            }
+            catch (Exception)
+            {
+                // Ο browser δεν μπόρεσε να τη μικρύνει (π.χ. HEIC σε Android): ανεβαίνει η αρχική.
+            }
+        }
+
+        if (file.Size > MaxFileBytes)
+            return (null, $"Το «{file.Name}» είναι {MegaBytes(file.Size)} MB -- το όριο είναι {MegaBytes(MaxFileBytes)} MB.");
+
+        try
         {
             using var ms = new MemoryStream();
-            await file.OpenReadStream(maxAllowedSize: 15 * 1024 * 1024).CopyToAsync(ms);
-            pendingFiles.Add(new PendingFile(file.Name, ms.ToArray()));
+            await file.OpenReadStream(MaxFileBytes).CopyToAsync(ms);
+            return (new PendingFile(file.Name, ms.ToArray()), null);
         }
+        catch (Exception)
+        {
+            return (null, $"Δεν διαβάστηκε το «{file.Name}».");
+        }
+    }
+
+    // Το InputFile πετάει εξαίρεση αν ξεπεραστεί ο αριθμός -- κρατάμε τα πρώτα, με μήνυμα.
+    private static (IReadOnlyList<IBrowserFile> Files, string? Error) PickFiles(InputFileChangeEventArgs e) =>
+        e.FileCount > MaxFilesAtOnce
+            ? (e.GetMultipleFiles(e.FileCount).Take(MaxFilesAtOnce).ToList(),
+               $"Διάλεξες {e.FileCount} αρχεία -- κρατήθηκαν τα πρώτα {MaxFilesAtOnce}.")
+            : (e.GetMultipleFiles(MaxFilesAtOnce), null);
+
+    private async Task OnNewFilesSelected(InputFileChangeEventArgs e)
+    {
+        preparingFiles = true;
+        var (files, pickError) = PickFiles(e);
+        var errors = new List<string>();
+        if (pickError != null) errors.Add(pickError);
+
+        foreach (var file in files)
+        {
+            var (prepared, error) = await PrepareFileAsync(file);
+            if (prepared != null) pendingFiles.Add(prepared);
+            if (error != null) errors.Add(error);
+        }
+
+        fileMessage = string.Join(" ", errors);
+        preparingFiles = false;
     }
 
     // ---- Λεπτομέρειες / Συνομιλία / Συνημμένα ----
@@ -986,17 +1069,34 @@ else
 
     private async Task OnAttachmentSelected(InputFileChangeEventArgs e)
     {
-        if (details == null || e.File == null) return;
-        using var ms = new MemoryStream();
-        await e.File.OpenReadStream(maxAllowedSize: 15 * 1024 * 1024).CopyToAsync(ms);
+        if (details == null || e.FileCount == 0) return;
         busy = true;
         detailsMessage = "";
-        // Χωρίς έλεγχο, ένα αποτυχημένο ανέβασμα έδειχνε επιτυχημένο.
-        var uploaded = await Service.UploadAttachment(details.Issue.IssueID, ms.ToArray(), e.File.Name,
-            userManager.User?.IdUser, UserFullName());
-        if (!uploaded)
-            detailsMessage = $"Το «{e.File.Name}» δεν ανέβηκε. Δοκίμασε ξανά ή με μικρότερο αρχείο.";
-        details = await Service.GetIssue(details.Issue.IssueID, userManager.User?.IdUser);
+        var issueId = details.Issue.IssueID;
+        var (files, pickError) = PickFiles(e);
+        var errors = new List<string>();
+        if (pickError != null) errors.Add(pickError);
+        var ok = 0;
+
+        // Ένα-ένα: αν αποτύχει ένα, τα υπόλοιπα ανεβαίνουν κανονικά.
+        foreach (var file in files)
+        {
+            var (prepared, error) = await PrepareFileAsync(file);
+            if (prepared == null)
+            {
+                errors.Add(error ?? $"Δεν διαβάστηκε το «{file.Name}».");
+                continue;
+            }
+            // Χωρίς έλεγχο, ένα αποτυχημένο ανέβασμα έδειχνε επιτυχημένο.
+            var uploaded = await Service.UploadAttachment(issueId, prepared.Bytes, prepared.Name,
+                userManager.User?.IdUser, UserFullName());
+            if (uploaded) ok++;
+            else errors.Add($"Το «{file.Name}» ({MegaBytes(prepared.Bytes.Length)} MB) δεν ανέβηκε -- δοκίμασε ξανά.");
+        }
+
+        if (errors.Any())
+            detailsMessage = (files.Count > 1 ? $"Ανέβηκαν {ok} από {files.Count}. " : "") + string.Join(" ", errors);
+        details = await Service.GetIssue(issueId, userManager.User?.IdUser);
         busy = false;
         await Load();
     }

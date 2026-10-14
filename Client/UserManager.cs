@@ -61,6 +61,7 @@ namespace StallmedManager.Client
 				user.ForcePasswordChange = status.ForcePasswordChange;
 				user.Role = status.Role ?? user.Role;
 				user.TasksVisibility = status.TasksVisibility;
+				user.StartPage = status.StartPage;
 				await localStorage.SetItemAsync("user", user);
 			}
 			catch (Exception)
@@ -113,6 +114,40 @@ namespace StallmedManager.Client
 		public bool IsAdmin => string.Equals(User?.Role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
 
 		public bool IsVendor => string.Equals(User?.Role?.Trim(), "vendor", StringComparison.OrdinalIgnoreCase);
+
+		// Η αρχική σελίδα του χρήστη ("/" = Home).
+		public string StartPagePath => StartPages.Normalize(User?.StartPage) ?? "/";
+
+		// Από το κουμπί 🏠: η σελίδα που βρίσκεται γίνεται η αρχική του ("/" = πίσω στο Home).
+		public async Task<UserSaveResult?> SetStartPage(string path)
+		{
+			if (user == null) return null;
+			var request = new HttpRequestMessage(HttpMethod.Post, "api/auth/start-page");
+			request.Headers.Add("Authorization", "Bearer " + user.Token);
+			request.Content = JsonContent.Create(new SetStartPageRequest { IdUser = user.IdUser, StartPage = path });
+			try
+			{
+				var response = await http.SendAsync(request);
+				if (!response.IsSuccessStatusCode) return null;
+				var result = await response.Content.ReadFromJsonAsync<UserSaveResult>();
+				if (result?.Success == true)
+				{
+					user.StartPage = StartPages.Normalize(path);
+					await localStorage.SetItemAsync("user", user);
+				}
+				return result;
+			}
+			catch (Exception)
+			{
+				return null;
+			}
+		}
+
+		// Ίδιος κανόνας με το SeesAllIssues του server: "All" => όλα, "Own" => μόνο τα δικά του,
+		// κενό => ο admin βλέπει όλα.
+		public bool SeesAllTasks =>
+			string.Equals(User?.TasksVisibility?.Trim(), "All", StringComparison.OrdinalIgnoreCase) ||
+			(!string.Equals(User?.TasksVisibility?.Trim(), "Own", StringComparison.OrdinalIgnoreCase) && IsAdmin);
 
 		public async Task<bool> Logout()
 		{

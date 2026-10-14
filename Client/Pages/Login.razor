@@ -70,7 +70,8 @@
 		var response = await userManager.Login(loginRequest);
 		loginButtonDisabled = false;
 		message = response.Message;
-		if (userManager.IsLoggedIn) navigationManager.NavigateTo("/");
+		// Η αρχική σελίδα του χρήστη (ή Home αν δεν έχει ορίσει).
+		if (userManager.IsLoggedIn) navigationManager.NavigateTo(userManager.StartPagePath);
 	}
 
 	private async Task Logout()

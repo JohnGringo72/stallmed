@@ -99,7 +99,7 @@
         {
             var user = await context.Users
                 .Where(u => u.IdUser == userId)
-                .Select(u => new { u.IdUser, u.Active, u.Role, u.ForcePasswordChange, u.TasksVisibility })
+                .Select(u => new { u.IdUser, u.Active, u.Role, u.ForcePasswordChange, u.TasksVisibility, u.StartPage })
                 .FirstOrDefaultAsync();
 
             if (user == null || !user.Active)
@@ -111,7 +111,33 @@
                 IdUser = user.IdUser,
                 Role = user.Role,
                 ForcePasswordChange = user.ForcePasswordChange,
-                TasksVisibility = user.TasksVisibility
+                TasksVisibility = user.TasksVisibility,
+                StartPage = user.StartPage
+            });
+        }
+
+        // ---- Αρχική σελίδα: ο ίδιος ο χρήστης (κουμπί 🏠) ----
+        // Μόνο για τον εαυτό του: το email του token πρέπει να είναι του χρήστη του αιτήματος.
+        // (Χρήστες χωρίς email έχουν κενό token-email· εκεί ισχύει το UserID, όπως παντού.)
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        [HttpPost]
+        [Route("api/auth/start-page")]
+        public async Task<ActionResult<UserSaveResult>> SetStartPage([FromBody] SetStartPageRequest req)
+        {
+            var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? User.Identity?.Name;
+            var user = await context.Users.FindAsync(req.IdUser);
+            if (user == null || !user.Active
+                || (!string.IsNullOrWhiteSpace(email)
+                    && !string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase)))
+                return Ok(new UserSaveResult { Success = false, Message = "Δεν επιτρέπεται." });
+
+            user.StartPage = StartPages.Normalize(req.StartPage);
+            await context.SaveChangesAsync();
+            return Ok(new UserSaveResult
+            {
+                Success = true,
+                IdUser = user.IdUser,
+                Message = $"Αρχική σου σελίδα: {StartPages.Label(user.StartPage)}"
             });
         }
 
