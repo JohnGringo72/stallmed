@@ -59,6 +59,8 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<ChatBotService>();
 builder.Services.AddScoped<QuotePdfService>();
 builder.Services.AddScoped<QuoteEmailService>();
+// Singleton: στέλνει στο παρασκήνιο με δικό του scope (DbContext), μετά το τέλος του request.
+builder.Services.AddSingleton<PushNotificationService>();
 
 var app = builder.Build();
 
@@ -82,6 +84,9 @@ app.Use(async (context, next) =>
     var noCache =
         path.EndsWith("blazor.boot.json", StringComparison.OrdinalIgnoreCase) ||
         path.EndsWith("index.html", StringComparison.OrdinalIgnoreCase) ||
+        // Ο service worker των ειδοποιήσεων και το manifest πρέπει να ανανεώνονται με κάθε έκδοση.
+        path.EndsWith("service-worker.js", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith("manifest.json", StringComparison.OrdinalIgnoreCase) ||
         path == "/" || path == "";
 
     if (noCache)

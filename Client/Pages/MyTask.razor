@@ -5,6 +5,7 @@
 @inject UserManager userManager
 @inject IJSRuntime JS
 @inject NotificationsState notifications
+@inject PushClientService push
 
 <PageTitle>Tasks / Issues</PageTitle>
 
@@ -99,7 +100,7 @@
     {
         <div class="col-auto">
             <button class="btn btn-outline-secondary" @onclick="EnableNotifications"
-                    title="@Hint("Ειδοποίηση των Windows όταν σου ανατεθεί νέο θέμα")">🔔 Ειδοποιήσεις</button>
+                    title="@Hint("Ειδοποίηση στο κινητό/υπολογιστή όταν σου ανατεθεί θέμα ή έρθει μήνυμα")">🔔 Ειδοποιήσεις</button>
         </div>
     }
     <div class="col-auto ms-auto">
@@ -121,10 +122,10 @@ else
         <table class="table table-striped table-hover table-sm align-middle">
             <thead>
                 <tr>
-                    <th class="sortable" @onclick='() => SortBy("code")'>Κωδικός<span>@SortArrow("code")</span></th>
+                    <th class="sortable" @onclick='() => SortBy("createdby")'>Άνοιξε<span>@SortArrow("createdby")</span></th>
                     <th class="sortable" @onclick='() => SortBy("title")'>Τίτλος<span>@SortArrow("title")</span></th>
                     <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("assigned")'>Ανάθεση<span>@SortArrow("assigned")</span></th>
-                    <th class="sortable d-none d-lg-table-cell" @onclick='() => SortBy("createdby")'>Άνοιξε<span>@SortArrow("createdby")</span></th>
+                    <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("code")'>Κωδικός<span>@SortArrow("code")</span></th>
                     <th class="sortable d-none d-lg-table-cell" @onclick='() => SortBy("created")'>Ημερομηνία<span>@SortArrow("created")</span></th>
                     <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("due")'>Προθεσμία<span>@SortArrow("due")</span></th>
                     <th class="sortable" @onclick='() => SortBy("status")'>Στάτους<span>@SortArrow("status")</span></th>
@@ -136,7 +137,7 @@ else
                 @foreach (var i in SortedIssues)
                 {
                     <tr class="issue-row" @onclick="() => OpenDetails(i.IssueID)">
-                        <td><strong>@i.IssueCode</strong></td>
+                        <td>@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : i.CreatedByName)</td>
                         <td>@i.Title</td>
                         <td class="d-none d-md-table-cell">
                             @if (i.AssignedToAll)
@@ -148,7 +149,7 @@ else
                                 @(string.IsNullOrEmpty(i.AssignedName) ? "—" : i.AssignedName)
                             }
                         </td>
-                        <td class="d-none d-lg-table-cell">@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : i.CreatedByName)</td>
+                        <td class="d-none d-md-table-cell"><strong>@i.IssueCode</strong></td>
                         <td class="d-none d-lg-table-cell">@i.CreatedAt.ToString("dd/MM/yyyy")</td>
                         <td class="d-none d-md-table-cell">@(i.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td>
                         <td>
@@ -636,11 +637,20 @@ else
     private async Task EnableNotifications()
     {
         // Η άδεια ζητιέται με κλικ του χρήστη -- οι browsers δεν τη δίνουν αλλιώς.
+        // Πρώτα push (δουλεύει και με κλειστή την εφαρμογή)· αν δεν γίνεται,
+        // οι απλές ειδοποιήσεις του browser όσο η σελίδα είναι ανοιχτή.
         // Αν λείπει η βοηθητική JS (π.χ. ο browser κρατά παλιό index.html από cache),
         // δεν σκάει η σελίδα: απλώς δεν ενεργοποιούνται οι ειδοποιήσεις.
         try
         {
-            notifyPermission = await JS.InvokeAsync<string>("sbtNotify.request");
+            var error = await push.EnableAsync();
+            if (error == null)
+            {
+                await push.SendTestAsync();
+            }
+            notifyPermission = await JS.InvokeAsync<string>("sbtNotify.permission");
+            if (notifyPermission == "default")
+                notifyPermission = await JS.InvokeAsync<string>("sbtNotify.request");
         }
         catch (Exception)
         {
@@ -694,11 +704,27 @@ else
         catch (Exception) { notifyPermission = "unsupported"; }
     }
 
+    // Άνοιγμα συγκεκριμένου θέματος από ειδοποίηση push (/mytasks?issue=123).
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "issue")]
+    public long? IssueFromQuery { get; set; }
+    private long? openedFromQuery;
+
     protected override async Task OnInitializedAsync()
     {
         users = await Service.GetUsers();
         doctors = await Service.GetDoctors();
         await Load();
+    }
+
+    // Τρέχει και όταν η σελίδα είναι ήδη ανοιχτή και πατηθεί ειδοποίηση για άλλο θέμα.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IssueFromQuery is long id && id > 0 && id != openedFromQuery)
+        {
+            openedFromQuery = id;
+            await OpenDetails(id);
+        }
     }
 
     private async Task Load()

@@ -17,14 +17,17 @@ namespace StallmedManager.Server.Controllers
         private readonly StallmedContext _context;
         private readonly StallmedManager.Server.Services.QuoteEmailService _email;
         private readonly ILogger<IssuesController> _logger;
+        private readonly StallmedManager.Server.Services.PushNotificationService _push;
 
         public IssuesController(StallmedContext context,
             StallmedManager.Server.Services.QuoteEmailService email,
-            ILogger<IssuesController> logger)
+            ILogger<IssuesController> logger,
+            StallmedManager.Server.Services.PushNotificationService push)
         {
             _context = context;
             _email = email;
             _logger = logger;
+            _push = push;
         }
 
         // Ορατότητα θεμάτων ανά χρήστη. Ο έλεγχος γίνεται ΣΤΟΝ SERVER με βάση τη βάση,
@@ -194,11 +197,15 @@ namespace StallmedManager.Server.Controllers
 
             IssueTask issue;
             int? previousAssignee = null;
+            string? previousStatus = null;
+            var wasAssignedToAll = false;
             if (req.IssueID.HasValue)
             {
                 issue = await _context.IssueTasks.FindAsync(req.IssueID.Value);
                 if (issue == null) return NotFound();
                 previousAssignee = issue.AssignedUserID;
+                previousStatus = issue.Status;
+                wasAssignedToAll = issue.AssignedToAll;
 
                 if (req.AssignedUserID == null && !req.AssignedToAll && previousAssignee != null)
                     return Ok(new IssueSaveResult
@@ -262,6 +269,9 @@ namespace StallmedManager.Server.Controllers
                 await NotifyAssigneeAsync(issue);
             }
 
+            await PushForSavedIssueAsync(issue, req.IssueID.HasValue, previousAssignee, previousStatus,
+                wasAssignedToAll, req.ActingUserID, req.ActingUserName);
+
             return Ok(new IssueSaveResult { Success = true, IssueID = issue.IssueID, IssueCode = issue.IssueCode });
         }
 
@@ -314,6 +324,84 @@ namespace StallmedManager.Server.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Αποτυχία αποστολής email ειδοποίησης για το θέμα {Code}", issue.IssueCode);
+            }
+        }
+
+        // ---- Ειδοποιήσεις Push (κινητό/desktop) ----
+        // Best-effort όπως και το email: ό,τι κι αν συμβεί, το θέμα έχει ήδη αποθηκευτεί.
+        private static string IssueUrl(long issueId) => $"/mytasks?issue={issueId}";
+
+        private static string StatusLabel(string? status) => status switch
+        {
+            "Open" => "Ανοιχτό",
+            "InProgress" => "Σε εξέλιξη",
+            "Done" => "Ολοκληρώθηκε",
+            "Cancelled" => "Ακυρώθηκε",
+            _ => status ?? ""
+        };
+
+        // Ενεργοί χρήστες που βλέπουν Tasks (η αποθήκη δεν έχει το μενού).
+        private async Task<List<int>> AllTaskUserIdsAsync() =>
+            await _context.Users
+                .Where(u => u.Active && (u.Role == null || u.Role.Trim().ToLower() != "warehouse"))
+                .Select(u => u.IdUser)
+                .ToListAsync();
+
+        // Όσοι "εμπλέκονται" -- ίδιος κανόνας με το καμπανάκι (my-summary): ανατεθειμένο,
+        // το άνοιξε, αφορά, ή έχει σχολιάσει. Τα «Προς όλους» αφορούν όλους.
+        private async Task<HashSet<int>> InvolvedUserIdsAsync(IssueTask issue)
+        {
+            var ids = new HashSet<int>();
+            if (issue.AssignedToAll) ids.UnionWith(await AllTaskUserIdsAsync());
+            if (issue.AssignedUserID.HasValue) ids.Add(issue.AssignedUserID.Value);
+            if (issue.CreatedBy.HasValue) ids.Add(issue.CreatedBy.Value);
+            if (issue.RegardingUserID.HasValue) ids.Add(issue.RegardingUserID.Value);
+            ids.UnionWith(await _context.IssueComments
+                .Where(c => c.IssueID == issue.IssueID && c.UserID != null)
+                .Select(c => c.UserID!.Value)
+                .Distinct()
+                .ToListAsync());
+            return ids;
+        }
+
+        private async Task PushForSavedIssueAsync(IssueTask issue, bool existed, int? previousAssignee,
+            string? previousStatus, bool wasAssignedToAll, int? actingUserId, string? actingUserName)
+        {
+            try
+            {
+                var by = string.IsNullOrWhiteSpace(actingUserName) ? "" : $" · {actingUserName}";
+                var url = IssueUrl(issue.IssueID);
+                var tag = $"issue-{issue.IssueID}";
+                var alreadyNotified = new HashSet<int>();
+                if (actingUserId.HasValue) alreadyNotified.Add(actingUserId.Value);   // ποτέ στον εαυτό σου
+
+                // 1) Νέα ανάθεση σε συγκεκριμένο χρήστη
+                if (issue.AssignedUserID.HasValue && issue.AssignedUserID != previousAssignee
+                    && !alreadyNotified.Contains(issue.AssignedUserID.Value))
+                {
+                    _push.Queue(new[] { issue.AssignedUserID.Value },
+                        $"📌 Νέο θέμα {issue.IssueCode}{by}", issue.Title ?? "", url, tag);
+                    alreadyNotified.Add(issue.AssignedUserID.Value);
+                }
+
+                // 2) Έγινε «Προς όλους»
+                if (issue.AssignedToAll && !wasAssignedToAll)
+                {
+                    var all = (await AllTaskUserIdsAsync()).Where(id => !alreadyNotified.Contains(id)).ToList();
+                    _push.Queue(all, $"📢 Νέο θέμα προς όλους {issue.IssueCode}{by}", issue.Title ?? "", url, tag);
+                    alreadyNotified.UnionWith(all);
+                }
+
+                // 3) Αλλαγή στάτους σε υπάρχον θέμα: σε όσους εμπλέκονται
+                if (existed && !string.Equals(previousStatus, issue.Status, StringComparison.OrdinalIgnoreCase))
+                {
+                    var ids = (await InvolvedUserIdsAsync(issue)).Where(id => !alreadyNotified.Contains(id));
+                    _push.Queue(ids, $"🔄 {issue.IssueCode}: {StatusLabel(issue.Status)}{by}", issue.Title ?? "", url, tag);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Αποτυχία push για το θέμα {Code}", issue.IssueCode);
             }
         }
 
@@ -519,6 +607,17 @@ namespace StallmedManager.Server.Controllers
             // το θέμα γίνεται ξανά αδιάβαστο επειδή άλλαξε το UpdatedAt.
             if (req.UserID.HasValue)
                 await MarkReadInternal(req.IssueID, req.UserID.Value);
+
+            // Push σε όσους εμπλέκονται (εκτός από αυτόν που έγραψε), σαν μήνυμα σε συνομιλία.
+            try
+            {
+                var recipients = await InvolvedUserIdsAsync(issue);
+                if (req.UserID.HasValue) recipients.Remove(req.UserID.Value);
+                var from = string.IsNullOrWhiteSpace(req.UserName) ? "Νέο μήνυμα" : req.UserName;
+                _push.Queue(recipients, $"💬 {from} · {issue.IssueCode}", req.CommentText.Trim(),
+                    IssueUrl(issue.IssueID), $"issue-{issue.IssueID}");
+            }
+            catch (Exception ex) { _logger.LogError(ex, "Αποτυχία push για σχόλιο στο {Code}", issue.IssueCode); }
 
             return Ok(new IssueSaveResult { Success = true, IssueID = req.IssueID });
         }

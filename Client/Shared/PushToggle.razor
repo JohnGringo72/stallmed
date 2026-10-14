@@ -1,0 +1,80 @@
+@inject PushClientService push
+@implements IDisposable
+
+@* Κουμπί ειδοποιήσεων της συσκευής, στη γραμμή του χρήστη (και στο μενού του κινητού). *@
+@if (push.Active)
+{
+    <button class="btn btn-outline-success btn-sm" @onclick="SendTest" disabled="@busy"
+            title="Οι ειδοποιήσεις είναι ενεργές σε αυτή τη συσκευή. Πάτα για δοκιμαστική ειδοποίηση.">
+        🔔 ✓
+    </button>
+}
+else if (push.State == "default" || push.State == "granted")
+{
+    <button class="btn btn-warning btn-sm" @onclick="Enable" disabled="@busy"
+            title="Ειδοποιήσεις στο κινητό/υπολογιστή ακόμα κι όταν η εφαρμογή είναι κλειστή">
+        🔔 Ενεργοποίηση ειδοποιήσεων
+    </button>
+}
+else if (push.State == "ios-needs-install")
+{
+    <button class="btn btn-outline-light btn-sm" @onclick="() => showIosHelp = !showIosHelp"
+            title="Στο iPhone οι ειδοποιήσεις δουλεύουν μόνο από την αρχική οθόνη">
+        🔔 Ειδοποιήσεις;
+    </button>
+}
+else if (push.State == "denied")
+{
+    <span class="text-warning small" title="Επίτρεψε τις ειδοποιήσεις για αυτό το site από τις ρυθμίσεις του browser/κινητού">
+        🔕 Μπλοκαρισμένες
+    </span>
+}
+
+@if (showIosHelp)
+{
+    <div class="alert alert-info small mb-0 mt-2 w-100">
+        Για ειδοποιήσεις στο iPhone:
+        <ol class="mb-1 ps-3">
+            <li>Πάτα το κουμπί <b>Κοινοποίηση</b> (τετράγωνο με βελάκι) του Safari.</li>
+            <li>Διάλεξε <b>Προσθήκη στην οθόνη Αφετηρίας</b>.</li>
+            <li>Άνοιξε την εφαρμογή από το νέο εικονίδιο και πάτα <b>🔔 Ενεργοποίηση ειδοποιήσεων</b>.</li>
+        </ol>
+        Χρειάζεται iOS 16.4 ή νεότερο.
+    </div>
+}
+@if (!string.IsNullOrEmpty(message))
+{
+    <span class="small text-white-50">@message</span>
+}
+
+@code {
+    private bool busy;
+    private bool showIosHelp;
+    private string? message;
+
+    protected override void OnInitialized() => push.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task Enable()
+    {
+        busy = true;
+        message = await push.EnableAsync();
+        busy = false;
+        if (message == null)
+        {
+            // Αμέσως μια δοκιμαστική, για να δει ο χρήστης ότι δουλεύει.
+            await push.SendTestAsync();
+        }
+    }
+
+    private async Task SendTest()
+    {
+        busy = true;
+        var result = await push.SendTestAsync();
+        message = result?.Message;
+        busy = false;
+    }
+
+    public void Dispose() => push.Changed -= OnChanged;
+}

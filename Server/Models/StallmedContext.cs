@@ -37,6 +37,9 @@ namespace StallmedManager.Server.Models
         public virtual DbSet<IssueAttachment> IssueAttachments { get; set; }
         public virtual DbSet<IssueRead> IssueReads { get; set; }
 
+        // ---- Ειδοποιήσεις Push (sql/push_subscriptions.sql) ----
+        public virtual DbSet<UserPushSubscription> PushSubscriptions { get; set; }
+
         // ---- Προσωπικά Todo ανά χρήστη ----
         public virtual DbSet<PersonalTodo> PersonalTodos { get; set; }
 

@@ -6,6 +6,7 @@
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
 @inject IJSRuntime JS
 @inject NotificationsState notifications
+@inject PushClientService push
 @implements IDisposable
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3">
     <a class="navbar-brand sbt-logo" href="/">
@@ -104,7 +105,8 @@
         </div>
         @if (userManager.IsLoggedIn)
         {
-            <div class="d-flex align-items-center gap-3 ms-auto mt-2 mt-lg-0">
+            <div class="d-flex flex-wrap align-items-center gap-3 ms-auto mt-2 mt-lg-0">
+                <PushToggle />
                 <label class="form-check-label text-white d-flex align-items-center gap-1" style="cursor:pointer;" title="Εμφανίζει επεξηγηματικές υποδείξεις (tooltips) πάνω από τα κουμπιά">
                     <input type="checkbox" class="form-check-input" checked="@uiPrefs.ShowHints" @onchange="OnShowHintsChanged" />
                     💡 Υποδείξεις
@@ -167,12 +169,14 @@
             if (summary == null) return;
 
             myUnreadIssues = summary.UnreadCount;
+            await push.SetBadgeAsync(myUnreadIssues);   // αριθμός πάνω στο εικονίδιο της εφαρμογής
 
             var activity = summary.NewestActivityAt;
             if (activity.HasValue && (lastNotifiedActivity == null || activity > lastNotifiedActivity))
             {
                 // Την πρώτη φορά δεν ειδοποιούμε -- θα έβγαζε παλιές κινήσεις ως "νέες".
-                if (lastNotifiedActivity != null)
+                // Με ενεργό push η ειδοποίηση έρχεται ήδη από τον server -- όχι δεύτερη.
+                if (lastNotifiedActivity != null && !push.Active)
                 {
                     var title = summary.NewestIsNewIssue
                         ? $"Νέο θέμα {summary.NewestIssueCode}"
@@ -204,6 +208,17 @@
 
         userManager.StatusChanged += OnStatusChanged;
         await uiPrefs.Initialize();
+        await InitPushAsync();
+    }
+
+    // Μία φορά ανά χρήστη που συνδέεται (και ξανά μετά από logout/login).
+    private int? pushInitializedFor;
+    private async Task InitPushAsync()
+    {
+        var userId = userManager.User?.IdUser;
+        if (userId == null || pushInitializedFor == userId) return;
+        pushInitializedFor = userId;
+        await push.InitializeAsync();
     }
 
     private async Task OnShowHintsChanged(ChangeEventArgs e)
@@ -232,9 +247,14 @@
     private void OnStatusChanged(object sender, EventArgs e)
     {
         InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(InitPushAsync);
     }
     private async Task Logout()
     {
+        // Πριν το logout, όσο υπάρχει ακόμα token για το αίτημα.
+        await push.UnregisterAsync();
+        await push.SetBadgeAsync(0);
+        pushInitializedFor = null;
         await userManager.Logout();
         Navigation.NavigateTo("/login");
     }
