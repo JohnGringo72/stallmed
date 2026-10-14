@@ -71,6 +71,35 @@ else
     app.UseExceptionHandler("/Error");
 }
 
+// Η σελίδα και ο κατάλογος αρχείων της εφαρμογής δεν πρέπει να μένουν στην
+// cache του browser: αλλιώς μετά από ανέβασμα νέας έκδοσης ο χρήστης συνεχίζει
+// να τρέχει την παλιά και χρειάζεται χειροκίνητο καθάρισμα.
+// Τα υπόλοιπα αρχεία (.dll, .wasm) κρατούν την cache τους κανονικά -- ο Blazor
+// τα ελέγχει με τα hash που διαβάζει από το blazor.boot.json.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? "";
+    var noCache =
+        path.EndsWith("blazor.boot.json", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith("index.html", StringComparison.OrdinalIgnoreCase) ||
+        path == "/" || path == "";
+
+    if (noCache)
+    {
+        // OnStarting: μπαίνει τελευταία στιγμή, ώστε να μην το σβήσει
+        // το middleware των στατικών αρχείων.
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+            context.Response.Headers["Pragma"] = "no-cache";
+            context.Response.Headers["Expires"] = "0";
+            return Task.CompletedTask;
+        });
+    }
+
+    await next();
+});
+
 app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
 app.UseAuthentication();
