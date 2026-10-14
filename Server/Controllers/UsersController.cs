@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using StallmedManager.Server.Models;
@@ -19,15 +19,15 @@ namespace StallmedManager.Server.Controllers
         private const int MinPasswordLength = 6;
 
         private readonly StallmedContext _context;
-        private readonly AesService _aes;
+        private readonly PasswordHasher _hasher;
         private readonly QuoteEmailService _email;
         private readonly ILogger<UsersController> _logger;
 
-        public UsersController(StallmedContext context, AesService aes, QuoteEmailService email,
+        public UsersController(StallmedContext context, PasswordHasher hasher, QuoteEmailService email,
             ILogger<UsersController> logger)
         {
             _context = context;
-            _aes = aes;
+            _hasher = hasher;
             _email = email;
             _logger = logger;
         }
@@ -62,7 +62,8 @@ namespace StallmedManager.Server.Controllers
             Role = u.Role,
             Active = u.Active,
             TasksVisibility = NormalizeVisibility(u.TasksVisibility, u.Role),
-            HasEncryptedPassword = !string.IsNullOrEmpty(u.PasswordEncrypted),
+            HasEncryptedPassword = PasswordHasher.IsHashed(u.PasswordEncrypted),
+            ForcePasswordChange = u.ForcePasswordChange,
             LastLogin = u.LastLogin
         };
 
@@ -127,7 +128,7 @@ namespace StallmedManager.Server.Controllers
                     Active = req.Active,
                     TasksVisibility = NormalizeVisibility(req.TasksVisibility, role),
                     Password = "",                                   // ποτέ απλό κείμενο
-                    PasswordEncrypted = _aes.Encrypt(req.Password.Trim()),
+                    PasswordEncrypted = _hasher.Hash(req.Password.Trim()),
                     ForcePasswordChange = false,
                     CreatedAt = DateTime.Now
                 };
@@ -177,12 +178,51 @@ namespace StallmedManager.Server.Controllers
             var user = await _context.Users.FindAsync(req.IdUser);
             if (user == null) return Ok(Fail("Ο χρήστης δεν βρέθηκε."));
 
-            user.PasswordEncrypted = _aes.Encrypt(password);
+            user.PasswordEncrypted = _hasher.Hash(password);
             user.Password = "";   // καθαρίζει τυχόν παλιό κωδικό σε απλό κείμενο
+            // Κωδικός που έβαλε ο admin τον ξέρει και ο admin -- ο χρήστης τον αλλάζει.
+            user.ForcePasswordChange = true;
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Αλλαγή κωδικού για τον χρήστη {IdUser}", user.IdUser);
-            return Ok(new UserSaveResult { Success = true, IdUser = user.IdUser, Message = "Ο κωδικός ενημερώθηκε." });
+            return Ok(new UserSaveResult { Success = true, IdUser = user.IdUser, Message = "Ο κωδικός ενημερώθηκε. Ο χρήστης θα τον αλλάξει στην επόμενη είσοδο." });
+        }
+
+        // ---- Επαναφορά στον προεπιλεγμένο κωδικό ----
+        // Χωρίς IdUser ισχύει για ΟΛΟΥΣ τους χρήστες. Σε κάθε περίπτωση μπαίνει
+        // υποχρεωτική αλλαγή στην επόμενη είσοδο.
+        [HttpPost("reset-password")]
+        public async Task<ActionResult<UserSaveResult>> ResetPassword([FromBody] ResetPasswordRequest req)
+        {
+            // Κάθε χρήστης παίρνει δικό του hash: ίδιος κωδικός, διαφορετικό salt,
+            // ώστε να μη φαίνεται από τη βάση ποιοι έχουν τον ίδιο κωδικό.
+
+            var targets = req.IdUser.HasValue
+                ? await _context.Users.Where(u => u.IdUser == req.IdUser.Value).ToListAsync()
+                : await _context.Users.ToListAsync();
+
+            if (targets.Count == 0)
+                return Ok(Fail("Δεν βρέθηκε χρήστης."));
+
+            foreach (var user in targets)
+            {
+                user.PasswordEncrypted = _hasher.Hash(AuthController.DefaultPassword);
+                user.Password = "";
+                user.ForcePasswordChange = true;
+            }
+            await _context.SaveChangesAsync();
+
+            // Ο κωδικός δεν γράφεται ποτέ στα logs.
+            _logger.LogWarning("Επαναφορά κωδικού σε προεπιλογή για {Count} χρήστες", targets.Count);
+
+            return Ok(new UserSaveResult
+            {
+                Success = true,
+                IdUser = req.IdUser ?? 0,
+                Message = targets.Count == 1
+                    ? "Ο κωδικός επανήλθε στον προεπιλεγμένο. Ο χρήστης θα τον αλλάξει στην πρώτη είσοδο."
+                    : $"Επαναφέρθηκε ο προεπιλεγμένος κωδικός σε {targets.Count} χρήστες."
+            });
         }
 
         // ---- Ενεργοποίηση / απενεργοποίηση (δεν γίνεται διαγραφή: το όνομα του

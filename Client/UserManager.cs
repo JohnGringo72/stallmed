@@ -60,6 +60,20 @@ namespace StallmedManager.Client
 
 		public bool IsLoggedIn => User != null;
 
+		// Μπήκε με κωδικό που του έδωσε ο admin -- πρέπει να τον αλλάξει
+		// πριν κάνει οτιδήποτε άλλο.
+		public bool MustChangePassword => User?.ForcePasswordChange == true;
+
+		// Μετά την αλλαγή, η υποχρέωση φεύγει και από το localStorage,
+		// αλλιώς το παράθυρο ξαναβγαίνει σε κάθε ανανέωση σελίδας.
+		public async Task ClearPasswordChangeFlag()
+		{
+			if (user == null) return;
+			user.ForcePasswordChange = false;
+			await localStorage.SetItemAsync("user", user);
+			if (StatusChanged != null) StatusChanged(this, new EventArgs());
+		}
+
 		public bool IsWarehouse => string.Equals(User?.Role?.Trim(), "warehouse", StringComparison.OrdinalIgnoreCase);
 
 		public bool IsAdmin => string.Equals(User?.Role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);

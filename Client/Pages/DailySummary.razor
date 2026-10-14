@@ -1,0 +1,364 @@
+﻿@page "/daily-summary"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+
+<PageTitle>Σύνοψη Ημέρας</PageTitle>
+
+<div class="sum-page">
+
+    <div class="sum-head">
+        <h1 class="mb-0">📊 Σύνοψη Ημέρας</h1>
+        <span class="text-muted">ποιος έκανε τι</span>
+    </div>
+
+    <div class="sum-bar">
+        <button class="btn btn-outline-secondary" @onclick="() => Shift(-1)" title="Προηγούμενη ημέρα">‹</button>
+        <input type="date" class="form-control sum-date"
+               value="@day.ToString("yyyy-MM-dd")" @onchange="OnDateChanged" />
+        <button class="btn btn-outline-secondary" @onclick="() => Shift(1)"
+                disabled="@(day.Date >= DateTime.Today)" title="Επόμενη ημέρα">›</button>
+        <button class="btn btn-outline-primary ms-1" @onclick="GoToday"
+                disabled="@(day.Date == DateTime.Today)">Σήμερα</button>
+        <span class="sum-daylabel">@DayLabel</span>
+
+        @if (summary != null && summary.TotalActions > 0)
+        {
+            <span class="ms-auto sum-total">@summary.TotalActions ενέργειες από @summary.Users.Count άτομα</span>
+        }
+    </div>
+
+    @if (isLoading)
+    {
+        <p class="text-muted"><em>Φορτώνω...</em></p>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+    else if (summary == null || (summary.Users.Count == 0 && summary.Unattributed.Count == 0
+                                 && summary.Totals.All(t => t.Value == 0)))
+    {
+        <div class="alert alert-info">Καμία καταγεγραμμένη ενέργεια αυτή την ημέρα.</div>
+    }
+    else
+    {
+        @* ---- Σύνολα ημέρας ---- *@
+        @if (summary.Totals.Count > 0)
+        {
+            <div class="sum-totals">
+                @foreach (var t in summary.Totals)
+                {
+                    <div class="total-card @(t.Value > 0 ? "has" : "")">
+                        <div class="total-icon">@t.Icon</div>
+                        <div class="total-value">@t.Value</div>
+                        <div class="total-label">@t.Label</div>
+                        @if (!string.IsNullOrWhiteSpace(t.Detail))
+                        {
+                            <div class="total-detail">@t.Detail</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @* ---- Top ημέρας ---- *@
+        @if (summary.Users.Count > 0)
+        {
+            <div class="sum-top">
+                @foreach (var (u, i) in summary.Users.Select((u, i) => (u, i)))
+                {
+                    <div class="top-card @(i == 0 ? "first" : "")" @onclick="() => ToggleUser(u.UserName)">
+                        <div class="top-rank">@(i + 1)</div>
+                        <div class="top-body">
+                            <div class="top-name">@u.UserName</div>
+                            <div class="top-kinds">
+                                @foreach (var g in u.Groups.Take(4))
+                                {
+                                    <span class="top-chip" title="@g.Label">@g.Icon @g.Count</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="top-count">@u.TotalActions</div>
+                    </div>
+                }
+            </div>
+        }
+
+        @* ---- Ανάλυση ανά χρήστη ---- *@
+        @foreach (var u in summary.Users)
+        {
+            var open = IsUserOpen(u.UserName);
+            <div class="user-card">
+                <div class="user-header" @onclick="() => ToggleUser(u.UserName)">
+                    <span class="arrow @(open ? "open" : "")">▶</span>
+                    <strong>@u.UserName</strong>
+                    <span class="badge bg-primary ms-2">@u.TotalActions</span>
+                    <span class="user-kinds">
+                        @foreach (var g in u.Groups)
+                        {
+                            <span class="kind-chip">@g.Icon @g.Label: <strong>@g.Count</strong></span>
+                        }
+                    </span>
+                </div>
+
+                @if (open)
+                {
+                    <div class="user-body">
+                        @foreach (var g in u.Groups)
+                        {
+                            var gkey = u.UserName + "|" + g.Kind;
+                            var gopen = IsGroupOpen(gkey);
+                            <div class="group-row">
+                                <div class="group-header" @onclick="() => ToggleGroup(gkey)">
+                                    <span class="arrow small @(gopen ? "open" : "")">▶</span>
+                                    <span>@g.Icon @g.Label</span>
+                                    <span class="badge bg-secondary ms-2">@g.Count</span>
+                                </div>
+                                @if (gopen)
+                                {
+                                    <table class="table table-sm mb-0 group-table">
+                                        <tbody>
+                                            @foreach (var it in g.Items)
+                                            {
+                                                <tr>
+                                                    <td class="t-time">@it.At.ToString("HH:mm")</td>
+                                                    <td class="t-title">@it.Title</td>
+                                                    <td class="t-detail text-muted">@it.Detail</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @* ---- Χωρίς καταγεγραμμένο χρήστη ---- *@
+        @if (summary.Unattributed.Count > 0)
+        {
+            <div class="user-card unattributed">
+                <div class="user-header" @onclick="() => ToggleUser(UnattributedKey)">
+                    <span class="arrow @(IsUserOpen(UnattributedKey) ? "open" : "")">▶</span>
+                    <strong>Χωρίς καταγεγραμμένο χρήστη</strong>
+                    <span class="badge bg-secondary ms-2">@summary.Unattributed.Sum(g => g.Count)</span>
+                    <span class="text-muted small ms-2">η βάση δεν κρατάει ποιος τις έκανε</span>
+                </div>
+                @if (IsUserOpen(UnattributedKey))
+                {
+                    <div class="user-body">
+                        @foreach (var g in summary.Unattributed)
+                        {
+                            <div class="group-row">
+                                <div class="group-header">
+                                    <span>@g.Icon @g.Label</span>
+                                    <span class="badge bg-secondary ms-2">@g.Count</span>
+                                </div>
+                                <table class="table table-sm mb-0 group-table">
+                                    <tbody>
+                                        @foreach (var it in g.Items)
+                                        {
+                                            <tr>
+                                                <td class="t-time">@it.At.ToString("HH:mm")</td>
+                                                <td class="t-title">@it.Title</td>
+                                                <td class="t-detail text-muted">@it.Detail</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .sum-page { padding: 1.5rem; max-width: 1100px; }
+    .sum-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 1rem; }
+
+    .sum-bar {
+        display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+        padding: 10px 14px; margin-bottom: 1.2rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    .sum-date { width: 170px; }
+    .sum-daylabel { margin-left: 8px; font-weight: 600; color: #334155; }
+    .sum-total { font-weight: 600; color: #0d6efd; }
+
+    /* Σύνολα ημέρας */
+    .sum-totals {
+        display: grid; gap: 10px; margin-bottom: 1.2rem;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+    .total-card {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+        padding: 12px 14px; text-align: center;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    .total-card.has { border-color: #bfdbfe; background: #f8fbff; }
+    .total-icon { font-size: 1.2rem; }
+    .total-value { font-size: 1.8rem; font-weight: 700; line-height: 1.1; color: #94a3b8; }
+    .total-card.has .total-value { color: #0d6efd; }
+    .total-label { font-size: .8rem; color: #475569; }
+    .total-detail { font-size: .72rem; color: #94a3b8; margin-top: 2px; }
+
+    /* Top ημέρας */
+    .sum-top { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 1.2rem; }
+
+    .top-card {
+        display: flex; align-items: center; gap: 10px; cursor: pointer;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+        padding: 10px 14px; min-width: 240px; flex: 1 1 240px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    .top-card:hover { border-color: #0d6efd; }
+    .top-card.first { border-color: #f59e0b; background: #fffbeb; }
+
+    .top-rank {
+        width: 26px; height: 26px; border-radius: 50%;
+        background: #e2e8f0; color: #334155; font-weight: 700; font-size: .8rem;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+
+    .top-card.first .top-rank { background: #f59e0b; color: #fff; }
+    .top-body { flex: 1; min-width: 0; }
+    .top-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .top-kinds { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+
+    .top-chip {
+        font-size: .72rem; background: #f1f5f9; border-radius: 10px; padding: 1px 7px;
+    }
+
+    .top-count { font-size: 1.4rem; font-weight: 700; color: #0d6efd; }
+
+    /* Ανάλυση */
+    .user-card {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+        margin-bottom: 10px; overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    .user-card.unattributed { border-style: dashed; }
+
+    .user-header {
+        display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        padding: 10px 14px; cursor: pointer; user-select: none; background: #f8fafc;
+    }
+
+    .user-header:hover { background: #eef2f7; }
+    .user-kinds { display: flex; gap: 8px; flex-wrap: wrap; margin-left: 8px; }
+
+    .kind-chip {
+        font-size: .76rem; color: #475569;
+        background: #f1f5f9; border-radius: 10px; padding: 1px 8px;
+    }
+
+    .arrow { display: inline-block; transition: transform .15s; color: #64748b; font-size: .8rem; }
+    .arrow.small { font-size: .7rem; }
+    .arrow.open { transform: rotate(90deg); }
+
+    .user-body { padding: 6px 14px 12px; }
+    .group-row { border-top: 1px solid #f1f5f9; padding-top: 6px; margin-top: 6px; }
+
+    .group-header {
+        display: flex; align-items: center; gap: 6px;
+        cursor: pointer; user-select: none; padding: 3px 0; font-size: .9rem;
+    }
+
+    .group-table { margin-top: 4px; }
+    .group-table td { padding: 3px 6px; font-size: .86rem; border-top: 1px solid #f8fafc; }
+    .t-time { width: 56px; color: #64748b; white-space: nowrap; }
+    .t-title { font-weight: 600; }
+    .t-detail { }
+</style>
+
+@code {
+    private const string UnattributedKey = "\u0000unattributed";
+
+    private DateTime day = DateTime.Today;
+    private DailySummaryDto? summary;
+    private bool isLoading = true;
+    private string errorMessage = "";
+
+    private readonly HashSet<string> openUsers = new();
+    private readonly HashSet<string> openGroups = new();
+
+    private string DayLabel => day.ToString("dddd d MMMM yyyy",
+        new System.Globalization.CultureInfo("el-GR"));
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        isLoading = true;
+        errorMessage = "";
+        StateHasChanged();
+        try
+        {
+            summary = await new DailySummaryService(dataService).GetDay(day);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Σφάλμα φόρτωσης: {ex.Message}";
+        }
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task OnDateChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d))
+        {
+            day = d.Date;
+            ResetOpen();
+            await Load();
+        }
+    }
+
+    private async Task Shift(int days)
+    {
+        var target = day.AddDays(days);
+        if (target.Date > DateTime.Today) return;
+        day = target;
+        ResetOpen();
+        await Load();
+    }
+
+    private async Task GoToday()
+    {
+        day = DateTime.Today;
+        ResetOpen();
+        await Load();
+    }
+
+    // Αλλάζοντας ημέρα, τα ανοιγμένα της προηγούμενης δεν έχουν νόημα
+    private void ResetOpen()
+    {
+        openUsers.Clear();
+        openGroups.Clear();
+    }
+
+    private bool IsUserOpen(string name) => openUsers.Contains(name);
+
+    private void ToggleUser(string name)
+    {
+        if (!openUsers.Remove(name)) openUsers.Add(name);
+    }
+
+    private bool IsGroupOpen(string key) => openGroups.Contains(key);
+
+    private void ToggleGroup(string key)
+    {
+        if (!openGroups.Remove(key)) openGroups.Add(key);
+    }
+}

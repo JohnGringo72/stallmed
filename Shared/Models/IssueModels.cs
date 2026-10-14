@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace StallmedManager.Shared.Models
@@ -94,6 +94,7 @@ namespace StallmedManager.Shared.Models
         public string Status { get; set; } = "Open";
         public string Priority { get; set; } = "Normal";
         public DateTime? DueDate { get; set; }
+        public int? CreatedBy { get; set; }
         public string? CreatedByName { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

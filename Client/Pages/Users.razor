@@ -1,4 +1,4 @@
-@page "/users"
+﻿@page "/users"
 @using StallmedManager.Shared.Models
 @inject DataService dataService
 @inject UserManager userManager
@@ -40,6 +40,10 @@
 
 <div class="users-panel d-flex gap-2 align-items-center flex-wrap">
     <button class="btn btn-success" @onclick="OpenNew">➕ Νέος Χρήστης</button>
+    <button class="btn btn-outline-warning ms-2" @onclick="() => confirmResetAll = true"
+            title="Βάζει σε ΟΛΟΥΣ τον προεπιλεγμένο κωδικό και υποχρεωτική αλλαγή στην πρώτη είσοδο">
+        ↺ Επαναφορά κωδικών σε όλους
+    </button>
     <button class="btn btn-outline-secondary" @onclick="LoadData">↻ Ανανέωση</button>
     <div class="form-check form-switch ms-auto mb-0">
         <input class="form-check-input" type="checkbox" id="showInactive" @bind="showInactive" />
@@ -160,17 +164,23 @@ else if (status == "loaded")
                         <td>
                             @if (u.HasEncryptedPassword)
                             {
-                                <span title="Κρυπτογραφημένος">🔒</span>
+                                <span title="Αποθηκευμένος ως hash -- δεν διαβάζεται από κανέναν">🔒</span>
                             }
                             else
                             {
-                                <span class="text-danger" title="Ο κωδικός είναι ακόμη σε απλό κείμενο στη βάση -- πάτα 🔑 για να τον ξαναορίσεις">⚠️ απλό κείμενο</span>
+                                <span class="text-warning" title="Παλιά μορφή -- γίνεται hash αυτόματα στην επόμενη είσοδό του">⏳ παλιά μορφή</span>
+                            }
+                            @if (u.ForcePasswordChange)
+                            {
+                                <span class="badge bg-warning text-dark ms-1" title="Θα υποχρεωθεί να αλλάξει κωδικό στην επόμενη είσοδο">αλλαγή</span>
                             }
                         </td>
                         <td>@(u.LastLogin?.ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenEdit(u)" title="Επεξεργασία στοιχείων και ρόλου">✏️</button>
                             <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenPassword(u)" title="Ορισμός νέου κωδικού">🔑</button>
+                            <button class="btn btn-sm btn-outline-warning" @onclick="() => ResetOne(u)"
+                                    title="Επαναφορά στον προεπιλεγμένο κωδικό -- θα τον αλλάξει στην πρώτη είσοδο">↺</button>
                             @if (u.Active)
                             {
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => ToggleActive(u, false)" title="Απενεργοποίηση -- δεν θα μπορεί να συνδεθεί">⛔</button>
@@ -276,6 +286,59 @@ else if (status == "loaded")
                 <div class="modal-footer py-1">
                     <button class="btn btn-secondary btn-sm" @onclick="CloseEdit">Ακύρωση</button>
                     <button class="btn btn-success btn-sm" @onclick="SaveUser" disabled="@busy">Αποθήκευση</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Επιβεβαίωση: επαναφορά ενός χρήστη ===== *@
+@if (resetUser != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">↺ Επαναφορά κωδικού</h5>
+                    <button type="button" class="btn-close" @onclick="() => resetUser = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">
+                        Ο κωδικός του <strong>@resetUser.Username</strong> θα γίνει ο προεπιλεγμένος
+                        και θα υποχρεωθεί να τον αλλάξει στην επόμενη είσοδο.
+                    </p>
+                    <p class="text-muted small mb-0">Ο τωρινός του κωδικός παύει να ισχύει.</p>
+                </div>
+                <div class="modal-footer py-1">
+                    <button class="btn btn-secondary btn-sm" @onclick="() => resetUser = null">Ακύρωση</button>
+                    <button class="btn btn-warning btn-sm" @onclick="() => DoReset(resetUser!.IdUser)">Επαναφορά</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===== Επιβεβαίωση: επαναφορά ΟΛΩΝ ===== *@
+@if (confirmResetAll)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title text-danger">↺ Επαναφορά κωδικών σε ΟΛΟΥΣ</h5>
+                    <button type="button" class="btn-close" @onclick="() => confirmResetAll = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning mb-2">
+                        Όλοι οι χρήστες, <strong>μαζί κι εσύ</strong>, θα πάρουν τον προεπιλεγμένο κωδικό.
+                        Όποιος έχει δικό του κωδικό <strong>τον χάνει</strong>.
+                    </div>
+                    <p class="mb-1">Στην επόμενη είσοδο ο καθένας θα υποχρεωθεί να ορίσει δικό του κωδικό.</p>
+                    <p class="text-muted small mb-0">Η ενέργεια δεν αναιρείται.</p>
+                </div>
+                <div class="modal-footer py-1">
+                    <button class="btn btn-secondary btn-sm" @onclick="() => confirmResetAll = false">Ακύρωση</button>
+                    <button class="btn btn-danger btn-sm" @onclick="() => DoReset(null)">Ναι, επαναφορά σε όλους</button>
                 </div>
             </div>
         </div>
@@ -502,6 +565,28 @@ else if (status == "loaded")
         ClosePassword();
         await LoadData();
     }
+
+    // ---- Επαναφορά στον προεπιλεγμένο κωδικό ----
+
+    private UserAdminDto? resetUser;      // επιβεβαίωση για έναν χρήστη
+    private bool confirmResetAll;         // επιβεβαίωση για όλους
+
+    private async Task DoReset(int? idUser)
+    {
+        var result = await Service.ResetPassword(new ResetPasswordRequest { IdUser = idUser });
+        resetUser = null;
+        confirmResetAll = false;
+
+        if (result == null || !result.Success)
+        {
+            ShowMessage(result?.Message ?? "Κάτι πήγε στραβά.", true);
+            return;
+        }
+        ShowMessage(result.Message ?? "Έγινε.", false);
+        await LoadData();
+    }
+
+    private void ResetOne(UserAdminDto u) => resetUser = u;
 
     private async Task ToggleActive(UserAdminDto u, bool active)
     {

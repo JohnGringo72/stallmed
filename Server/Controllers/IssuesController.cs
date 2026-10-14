@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using StallmedManager.Server.Models;
@@ -120,6 +120,7 @@ namespace StallmedManager.Server.Controllers
                 Status = i.Status,
                 Priority = i.Priority,
                 DueDate = i.DueDate,
+                CreatedBy = i.CreatedBy,
                 CreatedByName = i.CreatedByName,
                 CreatedAt = i.CreatedAt,
                 UpdatedAt = i.UpdatedAt,

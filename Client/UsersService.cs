@@ -1,4 +1,4 @@
-using StallmedManager.Shared.Models;
+﻿using StallmedManager.Shared.Models;
 
 namespace StallmedManager.Client
 {
@@ -31,5 +31,9 @@ namespace StallmedManager.Client
 
         public async Task<UserSaveResult> SetActive(SetUserActiveRequest req)
             => await dataService.Post<SetUserActiveRequest, UserSaveResult>("api/users/set-active", req);
+
+        // Χωρίς IdUser ισχύει για όλους τους χρήστες
+        public async Task<UserSaveResult> ResetPassword(ResetPasswordRequest req)
+            => await dataService.Post<ResetPasswordRequest, UserSaveResult>("api/users/reset-password", req);
     }
 }

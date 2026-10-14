@@ -1,4 +1,4 @@
-namespace StallmedManager.Shared.Models
+﻿namespace StallmedManager.Shared.Models
 {
     // ---- Διαχείριση χρηστών (σελίδα /users, μόνο για admin) ----
     // Κανένα DTO δεν μεταφέρει ποτέ κωδικό προς τον client.
@@ -15,8 +15,11 @@ namespace StallmedManager.Shared.Models
         public bool Active { get; set; }
         // "All" = βλέπει όλα τα θέματα, "Own" = μόνο τα δικά του
         public string TasksVisibility { get; set; } = "Own";
-        // false = ο κωδικός είναι ακόμη σε απλό κείμενο στη βάση (παλιοί χρήστες)
+        // false = ο κωδικός δεν είναι ακόμη hashed (παλιός χρήστης που δεν
+        // ξανασυνδέθηκε -- αναβαθμίζεται αυτόματα στην επόμενη είσοδο)
         public bool HasEncryptedPassword { get; set; }
+        // Υποχρεωτική αλλαγή κωδικού στην επόμενη είσοδο
+        public bool ForcePasswordChange { get; set; }
         public DateTime? LastLogin { get; set; }
 
         public string FullName => $"{Firstname} {Lastname}".Trim();
@@ -40,6 +43,20 @@ namespace StallmedManager.Shared.Models
     {
         public int IdUser { get; set; }
         public string Password { get; set; } = "";
+    }
+
+    // Αλλαγή κωδικού από τον ίδιο τον χρήστη
+    public class ChangePasswordRequest
+    {
+        public int IdUser { get; set; }
+        public string CurrentPassword { get; set; } = "";
+        public string NewPassword { get; set; } = "";
+    }
+
+    // Επαναφορά στον προεπιλεγμένο κωδικό. Χωρίς IdUser = όλοι οι χρήστες.
+    public class ResetPasswordRequest
+    {
+        public int? IdUser { get; set; }
     }
 
     public class SetUserActiveRequest

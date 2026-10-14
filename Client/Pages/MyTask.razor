@@ -1,4 +1,4 @@
-@page "/mytasks"
+﻿@page "/mytasks"
 @using Microsoft.AspNetCore.Components.Forms
 @using StallmedManager.Shared.Models
 @inject DataService dataService
@@ -88,7 +88,7 @@
         <div class="form-check form-switch mb-0">
             <input class="form-check-input" type="checkbox" id="onlyMineSwitch" @bind="onlyMine" />
             <label class="form-check-label" for="onlyMineSwitch"
-                   title="@Hint("Μόνο τα θέματα που έχουν ανατεθεί σε μένα")">👤 Τα δικά μου</label>
+                   title="@Hint("Όσα άνοιξα εγώ και όσα μου έχουν ανατεθεί")">👤 Τα δικά μου</label>
         </div>
     </div>
     @if (!string.IsNullOrEmpty(notifyMessage))
@@ -338,8 +338,30 @@ else
                             {
                                 <div class="border rounded p-2 mb-2" style="white-space:pre-wrap">@iss.Description</div>
                             }
+                            @* Οι ενέργειες μένουν πάντα ορατές -- κρυμμένες πίσω από τις
+                               «Λεπτομέρειες» δεν τις έβρισκε κανείς. *@
+                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenEditFromDetails()">✏️ Επεξεργασία / Αλλαγή στάτους</button>
+                                @if (iss.ArchivedAt == null)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetArchived(true)"
+                                            title="@Hint("Φεύγει από τη λίστα χωρίς να διαγραφεί -- επαναφέρεται όποτε θες")">📦 Αρχειοθέτηση</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-success" @onclick="() => SetArchived(false)"
+                                            title="@Hint("Επιστροφή του θέματος στη λίστα")">↩️ Επαναφορά</button>
+                                }
+                                @* Οριστική διαγραφή: μόνο admin, και ο server ξαναελέγχει τον ρόλο. *@
+                                @if (userManager.IsAdmin)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => confirmDeleteIssue = true"
+                                            title="@Hint("Οριστική διαγραφή του θέματος μαζί με σχόλια και συνημμένα")">🗑️ Διαγραφή θέματος</button>
+                                }
+                            </div>
+
                             <button class="btn btn-sm btn-outline-secondary mb-2" @onclick="() => showTaskDetails = !showTaskDetails"
-                                    title="@Hint("Εμφάνιση/απόκρυψη στοιχείων του θέματος (προθεσμία, ανάθεση κλπ.) και ενεργειών")">
+                                    title="@Hint("Εμφάνιση/απόκρυψη στοιχείων του θέματος (προθεσμία, ανάθεση, ποιος το άνοιξε)")">
                                 @(showTaskDetails ? "▲ Απόκρυψη λεπτομερειών" : "ℹ️ Λεπτομέρειες")
                             </button>
                             @if (showTaskDetails)
@@ -354,22 +376,6 @@ else
                                     <tr><th>Τελ. ενημέρωση</th><td>@iss.UpdatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
                                 </tbody>
                             </table>
-                            <button class="btn btn-sm btn-outline-primary mb-3" @onclick="() => OpenEditFromDetails()">✏️ Επεξεργασία / Αλλαγή στάτους</button>
-                            @if (iss.ArchivedAt == null)
-                            {
-                                <button class="btn btn-sm btn-outline-secondary mb-3 ms-1" @onclick="() => SetArchived(true)"
-                                        title="@Hint("Φεύγει από τη λίστα χωρίς να διαγραφεί -- επαναφέρεται όποτε θες")">📦 Αρχειοθέτηση</button>
-                            }
-                            else
-                            {
-                                <button class="btn btn-sm btn-outline-success mb-3 ms-1" @onclick="() => SetArchived(false)"
-                                        title="@Hint("Επιστροφή του θέματος στη λίστα")">↩️ Επαναφορά</button>
-                            }
-                            @if (userManager.IsAdmin)
-                            {
-                                <button class="btn btn-sm btn-outline-danger mb-3 ms-1" @onclick="() => confirmDeleteIssue = true"
-                                        title="@Hint("Οριστική διαγραφή του θέματος μαζί με σχόλια και συνημμένα")">🗑️ Διαγραφή θέματος</button>
-                            }
                             }
                             @if (confirmDeleteIssue)
                             {
@@ -511,8 +517,11 @@ else
     {
         get
         {
+            // «Τα δικά μου» = όσα άνοιξα εγώ ΚΑΙ όσα μου ανέθεσαν. Σκέτη ανάθεση
+            // έκρυβε όσα άνοιγα και ανέθετα σε άλλον -- δηλαδή τη μισή δουλειά μου.
+            var me = userManager.User?.IdUser;
             var visible = onlyMine
-                ? issues.Where(i => i.AssignedUserID == userManager.User?.IdUser).ToList()
+                ? issues.Where(i => i.AssignedUserID == me || i.CreatedBy == me).ToList()
                 : issues;
 
             IOrderedEnumerable<IssueListItemDto> sorted = sortField switch
