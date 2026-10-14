@@ -186,7 +186,8 @@
                     // το σήμα στο μενού πρέπει να συνεχίσει να δουλεύει κανονικά.
                     try
                     {
-                        await JS.InvokeVoidAsync("sbtNotify.show", title, summary.NewestTitle ?? "");
+                        await JS.InvokeVoidAsync("sbtNotify.show", title, summary.NewestTitle ?? "",
+                            $"/mytasks?issue={summary.NewestIssueID}");
                     }
                     catch (Exception) { }
                 }

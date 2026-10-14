@@ -29,8 +29,13 @@ namespace StallmedManager.Server.Controllers
         [HttpGet("config")]
         public ActionResult<PushConfigDto> GetConfig()
         {
-            _push.RememberSiteOrigin($"{Request.Scheme}://{Request.Host}");
-            return Ok(new PushConfigDto { Enabled = _push.IsConfigured, PublicKey = _push.PublicKey });
+            _push.RememberSiteOrigin(Request.Host.Value);
+            return Ok(new PushConfigDto
+            {
+                Enabled = _push.IsConfigured,
+                PublicKey = _push.PublicKey,
+                Problem = _push.ConfigProblem
+            });
         }
 
         [HttpPost("subscribe")]

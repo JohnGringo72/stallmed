@@ -26,6 +26,7 @@ namespace StallmedManager.Shared.Models
     {
         public bool Enabled { get; set; }
         public string? PublicKey { get; set; }
+        public string? Problem { get; set; }   // τι λείπει από τη ρύθμιση του server
     }
 
     public class PushSubscribeRequest

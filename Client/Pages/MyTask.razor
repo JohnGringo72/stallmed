@@ -36,6 +36,21 @@
     .chat-msg.mine .chat-bubble { background: #e7f1ff; border-color: #b6d4fe; }
     .chat-meta { font-size: 0.72rem; color: #6c757d; margin-bottom: 2px; }
     .chat-text { white-space: pre-wrap; word-break: break-word; }
+
+    /* Dropdown ανάθεσης με ομάδες που ανοιγοκλείνουν */
+    .assign-panel {
+        position: absolute; z-index: 1080; left: 0; right: 0;
+        background: white; border: 1px solid #dee2e6; border-radius: 6px;
+        max-height: 300px; overflow-y: auto;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    }
+    .assign-row { padding: 7px 10px; cursor: pointer; }
+    .assign-row:hover { background: #f1f3f5; }
+    .assign-arrow {
+        display: inline-block; width: 26px; text-align: center;
+        color: #0d6efd; font-size: 0.85rem; cursor: pointer; user-select: none;
+    }
+    .assign-member { padding-left: 46px; }
 </style>
 
 <div class="sbt-page-header">
@@ -191,31 +206,53 @@ else
                         </div>
                     </div>
                     <div class="row g-2 mb-2">
-                        <div class="col-12">
+                        <div class="col-12 position-relative">
                             <label class="form-label mb-1">Ανάθεση σε</label>
-                            <select class="form-select" value="@assignValue" @onchange="OnAssignChanged">
-                                <option value="">— επίλεξε —</option>
-                                @foreach (var team in Teams.All)
-                                {
-                                    <optgroup label="@team.Label">
-                                        <option value="team:@team.Code">🏢 Όλη η @team.Label</option>
-                                        @foreach (var u in MembersOf(team.Code))
+                            @* Δικό μας dropdown αντί για <select>: οι ομάδες ξεκινούν
+                               ΚΛΕΙΣΤΕΣ και ανοίγουν με το βελάκι για επιλογή προσώπου.
+                               Κλικ στο όνομα της ομάδας = ανάθεση σε όλη την ομάδα. *@
+                            <button type="button" class="form-select text-start" @onclick="() => assignOpen = !assignOpen">
+                                @CurrentAssignLabel()
+                            </button>
+                            @if (assignOpen)
+                            {
+                                <div class="assign-panel">
+                                    <div class="assign-row" @onclick='() => SelectAssign("all")'>👥 Προς όλους</div>
+                                    @foreach (var team in Teams.All)
+                                    {
+                                        <div class="assign-row d-flex align-items-center">
+                                            <span class="assign-arrow" @onclick="() => ToggleTeam(team.Code)" @onclick:stopPropagation="true"
+                                                  title="@Hint("Άνοιγμα/κλείσιμο των ατόμων της ομάδας")">
+                                                @(expandedTeams.Contains(team.Code) ? "▼" : "▶")
+                                            </span>
+                                            <span class="flex-grow-1" @onclick='() => SelectAssign($"team:{team.Code}")'>🏢 @team.Label</span>
+                                        </div>
+                                        @if (expandedTeams.Contains(team.Code))
                                         {
-                                            <option value="@u.IdUser">@u.FullName</option>
+                                            @foreach (var u in MembersOf(team.Code))
+                                            {
+                                                <div class="assign-row assign-member" @onclick="() => SelectAssign(u.IdUser.ToString())">@u.FullName</div>
+                                            }
                                         }
-                                    </optgroup>
-                                }
-                                @if (Ungrouped().Any())
-                                {
-                                    <optgroup label="Χωρίς ομάδα">
-                                        @foreach (var u in Ungrouped())
+                                    }
+                                    @if (Ungrouped().Any())
+                                    {
+                                        <div class="assign-row d-flex align-items-center">
+                                            <span class="assign-arrow" @onclick='() => ToggleTeam("__none")' @onclick:stopPropagation="true">
+                                                @(expandedTeams.Contains("__none") ? "▼" : "▶")
+                                            </span>
+                                            <span class="flex-grow-1 text-muted" @onclick='() => ToggleTeam("__none")'>Χωρίς ομάδα</span>
+                                        </div>
+                                        @if (expandedTeams.Contains("__none"))
                                         {
-                                            <option value="@u.IdUser">@u.FullName</option>
+                                            @foreach (var u in Ungrouped())
+                                            {
+                                                <div class="assign-row assign-member" @onclick="() => SelectAssign(u.IdUser.ToString())">@u.FullName</div>
+                                            }
                                         }
-                                    </optgroup>
-                                }
-                                <option value="all">👥 Προς όλους</option>
-                            </select>
+                                    }
+                                </div>
+                            }
                         </div>
                     </div>
                     <div class="row g-2 mb-2">
@@ -549,19 +586,31 @@ else
     private IEnumerable<IssueUserDto> Ungrouped() =>
         users.Where(u => Teams.Normalize(u.Team) == null);
 
-    // Μία λίστα για τρία πράγματα: πρόσωπο, ομάδα ή «προς όλους»
-    private string assignValue =>
-        editAssignedToAll ? "all"
-        : editAssignedTeam != null ? $"team:{editAssignedTeam}"
-        : (editAssignedUserId?.ToString() ?? "");
+    // Δικό μας dropdown ανάθεσης: μία τιμή για τρία πράγματα
+    // (πρόσωπο, ομάδα ή «προς όλους»), με ομάδες που ανοιγοκλείνουν.
+    private bool assignOpen;
+    private readonly HashSet<string> expandedTeams = new();
 
-    private void OnAssignChanged(ChangeEventArgs e)
+    private void ToggleTeam(string code)
     {
-        var value = e.Value?.ToString() ?? "";
+        if (!expandedTeams.Add(code))
+            expandedTeams.Remove(code);
+    }
+
+    private void SelectAssign(string value)
+    {
         editAssignedToAll = value == "all";
         editAssignedTeam = value.StartsWith("team:") ? Teams.Normalize(value[5..]) : null;
         editAssignedUserId = int.TryParse(value, out var id) ? id : null;
+        assignOpen = false;
     }
+
+    private string CurrentAssignLabel() =>
+        editAssignedToAll ? "👥 Προς όλους"
+        : editAssignedTeam != null ? $"🏢 {Teams.Label(editAssignedTeam)}"
+        : editAssignedUserId != null
+            ? (users.FirstOrDefault(u => u.IdUser == editAssignedUserId)?.FullName ?? "—")
+        : "— επίλεξε —";
     private string editPriority = "Normal";
     private string editStatus = "Open";
     private DateTime? editDueDate;
@@ -721,6 +770,8 @@ else
     // ---- Νέο / Επεξεργασία ----
     private void OpenNew()
     {
+        assignOpen = false;
+        expandedTeams.Clear();
         editId = null;
         editCode = "";
         editTitle = "";
@@ -740,6 +791,8 @@ else
     private void OpenEditFromDetails()
     {
         if (details == null) return;
+        assignOpen = false;
+        expandedTeams.Clear();
         var iss = details.Issue;
         editId = iss.IssueID;
         editCode = iss.IssueCode;

@@ -33,11 +33,21 @@ namespace StallmedManager.Server.Services
         // γραφτεί στο appsettings, χρησιμοποιείται η διεύθυνση του site, όπως τη βλέπει
         // ο server στο πρώτο αίτημα του client (το /api/push/config καλείται σε κάθε άνοιγμα).
         private string? _siteOrigin;
-        public void RememberSiteOrigin(string origin)
+        // Πάντα https://{host}: πίσω από proxy/IIS το Request.Scheme μπορεί να φαίνεται http,
+        // ενώ το site τρέχει με https.
+        public void RememberSiteOrigin(string host)
         {
-            if (_siteOrigin == null && origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                _siteOrigin = origin;
+            if (_siteOrigin == null && !string.IsNullOrWhiteSpace(host))
+                _siteOrigin = "https://" + host;
         }
+
+        // Τι λείπει από τη ρύθμιση (για την οθόνη πληροφοριών του καμπανακιού) -- null αν όλα καλά.
+        public string? ConfigProblem =>
+            string.IsNullOrEmpty(_config["Push:PublicKey"]) || string.IsNullOrEmpty(_config["Push:PrivateKey"])
+                ? "Λείπουν τα κλειδιά: δεν βρέθηκε το appsettings.Push.json δίπλα στο appsettings.json του server."
+                : string.IsNullOrEmpty(Subject)
+                    ? "Λείπει το Subject στο appsettings.Push.json."
+                    : null;
         private string? Subject =>
             !string.IsNullOrEmpty(_config["Push:Subject"]) ? _config["Push:Subject"] : _siteOrigin;
 

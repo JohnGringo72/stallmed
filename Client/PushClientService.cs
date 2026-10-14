@@ -26,6 +26,14 @@ namespace StallmedManager.Client
         // Η συσκευή είναι γραμμένη στον server και θα παίρνει push.
         public bool Active { get; private set; }
 
+        // ---- Για την οθόνη πληροφοριών του καμπανακιού ----
+        // Τι λείπει στον server (null = όλα καλά).
+        public string? ServerProblem { get; private set; }
+        // Το τελευταίο σφάλμα κατά την ενεργοποίηση σε αυτή τη συσκευή.
+        public string? LastError { get; private set; }
+        // Το index.html είναι παλιό (από cache) και δεν έχει τη βοηθητική JS.
+        public bool ScriptMissing { get; private set; }
+
         public event Action? Changed;
 
         // Καλείται στην εκκίνηση: αν η άδεια έχει ήδη δοθεί, ξαναγράφει τη συσκευή στον
@@ -35,8 +43,23 @@ namespace StallmedManager.Client
             try
             {
                 config = await dataService.Get<PushConfigDto>("api/push/config");
-                State = await js.InvokeAsync<string>("sbtPush.state");
-                if (config == null || !config.Enabled || string.IsNullOrEmpty(config.PublicKey))
+                ServerProblem = config == null
+                    ? "Ο server δεν απαντά για τις ειδοποιήσεις: μάλλον δεν ανέβηκε η νέα έκδοση (τα .dll)."
+                    : config.Enabled ? null : (config.Problem ?? "Οι ειδοποιήσεις δεν είναι ρυθμισμένες στον server.");
+
+                try
+                {
+                    State = await js.InvokeAsync<string>("sbtPush.state");
+                    ScriptMissing = false;
+                }
+                catch (JSException)
+                {
+                    ScriptMissing = true;
+                    State = "unsupported";
+                    return;
+                }
+
+                if (ServerProblem != null || string.IsNullOrEmpty(config?.PublicKey))
                 {
                     if (State != "ios-needs-install" && State != "unsupported") State = "server-off";
                     return;
@@ -50,9 +73,10 @@ namespace StallmedManager.Client
                     Active = sub?.Endpoint != null && await SaveAsync(sub);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Παλιό index.html από cache ή browser χωρίς υποστήριξη: απλώς δεν ενεργοποιείται.
+                // Browser χωρίς υποστήριξη ή προσωρινό σφάλμα: απλώς δεν ενεργοποιείται.
+                LastError = ex.Message;
                 State = "unsupported";
             }
             finally
@@ -65,23 +89,24 @@ namespace StallmedManager.Client
         public async Task<string?> EnableAsync()
         {
             if (config == null || !config.Enabled || string.IsNullOrEmpty(config.PublicKey))
-                return "Οι ειδοποιήσεις δεν έχουν ρυθμιστεί στον server.";
+                return LastError = ServerProblem ?? "Οι ειδοποιήσεις δεν έχουν ρυθμιστεί στον server.";
             try
             {
                 var sub = await js.InvokeAsync<SubscriptionPayload?>("sbtPush.subscribe", config.PublicKey);
                 State = await js.InvokeAsync<string>("sbtPush.state");
                 if (sub?.Endpoint == null)
                 {
-                    return State == "denied"
+                    return LastError = State == "denied"
                         ? "Οι ειδοποιήσεις είναι μπλοκαρισμένες. Επίτρεψέ τες από τις ρυθμίσεις του browser/κινητού."
-                        : "Δεν ενεργοποιήθηκαν οι ειδοποιήσεις.";
+                        : $"Δεν ενεργοποιήθηκαν οι ειδοποιήσεις ({sub?.Error ?? "άγνωστο"}).";
                 }
                 Active = await SaveAsync(sub);
-                return Active ? null : "Δεν αποθηκεύτηκε η συσκευή στον server.";
+                LastError = Active ? null : LastError ?? "Δεν αποθηκεύτηκε η συσκευή στον server.";
+                return LastError;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return "Δεν ενεργοποιήθηκαν οι ειδοποιήσεις σε αυτόν τον browser.";
+                return LastError = $"Δεν ενεργοποιήθηκαν οι ειδοποιήσεις σε αυτόν τον browser ({ex.Message}).";
             }
             finally
             {
@@ -128,11 +153,33 @@ namespace StallmedManager.Client
                 Auth = sub.Auth ?? "",
                 UserAgent = sub.UserAgent
             });
+            if (result?.Success != true)
+                LastError = result?.Message ?? "Ο server δεν αποθήκευσε τη συσκευή.";
             return result?.Success == true;
+        }
+
+        // Πληροφορίες της συσκευής για την οθόνη του καμπανακιού.
+        public async Task<DeviceInfo?> GetDeviceInfoAsync()
+        {
+            try { return await js.InvokeAsync<DeviceInfo>("sbtPush.info"); }
+            catch (Exception) { return null; }
+        }
+
+        public class DeviceInfo
+        {
+            public bool ServiceWorker { get; set; }
+            public bool ServiceWorkerActive { get; set; }
+            public bool PushManager { get; set; }
+            public bool Notification { get; set; }
+            public string? Permission { get; set; }
+            public bool Standalone { get; set; }
+            public bool Ios { get; set; }
+            public bool Secure { get; set; }
         }
 
         private class SubscriptionPayload
         {
+            public string? Error { get; set; }
             public string? Endpoint { get; set; }
             public string? P256dh { get; set; }
             public string? Auth { get; set; }

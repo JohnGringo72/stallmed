@@ -1,71 +1,124 @@
 @inject PushClientService push
 @implements IDisposable
 
-@* Κουμπί ειδοποιήσεων της συσκευής, στη γραμμή του χρήστη (και στο μενού του κινητού). *@
-@if (push.Active)
-{
-    <button class="btn btn-outline-success btn-sm" @onclick="SendTest" disabled="@busy"
-            title="Οι ειδοποιήσεις είναι ενεργές σε αυτή τη συσκευή. Πάτα για δοκιμαστική ειδοποίηση.">
-        🔔 ✓
+@* Καμπανάκι ειδοποιήσεων της συσκευής: φαίνεται ΠΑΝΤΑ. Το χρώμα δείχνει την κατάσταση,
+   και με πάτημα ανοίγει τι ισχύει σε αυτή τη συσκευή και τι λείπει. *@
+<div class="push-toggle">
+    <button class="btn btn-sm @ButtonClass" @onclick="TogglePanel" title="Ειδοποιήσεις σε αυτή τη συσκευή">
+        @(push.Active ? "🔔 ✓" : "🔔")
     </button>
-}
-else if (push.State == "default" || push.State == "granted")
-{
-    <button class="btn btn-warning btn-sm" @onclick="Enable" disabled="@busy"
-            title="Ειδοποιήσεις στο κινητό/υπολογιστή ακόμα κι όταν η εφαρμογή είναι κλειστή">
-        🔔 Ενεργοποίηση ειδοποιήσεων
-    </button>
-}
-else if (push.State == "ios-needs-install")
-{
-    <button class="btn btn-outline-light btn-sm" @onclick="() => showIosHelp = !showIosHelp"
-            title="Στο iPhone οι ειδοποιήσεις δουλεύουν μόνο από την αρχική οθόνη">
-        🔔 Ειδοποιήσεις;
-    </button>
-}
-else if (push.State == "denied")
-{
-    <span class="text-warning small" title="Επίτρεψε τις ειδοποιήσεις για αυτό το site από τις ρυθμίσεις του browser/κινητού">
-        🔕 Μπλοκαρισμένες
-    </span>
-}
 
-@if (showIosHelp)
-{
-    <div class="alert alert-info small mb-0 mt-2 w-100">
-        Για ειδοποιήσεις στο iPhone:
-        <ol class="mb-1 ps-3">
-            <li>Πάτα το κουμπί <b>Κοινοποίηση</b> (τετράγωνο με βελάκι) του Safari.</li>
-            <li>Διάλεξε <b>Προσθήκη στην οθόνη Αφετηρίας</b>.</li>
-            <li>Άνοιξε την εφαρμογή από το νέο εικονίδιο και πάτα <b>🔔 Ενεργοποίηση ειδοποιήσεων</b>.</li>
-        </ol>
-        Χρειάζεται iOS 16.4 ή νεότερο.
-    </div>
-}
-@if (!string.IsNullOrEmpty(message))
-{
-    <span class="small text-white-50">@message</span>
-}
+    @if (showPanel)
+    {
+        <div class="card text-dark mt-2 push-panel">
+            <div class="card-body p-2 small">
+                <div class="fw-bold mb-1">
+                    @if (push.Active)
+                    {
+                        <span class="text-success">✓ Οι ειδοποιήσεις είναι ενεργές σε αυτή τη συσκευή</span>
+                    }
+                    else
+                    {
+                        <span class="text-danger">✗ Οι ειδοποιήσεις ΔΕΝ είναι ενεργές σε αυτή τη συσκευή</span>
+                    }
+                </div>
+
+                @if (!push.Active)
+                {
+                    <div class="mb-2">@Advice</div>
+                }
+
+                <table class="table table-sm mb-2">
+                    <tbody>
+                        <tr><td>Server</td><td>@(push.ServerProblem == null ? "✓ ρυθμισμένος" : "✗ " + push.ServerProblem)</td></tr>
+                        @if (info != null)
+                        {
+                            <tr><td>Υποστήριξη συσκευής</td><td>@(info.ServiceWorker && info.PushManager && info.Notification ? "✓ ναι" : "✗ όχι")</td></tr>
+                            <tr><td>Service worker</td><td>@(info.ServiceWorkerActive ? "✓ ενεργός" : "✗ δεν τρέχει")</td></tr>
+                            <tr><td>Εγκατεστημένη ως εφαρμογή</td><td>@(info.Standalone ? "✓ ναι" : "όχι (από browser)")</td></tr>
+                            <tr><td>Άδεια ειδοποιήσεων</td><td>@PermissionLabel(info.Permission)</td></tr>
+                        }
+                        <tr><td>Συσκευή γραμμένη στον server</td><td>@(push.Active ? "✓ ναι" : "✗ όχι")</td></tr>
+                        @if (!string.IsNullOrEmpty(push.LastError))
+                        {
+                            <tr><td>Τελευταίο σφάλμα</td><td class="text-danger">@push.LastError</td></tr>
+                        }
+                    </tbody>
+                </table>
+
+                <div class="d-flex flex-wrap gap-2">
+                    @if (!push.Active && push.ServerProblem == null && !push.ScriptMissing
+                         && push.State != "ios-needs-install" && push.State != "denied")
+                    {
+                        <button class="btn btn-warning btn-sm" @onclick="Enable" disabled="@busy">🔔 Ενεργοποίηση ειδοποιήσεων</button>
+                    }
+                    @if (push.Active)
+                    {
+                        <button class="btn btn-outline-success btn-sm" @onclick="SendTest" disabled="@busy">Στείλε δοκιμαστική</button>
+                    }
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="Refresh" disabled="@busy">↻ Έλεγχος ξανά</button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(message))
+                {
+                    <div class="mt-2">@message</div>
+                }
+            </div>
+        </div>
+    }
+</div>
 
 @code {
     private bool busy;
-    private bool showIosHelp;
+    private bool showPanel;
     private string? message;
+    private PushClientService.DeviceInfo? info;
+
+    private string ButtonClass =>
+        push.Active ? "btn-outline-success"
+        : push.ServerProblem != null || push.ScriptMissing ? "btn-outline-danger"
+        : "btn-warning";
+
+    // Τι πρέπει να κάνει ο χρήστης, με απλά λόγια.
+    private string Advice =>
+        push.ScriptMissing ? "Η εφαρμογή τρέχει παλιά έκδοση από την cache. Κλείσ' την τελείως και άνοιξέ την ξανά."
+        : push.ServerProblem != null ? "Το πρόβλημα είναι στον server -- δες τη γραμμή «Server» παρακάτω."
+        : push.State == "ios-needs-install" ? "iPhone: Κοινοποίηση → «Προσθήκη στην οθόνη Αφετηρίας», άνοιξε την εφαρμογή από το εικονίδιο και πάτα Ενεργοποίηση. Χρειάζεται iOS 16.4+."
+        : push.State == "denied" ? "Οι ειδοποιήσεις είναι μπλοκαρισμένες. Ρυθμίσεις κινητού → Εφαρμογές → SBT Suite (ή Chrome) → Ειδοποιήσεις → Να επιτρέπονται."
+        : push.State == "unsupported" ? "Αυτός ο browser δεν υποστηρίζει ειδοποιήσεις push. Στο Android χρησιμοποίησε Chrome."
+        : "Πάτα «Ενεργοποίηση ειδοποιήσεων» και μετά «Να επιτρέπεται».";
+
+    private static string PermissionLabel(string? p) => p switch
+    {
+        "granted" => "✓ δόθηκε",
+        "denied" => "✗ μπλοκαρισμένη",
+        "default" => "δεν έχει ζητηθεί ακόμα",
+        _ => "✗ δεν υποστηρίζεται"
+    };
 
     protected override void OnInitialized() => push.Changed += OnChanged;
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
 
+    private async Task TogglePanel()
+    {
+        showPanel = !showPanel;
+        message = null;
+        if (showPanel) info = await push.GetDeviceInfoAsync();
+    }
+
     private async Task Enable()
     {
         busy = true;
         message = await push.EnableAsync();
-        busy = false;
         if (message == null)
         {
             // Αμέσως μια δοκιμαστική, για να δει ο χρήστης ότι δουλεύει.
-            await push.SendTestAsync();
+            var result = await push.SendTestAsync();
+            message = result?.Message;
         }
+        info = await push.GetDeviceInfoAsync();
+        busy = false;
     }
 
     private async Task SendTest()
@@ -73,6 +126,15 @@ else if (push.State == "denied")
         busy = true;
         var result = await push.SendTestAsync();
         message = result?.Message;
+        busy = false;
+    }
+
+    private async Task Refresh()
+    {
+        busy = true;
+        message = null;
+        await push.InitializeAsync();
+        info = await push.GetDeviceInfoAsync();
         busy = false;
     }
 

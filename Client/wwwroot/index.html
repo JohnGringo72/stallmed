@@ -90,16 +90,27 @@
                 if (!("Notification" in window)) return "unsupported";
                 try { return await Notification.requestPermission(); } catch (e) { return "denied"; }
             },
-            show: function (title, body) {
+            // url: σελίδα που ανοίγει με το πάτημα (π.χ. το συγκεκριμένο θέμα).
+            show: function (title, body, url) {
                 if (!("Notification" in window) || Notification.permission !== "granted") return false;
                 try {
-                    new Notification(title, { body: body, icon: "/favicon.png" });
+                    const n = new Notification(title, { body: body, icon: "/favicon.png" });
+                    n.onclick = function () {
+                        window.focus();
+                        if (url && window.Blazor && typeof Blazor.navigateTo === "function") Blazor.navigateTo(url);
+                        else if (url) window.location.href = url;
+                        n.close();
+                    };
                     return true;
                 } catch (e) {
-                    // Android: μόνο μέσω service worker.
+                    // Android: μόνο μέσω service worker (το πάτημα το χειρίζεται το service-worker.js).
                     if (!("serviceWorker" in navigator)) return false;
                     navigator.serviceWorker.ready
-                        .then(function (r) { return r.showNotification(title, { body: body, icon: "/images/app/icon-192.png" }); })
+                        .then(function (r) {
+                            return r.showNotification(title, {
+                                body: body, icon: "/images/app/icon-192.png", data: { url: url || "/" }
+                            });
+                        })
                         .catch(function () { });
                     return true;
                 }
@@ -173,6 +184,20 @@
                     if (!reg) return null;
                     const sub = await reg.pushManager.getSubscription();
                     return sub ? toPayload(sub) : null;
+                },
+                // Για την οθόνη πληροφοριών του καμπανακιού.
+                info: async function () {
+                    const reg = ("serviceWorker" in navigator) ? await navigator.serviceWorker.getRegistration() : null;
+                    return {
+                        serviceWorker: "serviceWorker" in navigator,
+                        serviceWorkerActive: !!(reg && reg.active),
+                        pushManager: "PushManager" in window,
+                        notification: "Notification" in window,
+                        permission: ("Notification" in window) ? Notification.permission : "unsupported",
+                        standalone: isStandalone,
+                        ios: isIos,
+                        secure: window.isSecureContext
+                    };
                 },
                 // Αριθμός πάνω στο εικονίδιο της εφαρμογής (όπου υποστηρίζεται).
                 setBadge: function (count) {
