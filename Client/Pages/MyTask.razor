@@ -138,7 +138,16 @@ else
                     <tr class="issue-row" @onclick="() => OpenDetails(i.IssueID)">
                         <td><strong>@i.IssueCode</strong></td>
                         <td>@i.Title</td>
-                        <td class="d-none d-md-table-cell">@(string.IsNullOrEmpty(i.AssignedName) ? "—" : i.AssignedName)</td>
+                        <td class="d-none d-md-table-cell">
+                            @if (i.AssignedToAll)
+                            {
+                                <span class="badge bg-info text-dark">👥 Προς όλους</span>
+                            }
+                            else
+                            {
+                                @(string.IsNullOrEmpty(i.AssignedName) ? "—" : i.AssignedName)
+                            }
+                        </td>
                         <td class="d-none d-lg-table-cell">@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : i.CreatedByName)</td>
                         <td class="d-none d-lg-table-cell">@i.CreatedAt.ToString("dd/MM/yyyy")</td>
                         <td class="d-none d-md-table-cell">@(i.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td>
@@ -234,8 +243,9 @@ else
                         </div>
                         <div class="col-md-6">
                             <label class="form-label mb-1">Ανάθεση σε</label>
-                            <select class="form-select" @bind="editAssignedUserId">
-                                <option value="">— κανείς —</option>
+                            <select class="form-select" value="@assignValue" @onchange="OnAssignChanged">
+                                <option value="">— επίλεξε —</option>
+                                <option value="all">👥 Προς όλους</option>
                                 @foreach (var u in users)
                                 {
                                     <option value="@u.IdUser">@u.FullName@(string.IsNullOrEmpty(u.Role) ? "" : $" ({u.Role})")</option>
@@ -360,6 +370,11 @@ else
                                 }
                             </div>
 
+                            @if (!string.IsNullOrEmpty(detailsMessage))
+                            {
+                                <div class="alert alert-warning py-2 small">@detailsMessage</div>
+                            }
+
                             <button class="btn btn-sm btn-outline-secondary mb-2" @onclick="() => showTaskDetails = !showTaskDetails"
                                     title="@Hint("Εμφάνιση/απόκρυψη στοιχείων του θέματος (προθεσμία, ανάθεση, ποιος το άνοιξε)")">
                                 @(showTaskDetails ? "▲ Απόκρυψη λεπτομερειών" : "ℹ️ Λεπτομέρειες")
@@ -370,7 +385,7 @@ else
                                 <tbody>
                                     <tr><th style="width:130px">Αφορά</th><td>@(string.IsNullOrEmpty(iss.RegardingName) ? "—" : iss.RegardingName)</td></tr>
                                     <tr><th>Άνοιξε</th><td>@(string.IsNullOrEmpty(iss.CreatedByName) ? "—" : iss.CreatedByName) · @iss.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
-                                    <tr><th>Ανάθεση</th><td>@(string.IsNullOrEmpty(iss.AssignedName) ? "—" : iss.AssignedName)</td></tr>
+                                    <tr><th>Ανάθεση</th><td>@(iss.AssignedToAll ? "👥 Προς όλους" : string.IsNullOrEmpty(iss.AssignedName) ? "—" : iss.AssignedName)</td></tr>
                                     <tr><th>Προθεσμία</th><td>@(iss.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td></tr>
                                     <tr><th>Προτεραιότητα</th><td>@PriorityLabel(iss.Priority)</td></tr>
                                     <tr><th>Τελ. ενημέρωση</th><td>@iss.UpdatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
@@ -559,6 +574,18 @@ else
     private string regardingSearch = "";
     private bool regardingOpen;
     private int? editAssignedUserId;
+    private bool editAssignedToAll;
+
+    // Μία λίστα για δύο πράγματα: συγκεκριμένος χρήστης ή «προς όλους»
+    private string assignValue =>
+        editAssignedToAll ? "all" : (editAssignedUserId?.ToString() ?? "");
+
+    private void OnAssignChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "";
+        editAssignedToAll = value == "all";
+        editAssignedUserId = int.TryParse(value, out var id) ? id : null;
+    }
     private string editPriority = "Normal";
     private string editStatus = "Open";
     private DateTime? editDueDate;
@@ -599,6 +626,8 @@ else
     private string notifyMessage = "";
     private bool confirmDeleteIssue;
     private string deleteMessage = "";
+    // Σφάλματα ενεργειών μέσα στο θέμα (π.χ. αποτυχία αλλαγής στάτους)
+    private string detailsMessage = "";
 
     private async Task EnableNotifications()
     {
@@ -699,6 +728,7 @@ else
         // Προεπιλογή: το θέμα αφορά αυτόν που το γράφει (αλλάζεται ελεύθερα).
         editRegardingKey = userManager.User?.IdUser is int uid ? $"u:{uid}" : "";
         editAssignedUserId = null;
+        editAssignedToAll = false;
         editPriority = "Normal";
         editStatus = "Open";
         editDueDate = DateTime.Today.AddDays(7);   // προεπιλογή: 1 εβδομάδα
@@ -727,6 +757,7 @@ else
             editRegardingKey = doc != null ? $"d:{doc.DoctorID}" : "";
         }
         editAssignedUserId = iss.AssignedUserID;
+        editAssignedToAll = iss.AssignedToAll;
         editPriority = iss.Priority;
         editStatus = iss.Status;
         editDueDate = iss.DueDate;
@@ -832,6 +863,12 @@ else
             editMessage = "Ο τίτλος είναι υποχρεωτικός.";
             return;
         }
+        // Θέμα χωρίς αποδέκτη δεν προχωράει: μένει στη λίστα χωρίς να το κοιτάξει κανείς.
+        if (editAssignedUserId == null && !editAssignedToAll)
+        {
+            editMessage = "Διάλεξε σε ποιον ανατίθεται το θέμα, ή «Προς όλους».";
+            return;
+        }
         busy = true;
         var (regUserId, regName) = ResolveRegarding();
         var result = await Service.SaveIssue(new SaveIssueRequest
@@ -841,8 +878,11 @@ else
             Description = editDescription,
             RegardingUserID = regUserId,
             RegardingName = regName,
-            AssignedUserID = editAssignedUserId,
-            AssignedName = users.FirstOrDefault(u => u.IdUser == editAssignedUserId)?.FullName,
+            AssignedUserID = editAssignedToAll ? null : editAssignedUserId,
+            AssignedName = editAssignedToAll
+                ? "Προς όλους"
+                : users.FirstOrDefault(u => u.IdUser == editAssignedUserId)?.FullName,
+            AssignedToAll = editAssignedToAll,
             Status = editStatus,
             Priority = editPriority,
             DueDate = editDueDate,
@@ -930,8 +970,9 @@ else
     {
         if (details == null || string.IsNullOrEmpty(newStatus) || newStatus == details.Issue.Status) return;
         var iss = details.Issue;
+        detailsMessage = "";
         busy = true;
-        await Service.SaveIssue(new SaveIssueRequest
+        var saved = await Service.SaveIssue(new SaveIssueRequest
         {
             IssueID = iss.IssueID,
             Title = iss.Title,
@@ -946,6 +987,15 @@ else
             ActingUserID = userManager.User?.IdUser,
             ActingUserName = UserFullName()
         });
+        // Χωρίς αυτόν τον έλεγχο, μια αποτυχία άφηνε πίσω σχόλιο για αλλαγή
+        // που δεν έγινε ποτέ.
+        if (saved == null || !saved.Success)
+        {
+            detailsMessage = saved?.Message ?? "Η αλλαγή στάτους απέτυχε.";
+            busy = false;
+            return;
+        }
+
         await Service.AddComment(new AddIssueCommentRequest
         {
             IssueID = iss.IssueID,

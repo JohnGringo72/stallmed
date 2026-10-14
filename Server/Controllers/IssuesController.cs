@@ -59,7 +59,9 @@ namespace StallmedManager.Server.Controllers
 
             // Όποιος δεν βλέπει τα πάντα, βλέπει όσα άνοιξε ο ίδιος ή του ανατέθηκαν.
             if (!await SeesAllIssues(userId))
-                query = query.Where(i => i.CreatedBy == userId || i.AssignedUserID == userId);
+                query = query.Where(i => i.CreatedBy == userId
+                                      || i.AssignedUserID == userId
+                                      || i.AssignedToAll);
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(i => i.Status == status);
             if (regardingUserId.HasValue)
@@ -117,6 +119,7 @@ namespace StallmedManager.Server.Controllers
                 RegardingName = i.RegardingName,
                 AssignedUserID = i.AssignedUserID,
                 AssignedName = i.AssignedName,
+                AssignedToAll = i.AssignedToAll,
                 Status = i.Status,
                 Priority = i.Priority,
                 DueDate = i.DueDate,
@@ -139,7 +142,7 @@ namespace StallmedManager.Server.Controllers
             if (issue == null) return NotFound();
 
             // Χωρίς αυτόν τον έλεγχο, όποιος ήξερε το id θα έβλεπε ξένο θέμα.
-            if (!await SeesAllIssues(userId) &&
+            if (!await SeesAllIssues(userId) && !issue.AssignedToAll &&
                 issue.CreatedBy != userId && issue.AssignedUserID != userId)
             {
                 return NotFound();
@@ -179,6 +182,16 @@ namespace StallmedManager.Server.Controllers
             if (string.IsNullOrWhiteSpace(req.Title))
                 return Ok(new IssueSaveResult { Success = false, Message = "Ο τίτλος είναι υποχρεωτικός." });
 
+            // Κάθε ΝΕΟ θέμα πρέπει να έχει αποδέκτη -- αλλιώς δεν το χρεώνεται κανείς.
+            // Στα παλιά (πριν τον κανόνα) επιτρέπεται να μείνει κενό, ώστε να μη
+            // μπλοκάρει η αλλαγή στάτους· απαγορεύεται όμως να ΑΦΑΙΡΕΘΕΙ ανάθεση.
+            if (req.AssignedUserID == null && !req.AssignedToAll && !req.IssueID.HasValue)
+                return Ok(new IssueSaveResult
+                {
+                    Success = false,
+                    Message = "Διάλεξε σε ποιον ανατίθεται το θέμα, ή «Προς όλους»."
+                });
+
             IssueTask issue;
             int? previousAssignee = null;
             if (req.IssueID.HasValue)
@@ -186,6 +199,13 @@ namespace StallmedManager.Server.Controllers
                 issue = await _context.IssueTasks.FindAsync(req.IssueID.Value);
                 if (issue == null) return NotFound();
                 previousAssignee = issue.AssignedUserID;
+
+                if (req.AssignedUserID == null && !req.AssignedToAll && previousAssignee != null)
+                    return Ok(new IssueSaveResult
+                    {
+                        Success = false,
+                        Message = "Το θέμα πρέπει να μείνει ανατεθειμένο σε κάποιον, ή «Προς όλους»."
+                    });
             }
             else
             {
@@ -212,8 +232,10 @@ namespace StallmedManager.Server.Controllers
             issue.Description = req.Description;
             issue.RegardingUserID = req.RegardingUserID;
             issue.RegardingName = req.RegardingName;
-            issue.AssignedUserID = req.AssignedUserID;
-            issue.AssignedName = req.AssignedName;
+            // «Προς όλους» και συγκεκριμένος αποδέκτης αλληλοαποκλείονται
+            issue.AssignedToAll = req.AssignedToAll;
+            issue.AssignedUserID = req.AssignedToAll ? null : req.AssignedUserID;
+            issue.AssignedName = req.AssignedToAll ? "Προς όλους" : req.AssignedName;
             issue.Status = string.IsNullOrEmpty(req.Status) ? "Open" : req.Status;
             issue.Priority = string.IsNullOrEmpty(req.Priority) ? "Normal" : req.Priority;
             issue.DueDate = req.DueDate;

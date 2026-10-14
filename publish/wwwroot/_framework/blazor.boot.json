@@ -1,7 +1,7 @@
 {
   "entryAssembly": "StallmedManager.Client",
   "resources": {
-    "hash": "sha256-W6lvJGH/Vqyidx3p6VwLh1iXeH8n8VuvF9IP1blLYSM=",
+    "hash": "sha256-ybfSuxOEtFsZLxEY2bdoGSsRTn5CpnAievkYnp001kc=",
     "runtime": {
       "dotnet.js": "sha256-eaJTmow4t8eE7FZMZR5Ja41JMOefGCbIYDTdpclGsac=",
       "dotnet.timezones.blat": "sha256-gbATD5HDsHYtW8vdPYh9iSBY4O5CjvMeCSF5xXWF1xo=",
@@ -28,8 +28,8 @@
       "Microsoft.Extensions.Primitives.dll": "sha256-TC9k/FatHcMyVjSaSl+o90l9NWdnl2/05D7TKkwJcp0=",
       "Microsoft.JSInterop.WebAssembly.dll": "sha256-Jhbxvo0STCdy1YFxx7ysTFazhDk/2vXWaJodMFnLQAw=",
       "Microsoft.JSInterop.dll": "sha256-GnsUTZNzDDMltfgCKvkrnISeqBskEi1W4NvwEBdjYY8=",
-      "StallmedManager.Client.dll": "sha256-y2UVKBge87bvL0pIi8eIY2LJwoOBvQH2L2jJ4DZUcR4=",
-      "StallmedManager.Shared.dll": "sha256-m7ck66hgGoNDGpFQd1LNpDgtoJO+UIDuCVsiGH1zkpo=",
+      "StallmedManager.Client.dll": "sha256-tbHDRt/ypeaSaqzkVibYRcP3cFZwbVQuuElTGs7R7hM=",
+      "StallmedManager.Shared.dll": "sha256-Kx9GxGFrb4XTFUldx1uyjn8dI7QGTsm1zlm4yEy7WSo=",
       "System.Collections.Concurrent.dll": "sha256-G14GYXEhKmUtOnLmea0e4eNFYnLOli4t4Ql8xEjuzyw=",
       "System.Collections.NonGeneric.dll": "sha256-veKOhIJQP/YXfpWuwmE7l0gT5jrCeutj9xeuEeoEKDU=",
       "System.Collections.Specialized.dll": "sha256-u7mZrio9UaSaqGC9t4M1cs1QgWnVJkroAI5Xri0BhFU=",

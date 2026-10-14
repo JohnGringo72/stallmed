@@ -18,6 +18,9 @@ namespace StallmedManager.Shared.Models
         public string? RegardingName { get; set; }
         public int? AssignedUserID { get; set; }
         public string? AssignedName { get; set; }
+        // Αφορά όλους: ρητή επιλογή, όχι «ξέχασα να βάλω κάποιον»
+        // (sql/issue_assign_all.sql)
+        public bool AssignedToAll { get; set; }
         public string Status { get; set; } = "Open";
         public string Priority { get; set; } = "Normal";
         public DateTime? DueDate { get; set; }
@@ -91,6 +94,7 @@ namespace StallmedManager.Shared.Models
         public string? RegardingName { get; set; }
         public int? AssignedUserID { get; set; }
         public string? AssignedName { get; set; }
+        public bool AssignedToAll { get; set; }
         public string Status { get; set; } = "Open";
         public string Priority { get; set; } = "Normal";
         public DateTime? DueDate { get; set; }
@@ -139,6 +143,7 @@ namespace StallmedManager.Shared.Models
         public string? RegardingName { get; set; }
         public int? AssignedUserID { get; set; }
         public string? AssignedName { get; set; }
+        public bool AssignedToAll { get; set; }
         public string Status { get; set; } = "Open";
         public string Priority { get; set; } = "Normal";
         public DateTime? DueDate { get; set; }
