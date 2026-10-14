@@ -6,6 +6,9 @@ using StallmedManager.Server.Services;
 using StallmedManager.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+// Κλειδιά ειδοποιήσεων push σε δικό τους αρχείο: ανεβαίνει χωρίς να πειραχτεί
+// το appsettings.json του server. Αν λείπει, απλώς δεν στέλνονται push.
+builder.Configuration.AddJsonFile("appsettings.Push.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
