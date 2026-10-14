@@ -413,7 +413,7 @@ namespace StallmedManager.Server.Controllers
         {
             try
             {
-                var by = string.IsNullOrWhiteSpace(actingUserName) ? "" : $" · {actingUserName}";
+                var by = string.IsNullOrWhiteSpace(actingUserName) ? "" : $" · {PersonName.Short(actingUserName)}";
                 var url = IssueUrl(issue.IssueID);
                 var tag = $"issue-{issue.IssueID}";
                 var newBody = string.IsNullOrWhiteSpace(pushNote)
@@ -672,7 +672,7 @@ namespace StallmedManager.Server.Controllers
                 {
                     var recipients = await InvolvedUserIdsAsync(issue);
                     if (req.UserID.HasValue) recipients.Remove(req.UserID.Value);
-                    var from = string.IsNullOrWhiteSpace(req.UserName) ? "Νέο μήνυμα" : req.UserName;
+                    var from = string.IsNullOrWhiteSpace(req.UserName) ? "Νέο μήνυμα" : PersonName.Short(req.UserName);
                     _push.Queue(recipients, $"💬 {from} · {issue.IssueCode}", req.CommentText.Trim(),
                         IssueUrl(issue.IssueID), $"issue-{issue.IssueID}");
                 }

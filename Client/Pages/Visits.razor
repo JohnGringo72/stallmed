@@ -79,7 +79,7 @@
         {
             <div class="mt-2 last-visit-info @(lastVisit.UserID == userManager.User?.IdUser ? "text-primary" : "text-danger")">
                 ℹ️ Τελευταία επίσκεψη στον <strong>@lastVisit.DoctorName</strong>:
-                <strong>@lastVisit.UserName</strong> στις <strong>@lastVisit.VisitDate.ToString("dd/MM/yyyy")</strong>
+                <strong>@PersonName.Short(lastVisit.UserName)</strong> στις <strong>@lastVisit.VisitDate.ToString("dd/MM/yyyy")</strong>
             </div>
         }
         else if (lastVisitChecked && selectedDoctor != null)
@@ -148,7 +148,7 @@
                                 }
                             </td>
                             <td>@s.LastVisitDate.ToString("dd/MM/yyyy")</td>
-                            <td><span class="badge @(s.LastVisitBy == UserFullNameSafe() ? "bg-primary" : "bg-secondary")">@s.LastVisitBy</span></td>
+                            <td><span class="badge @(s.LastVisitBy == UserFullNameSafe() ? "bg-primary" : "bg-secondary")">@PersonName.Short(s.LastVisitBy)</span></td>
                             <td class="text-end d-none d-md-table-cell">@s.TotalVisits</td>
                         </tr>
                     }
@@ -176,7 +176,7 @@ else
             <option value="">Όλοι</option>
             @foreach (var u in users)
             {
-                <option value="@u.IdUser">@u.FullName</option>
+                <option value="@u.IdUser">@PersonName.Short(u.FullName)</option>
             }
         </select>
     </div>
@@ -219,7 +219,7 @@ else
                         <td>@v.VisitDate.ToString("dd/MM/yyyy")</td>
                         <td>@v.DoctorName</td>
                         <td>
-                            <span class="badge @(mine ? "bg-primary" : "bg-secondary")">@v.UserName</span>
+                            <span class="badge @(mine ? "bg-primary" : "bg-secondary")">@PersonName.Short(v.UserName)</span>
                         </td>
                         <td class="text-muted">@v.Notes</td>
                         <td class="text-end">

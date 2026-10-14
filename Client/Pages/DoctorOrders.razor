@@ -496,7 +496,7 @@
                                     <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
                                     <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
                                     <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
-                                    <span class="summary-pill" title="@Hint("Ποιος πέρασε την παραγγελία")">👤 @(order.CreatedByName ?? "—")</span>
+                                    <span class="summary-pill" title="@Hint("Ποιος πέρασε την παραγγελία")">👤 @(order.CreatedByName == null ? "—" : PersonName.Short(order.CreatedByName))</span>
                                     <span class="summary-pill">🧪 @typeDescription</span>
                                     @if (order.OrderStatus == "ReadyToShip")
                                     {

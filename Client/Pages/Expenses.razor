@@ -70,7 +70,7 @@
             <select class="form-select" value="@selectedUserId" @onchange="OnUserChanged">
                 @foreach (var u in users)
                 {
-                    <option value="@u.IdUser">@u.FullName</option>
+                    <option value="@u.IdUser">@PersonName.Short(u.FullName)</option>
                 }
             </select>
         </div>

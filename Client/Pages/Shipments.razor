@@ -172,8 +172,8 @@
                     @if (order.IsPrepared)
                     {
                         <span class="badge bg-success"
-                              title="@($"Ετοιμάστηκε από {order.PreparedByName ?? "—"} στις {order.PreparedAt:dd/MM/yyyy HH:mm}")">
-                            ✅ Έτοιμο@(string.IsNullOrEmpty(order.PreparedByName) ? "" : $" · {order.PreparedByName}")
+                              title="@($"Ετοιμάστηκε από {(order.PreparedByName == null ? "—" : PersonName.Short(order.PreparedByName))} στις {order.PreparedAt:dd/MM/yyyy HH:mm}")">
+                            ✅ Έτοιμο@(string.IsNullOrEmpty(order.PreparedByName) ? "" : $" · {PersonName.Short(order.PreparedByName)}")
                         </span>
                     }
                     <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
@@ -200,7 +200,7 @@
                         @if (order.IsPrepared)
                         {
                             <span class="text-success">
-                                ✅ Ετοιμάστηκε από <strong>@(order.PreparedByName ?? "—")</strong>
+                                ✅ Ετοιμάστηκε από <strong>@(order.PreparedByName == null ? "—" : PersonName.Short(order.PreparedByName))</strong>
                                 στις @order.PreparedAt?.ToString("dd/MM/yyyy HH:mm")
                             </span>
                             <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetPrepared(order, false)"

@@ -140,7 +140,7 @@ else
                 @foreach (var i in SortedIssues)
                 {
                     <tr class="issue-row" @onclick="() => OpenDetails(i.IssueID)">
-                        <td>@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : i.CreatedByName)</td>
+                        <td>@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : PersonName.Short(i.CreatedByName))</td>
                         <td>@i.Title</td>
                         <td class="d-none d-md-table-cell">
                             @if (i.AssignedToAll)
@@ -153,7 +153,7 @@ else
                             }
                             else
                             {
-                                @(string.IsNullOrEmpty(i.AssignedName) ? "—" : i.AssignedName)
+                                @(string.IsNullOrEmpty(i.AssignedName) ? "—" : PersonName.Short(i.AssignedName))
                             }
                         </td>
                         <td class="d-none d-md-table-cell"><strong>@i.IssueCode</strong></td>
@@ -193,7 +193,7 @@ else
                     @if (editId == null)
                     {
                         <div class="mb-2 text-muted small">
-                            Άνοιξε: <strong>@UserFullName()</strong> · @DateTime.Today.ToString("dd/MM/yyyy")
+                            Άνοιξε: <strong>@PersonName.Short(UserFullName())</strong> · @DateTime.Today.ToString("dd/MM/yyyy")
                         </div>
                     }
                     <div class="mb-2">
@@ -236,7 +236,7 @@ else
                                         {
                                             @foreach (var u in MembersOf(team.Code))
                                             {
-                                                <div class="assign-row assign-member" @onclick="() => SelectAssign(u.IdUser.ToString())">@u.FullName</div>
+                                                <div class="assign-row assign-member" @onclick="() => SelectAssign(u.IdUser.ToString())">@PersonName.Short(u.FullName)</div>
                                             }
                                         }
                                     }
@@ -252,7 +252,7 @@ else
                                         {
                                             @foreach (var u in Ungrouped())
                                             {
-                                                <div class="assign-row assign-member" @onclick="() => SelectAssign(u.IdUser.ToString())">@u.FullName</div>
+                                                <div class="assign-row assign-member" @onclick="() => SelectAssign(u.IdUser.ToString())">@PersonName.Short(u.FullName)</div>
                                             }
                                         }
                                     }
@@ -398,7 +398,7 @@ else
                             {
                             <table class="table table-sm mb-2">
                                 <tbody>
-                                    <tr><th>Άνοιξε</th><td>@(string.IsNullOrEmpty(iss.CreatedByName) ? "—" : iss.CreatedByName) · @iss.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
+                                    <tr><th>Άνοιξε</th><td>@(string.IsNullOrEmpty(iss.CreatedByName) ? "—" : PersonName.Short(iss.CreatedByName)) · @iss.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
                                     <tr><th>Ανάθεση</th><td>@AssignmentLabel(iss)</td></tr>
                                     <tr><th>Προθεσμία</th><td>@(iss.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td></tr>
                                     <tr><th>Προτεραιότητα</th><td>@PriorityLabel(iss.Priority)</td></tr>
@@ -433,7 +433,7 @@ else
                                                     @onclick="() => ViewAttachment(att)"
                                                     title="@Hint("Άνοιγμα του αρχείου")">@att.FileName</button>
                                             <span class="d-flex align-items-center gap-1">
-                                                <span class="text-muted small">@att.UploadedByName @att.CreatedAt.ToString("dd/MM")</span>
+                                                <span class="text-muted small">@PersonName.Short(att.UploadedByName) @att.CreatedAt.ToString("dd/MM")</span>
                                                 <button class="btn btn-sm btn-outline-secondary py-0" @onclick="() => DownloadAttachment(att)" title="@Hint("Κατέβασμα του αρχείου")">⬇</button>
                                                 <button class="btn btn-sm btn-outline-danger py-0" @onclick="() => DeleteAttachment(att)" title="@Hint("Διαγραφή συνημμένου")">×</button>
                                             </span>
@@ -458,10 +458,10 @@ else
                                 {
                                     var mine = c.UserID != null && c.UserID == userManager.User?.IdUser;
                                     <div class="chat-msg @(mine ? "mine" : "")">
-                                        <div class="chat-avatar" title="@c.UserName">@Initials(c.UserName)</div>
+                                        <div class="chat-avatar" title="@PersonName.Short(c.UserName)">@Initials(c.UserName)</div>
                                         <div class="chat-bubble">
                                             <div class="chat-meta">
-                                                @c.UserName · @c.CreatedAt.ToString("dd/MM/yyyy HH:mm")
+                                                @PersonName.Short(c.UserName) · @c.CreatedAt.ToString("dd/MM/yyyy HH:mm")
                                                 @if (mine)
                                                 {
                                                     <button class="btn btn-link btn-sm text-danger p-0 ms-2" style="font-size:1.05rem; line-height:1; vertical-align:middle;"
@@ -597,7 +597,7 @@ else
     private static string AssignmentLabel(IssueTask iss) =>
         iss.AssignedToAll ? "👥 Προς όλους"
         : !string.IsNullOrEmpty(iss.AssignedTeam) ? $"🏢 {Teams.Label(iss.AssignedTeam)}"
-        : string.IsNullOrEmpty(iss.AssignedName) ? "—" : iss.AssignedName;
+        : string.IsNullOrEmpty(iss.AssignedName) ? "—" : PersonName.Short(iss.AssignedName);
 
     private IEnumerable<IssueUserDto> MembersOf(string team) =>
         users.Where(u => string.Equals(u.Team, team, StringComparison.OrdinalIgnoreCase));
@@ -629,7 +629,7 @@ else
         editAssignedToAll ? "👥 Προς όλους"
         : editAssignedTeam != null ? $"🏢 {Teams.Label(editAssignedTeam)}"
         : editAssignedUserId != null
-            ? (users.FirstOrDefault(u => u.IdUser == editAssignedUserId)?.FullName ?? "—")
+            ? PersonName.Short(users.FirstOrDefault(u => u.IdUser == editAssignedUserId)?.FullName ?? "—")
         : "— επίλεξε —";
     private string editPriority = "Normal";
     private string editStatus = "Open";

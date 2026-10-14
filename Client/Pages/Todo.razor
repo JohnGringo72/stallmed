@@ -82,7 +82,7 @@ else
                         </td>
                         @if (userManager.IsAdmin)
                         {
-                            <td><small>@t.OwnerName</small></td>
+                            <td><small>@PersonName.Short(t.OwnerName)</small></td>
                         }
                         <td>
                             <span class="todo-text">@t.TodoText</span>
