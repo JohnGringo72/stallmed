@@ -1,0 +1,12 @@
+@using StallmedManager.Shared.Models
+
+@* Σήμα στο χρώμα της εταιρείας (CompanyColors) -- ένα για όλη την εφαρμογή. *@
+<span class="badge @Class" style="@CompanyColors.Style(Code)" title="@Title">@if (ChildContent != null) { @ChildContent } else { @Text }</span>
+
+@code {
+    [Parameter] public string? Code { get; set; }
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

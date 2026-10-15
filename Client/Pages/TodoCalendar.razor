@@ -1,0 +1,320 @@
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+@inject IJSRuntime JS
+
+@* Ημερολόγιο (καρτέλα του Todo): τα δικά μου todo με προθεσμία + γεγονότα.
+   Γεγονότα για άλλους και εταιρεία: μόνο admin (το ίδιο επιβάλλει ο server).
+   Το πλέγμα είναι το κοινό MonthCalendar. Χρώματα: εταιρεία (CompanyColors) όπου
+   υπάρχει, αλλιώς γκρι = μόνο δικό μου, γαλάζιο = κοινό, κίτρινο = todo. *@
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert alert-warning py-1 small">@message</div>
+}
+
+<MonthCalendar Month="month" MonthChanged="OnMonthChanged"
+               @bind-SelectedDay="selectedDay"
+               DayDots="DotsFor">
+    <Toolbar>
+        <button class="btn btn-sm btn-primary" @onclick="() => OpenNew(selectedDay ?? DateTime.Today)">+ Γεγονός</button>
+    </Toolbar>
+    <DayContent Context="day">
+        @{
+            var dayEvents = EventsOn(day).ToList();
+            var dayTodos = TodosOn(day).ToList();
+        }
+        @foreach (var ev in dayEvents.Take(3))
+        {
+            <span class="cal-chip" style="@EventStyle(ev)" title="@ev.Title">@ev.Title</span>
+        }
+        @foreach (var t in dayTodos.Take(Math.Max(0, 3 - dayEvents.Count)))
+        {
+            <span class="cal-chip @(t.IsDone ? "done" : "")" style="@TodoStyle" title="@t.TodoText">☐ @t.TodoText</span>
+        }
+        @if (dayEvents.Count + dayTodos.Count > 3)
+        {
+            <span class="cal-more">+@(dayEvents.Count + dayTodos.Count - 3) ακόμα</span>
+        }
+    </DayContent>
+</MonthCalendar>
+
+@* Λεπτομέρειες της ημέρας που επιλέχθηκε *@
+@if (selectedDay is DateTime sel)
+{
+    var selEvents = EventsOn(sel).ToList();
+    var selTodos = TodosOn(sel).ToList();
+    <div class="card mb-3">
+        <div class="card-header py-2 d-flex align-items-center">
+            <strong>@MonthCalendar.WeekDayName(sel) @sel.ToString("dd/MM/yyyy")</strong>
+            <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="() => OpenNew(sel)">+ Γεγονός αυτή τη μέρα</button>
+        </div>
+        <ul class="list-group list-group-flush">
+            @if (!selEvents.Any() && !selTodos.Any())
+            {
+                <li class="list-group-item text-muted small">Τίποτα για αυτή τη μέρα.</li>
+            }
+            @foreach (var ev in selEvents)
+            {
+                <li class="list-group-item">
+                    <div class="d-flex align-items-start gap-2">
+                        <div class="flex-grow-1">
+                            <div>
+                                <strong>📅 @ev.Title</strong>
+                                <span class="badge @(ev.VisibleTo == CalendarVisibility.Me ? "bg-secondary" : "bg-primary") ms-1">@ev.VisibleLabel</span>
+                                @if (!string.IsNullOrEmpty(ev.Company))
+                                {
+                                    <CompanyBadge Code="@ev.Company" Text="@CalendarCompanies.Short(ev.Company)" Class="ms-1" />
+                                }
+                            </div>
+                            @if (ev.EndDate.HasValue)
+                            {
+                                <div class="small text-muted">@ev.StartDate.ToString("dd/MM") – @ev.EndDate.Value.ToString("dd/MM/yyyy")</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(ev.Notes))
+                            {
+                                <div class="small" style="white-space:pre-wrap">@ev.Notes</div>
+                            }
+                            @if (ev.CreatedBy != UserId && !string.IsNullOrEmpty(ev.CreatedByName))
+                            {
+                                <div class="small text-muted">από @PersonName.Short(ev.CreatedByName)</div>
+                            }
+                        </div>
+                        @if (ev.CanEdit)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary py-0" @onclick="() => OpenEdit(ev)" title="Επεξεργασία">✏️</button>
+                            <button class="btn btn-sm btn-outline-danger py-0" @onclick="() => DeleteEvent(ev)" title="Διαγραφή">×</button>
+                        }
+                    </div>
+                </li>
+            }
+            @foreach (var t in selTodos)
+            {
+                <li class="list-group-item @(t.IsDone ? "text-muted" : "")">
+                    <span style="@(t.IsDone ? "text-decoration:line-through" : "")">☐ @t.TodoText</span>
+                    <span class="badge bg-warning text-dark ms-1">Todo</span>
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+@* Νέο / επεξεργασία γεγονότος *@
+@if (editOpen)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="() => editOpen = false">
+        <div class="modal-dialog modal-fullscreen-sm-down" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title">@(editId == null ? "Νέο γεγονός" : "Επεξεργασία γεγονότος")</h5>
+                    <button type="button" class="btn-close" @onclick="() => editOpen = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label mb-1">Τίτλος *</label>
+                        <input class="form-control" @bind="editTitle" placeholder="π.χ. Γιορτή Μαρίας, Αργία, Εκπαίδευση" />
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label mb-1">Ημερομηνία *</label>
+                            <InputDate @bind-Value="editStart" class="form-control" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label mb-1">Έως (προαιρετικά)</label>
+                            <InputDate @bind-Value="editEnd" class="form-control" />
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label mb-1">Σημειώσεις</label>
+                        <textarea class="form-control" rows="2" @bind="editNotes"></textarea>
+                    </div>
+                    @if (userManager.IsAdmin)
+                    {
+                        <div class="row g-2">
+                            <div class="col-12 col-sm-7">
+                                <label class="form-label mb-1">Ποιος το βλέπει</label>
+                                <select class="form-select" @bind="editVisibility">
+                                    <option value="me">🔒 Μόνο εγώ</option>
+                                    <option value="all">👥 Όλοι</option>
+                                    <optgroup label="Ομάδα">
+                                        @foreach (var team in Teams.All)
+                                        {
+                                            <option value="team:@team.Code">🏢 @team.Label</option>
+                                        }
+                                    </optgroup>
+                                    <optgroup label="Χρήστης">
+                                        @foreach (var u in users.Where(u => u.IdUser != UserId))
+                                        {
+                                            <option value="user:@u.IdUser">@PersonName.Short(u.FullName)</option>
+                                        }
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="col-12 col-sm-5">
+                                <label class="form-label mb-1">Εταιρεία</label>
+                                <select class="form-select" @bind="editCompany">
+                                    <option value="">—</option>
+                                    @foreach (var c in CalendarCompanies.All)
+                                    {
+                                        <option value="@c.Code">@c.Label</option>
+                                    }
+                                </select>
+                                <div class="form-text">Τη βλέπεις μόνο εσύ (admin).</div>
+                            </div>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(editMessage))
+                    {
+                        <div class="text-danger small mt-2">@editMessage</div>
+                    }
+                </div>
+                <div class="modal-footer py-2">
+                    <button class="btn btn-secondary" @onclick="() => editOpen = false">Ακύρωση</button>
+                    <button class="btn btn-primary" @onclick="SaveEvent" disabled="@(busy || string.IsNullOrWhiteSpace(editTitle) || editStart == null)">Αποθήκευση</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string MineStyle = "background:#e2e3e5;color:#41464b";
+    private const string SharedStyle = "background:#cfe2ff;color:#084298";
+    private const string TodoStyle = "background:#fff3cd;color:#664d03";
+
+    private CalendarService Calendar => new(dataService);
+    private int UserId => userManager.User?.IdUser ?? 0;
+
+    private DateTime month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime? selectedDay = DateTime.Today;
+    private List<CalendarEventDto> events = new();
+    private List<PersonalTodoViewDto> todos = new();
+    private List<IssueUserDto> users = new();
+    private string message = "";
+    private bool busy;
+
+    // Φόρμα γεγονότος
+    private bool editOpen;
+    private long? editId;
+    private string editTitle = "";
+    private string? editNotes;
+    private DateTime? editStart;
+    private DateTime? editEnd;
+    private string editVisibility = "me";
+    private string editCompany = "";
+    private string editMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (userManager.IsAdmin)
+            users = await new IssuesService(dataService).GetUsers();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var (from, to) = MonthCalendar.GridRange(month);
+        events = await Calendar.GetEvents(UserId, from, to);
+        todos = (await new PersonalTodosService(dataService).GetTodos(UserId, includeDone: true))
+            .Where(t => t.DueDate.HasValue && t.DueDate.Value.Date >= from && t.DueDate.Value.Date <= to)
+            .ToList();
+    }
+
+    private async Task OnMonthChanged(DateTime newMonth)
+    {
+        month = newMonth;
+        await Load();
+    }
+
+    private IEnumerable<CalendarEventDto> EventsOn(DateTime day) =>
+        events.Where(e => e.StartDate.Date <= day && (e.EndDate ?? e.StartDate).Date >= day);
+
+    private IEnumerable<PersonalTodoViewDto> TodosOn(DateTime day) =>
+        todos.Where(t => t.DueDate!.Value.Date == day);
+
+    // Εταιρεία (μόνο admin τη λαμβάνει) > κοινό > δικό μου.
+    private static string EventStyle(CalendarEventDto ev) =>
+        !string.IsNullOrEmpty(ev.Company) ? CompanyColors.Style(ev.Company)
+        : ev.VisibleTo == CalendarVisibility.Me ? MineStyle
+        : SharedStyle;
+
+    private IReadOnlyList<string> DotsFor(DateTime day) =>
+        EventsOn(day).Select(ev => !string.IsNullOrEmpty(ev.Company) ? CompanyColors.For(ev.Company)
+                                  : ev.VisibleTo == CalendarVisibility.Me ? "#adb5bd" : "#0d6efd")
+            .Concat(TodosOn(day).Select(_ => "#ffc107"))
+            .ToList();
+
+    private void OpenNew(DateTime day)
+    {
+        editId = null;
+        editTitle = "";
+        editNotes = null;
+        editStart = day;
+        editEnd = null;
+        editVisibility = "me";     // προεπιλογή: μόνο εγώ
+        editCompany = "";
+        editMessage = "";
+        editOpen = true;
+    }
+
+    private void OpenEdit(CalendarEventDto ev)
+    {
+        editId = ev.EventID;
+        editTitle = ev.Title;
+        editNotes = ev.Notes;
+        editStart = ev.StartDate;
+        editEnd = ev.EndDate;
+        editVisibility = ev.VisibleTo switch
+        {
+            CalendarVisibility.All => "all",
+            CalendarVisibility.Team => $"team:{ev.VisibleTeam}",
+            CalendarVisibility.User => $"user:{ev.VisibleUserID}",
+            _ => "me"
+        };
+        editCompany = ev.Company ?? "";
+        editMessage = "";
+        editOpen = true;
+    }
+
+    private async Task SaveEvent()
+    {
+        if (string.IsNullOrWhiteSpace(editTitle) || editStart == null) return;
+        busy = true;
+        var req = new SaveCalendarEventRequest
+        {
+            EventID = editId,
+            UserID = UserId,
+            UserName = $"{userManager.User?.Firstname} {userManager.User?.Lastname}".Trim(),
+            Title = editTitle.Trim(),
+            Notes = editNotes,
+            StartDate = editStart.Value,
+            EndDate = editEnd,
+            Company = string.IsNullOrEmpty(editCompany) ? null : editCompany,
+            VisibleTo = editVisibility == "all" ? CalendarVisibility.All
+                      : editVisibility.StartsWith("team:") ? CalendarVisibility.Team
+                      : editVisibility.StartsWith("user:") ? CalendarVisibility.User
+                      : CalendarVisibility.Me,
+            VisibleTeam = editVisibility.StartsWith("team:") ? editVisibility[5..] : null,
+            VisibleUserID = editVisibility.StartsWith("user:") && int.TryParse(editVisibility[5..], out var uid) ? uid : null
+        };
+        var result = await Calendar.Save(req);
+        busy = false;
+        if (result == null || !result.Success)
+        {
+            editMessage = result?.Message ?? "Η αποθήκευση απέτυχε.";
+            return;
+        }
+        editOpen = false;
+        selectedDay = editStart.Value.Date;
+        await Load();
+    }
+
+    private async Task DeleteEvent(CalendarEventDto ev)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Διαγραφή του «{ev.Title}»;");
+        if (!ok) return;
+        var result = await Calendar.Delete(ev.EventID, UserId);
+        message = result?.Success == true ? "" : (result?.Message ?? "Η διαγραφή απέτυχε.");
+        await Load();
+    }
+}

@@ -1,0 +1,171 @@
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+@inject IJSRuntime JS
+
+@* Ημερολόγιο επισκέψεων (Visits → 📅): ποιος πήγε πού και πότε, με μια ματιά.
+   Κάθε πωλητής έχει το δικό του χρώμα (είναι λίγοι -- αν γίνουν πολλοί, το ξαναβλέπουμε).
+   Το πλέγμα είναι το κοινό MonthCalendar. *@
+
+<MonthCalendar Month="month" MonthChanged="OnMonthChanged"
+               @bind-SelectedDay="selectedDay"
+               DayDots="DotsFor">
+    <Toolbar>
+        <select class="form-select form-select-sm" style="width:auto" value="@filterUserId" @onchange="OnFilterChanged"
+                title="Ποιου πωλητή τις επισκέψεις">
+            <option value="">👥 Όλοι μαζί</option>
+            @foreach (var u in Salespeople)
+            {
+                <option value="@u.IdUser">@PersonName.Short(u.FullName)</option>
+            }
+        </select>
+    </Toolbar>
+    <DayContent Context="day">
+        @{ var dayVisits = VisitsOn(day).ToList(); }
+        @foreach (var v in dayVisits.Take(4))
+        {
+            <span class="cal-chip" style="@ChipStyle(v.UserID)" title="@($"{v.DoctorName} · {PersonName.Short(v.UserName)}")">@v.DoctorName</span>
+        }
+        @if (dayVisits.Count > 4)
+        {
+            <span class="cal-more">+@(dayVisits.Count - 4) ακόμα</span>
+        }
+    </DayContent>
+</MonthCalendar>
+
+@* Υπόμνημα: ποιο χρώμα είναι ποιος *@
+@if (string.IsNullOrEmpty(filterUserId) && Salespeople.Any())
+{
+    <div class="d-flex flex-wrap gap-2 mb-2 small">
+        @foreach (var u in Salespeople)
+        {
+            <span class="badge" style="@ChipStyle(u.IdUser)">@PersonName.Short(u.FullName) · @visits.Count(v => v.UserID == u.IdUser && v.VisitDate.Month == month.Month)</span>
+        }
+    </div>
+}
+
+@* Οι επισκέψεις της ημέρας που επιλέχθηκε *@
+@if (selectedDay is DateTime sel)
+{
+    var selVisits = VisitsOn(sel).ToList();
+    <div class="card mb-3">
+        <div class="card-header py-2">
+            <strong>@MonthCalendar.WeekDayName(sel) @sel.ToString("dd/MM/yyyy")</strong>
+            <span class="text-muted small ms-2">@selVisits.Count επισκέψεις</span>
+        </div>
+        <ul class="list-group list-group-flush">
+            @if (!selVisits.Any())
+            {
+                <li class="list-group-item text-muted small">Καμία επίσκεψη αυτή τη μέρα.</li>
+            }
+            @foreach (var v in selVisits)
+            {
+                var mine = v.UserID == userManager.User?.IdUser;
+                <li class="list-group-item d-flex align-items-start gap-2">
+                    <div class="flex-grow-1">
+                        <strong>@v.DoctorName</strong>
+                        <span class="badge ms-1" style="@ChipStyle(v.UserID)">@PersonName.Short(v.UserName)</span>
+                        @if (!string.IsNullOrWhiteSpace(v.Notes))
+                        {
+                            <div class="small text-muted">@v.Notes</div>
+                        }
+                    </div>
+                    @if (mine || userManager.IsAdmin)
+                    {
+                        <button class="btn btn-sm btn-outline-danger py-0" @onclick="() => DeleteVisit(v)" title="Διαγραφή επίσκεψης">×</button>
+                    }
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    // Όλοι οι ενεργοί χρήστες (τους φορτώνει ήδη η σελίδα Visits).
+    [Parameter] public List<IssueUserDto> Users { get; set; } = new();
+    // Ειδοποιεί τη σελίδα ότι άλλαξαν επισκέψεις (π.χ. διαγραφή) -- για να ανανεώσει τη λίστα της.
+    [Parameter] public EventCallback Changed { get; set; }
+    // Η σελίδα το αυξάνει όταν αλλάξουν επισκέψεις (π.χ. νέα από τη φόρμα): ξαναφόρτωση.
+    [Parameter] public int Version { get; set; }
+    private int? loadedVersion;
+
+    // Χρώματα πωλητών: διαφορετικά από τα χρώματα εταιρειών, για να μη μπερδεύονται.
+    private static readonly string[] Palette = { "#6f42c1", "#20a39e", "#8d6e63", "#0aa2c0", "#6610f2", "#b8860b", "#e4572e", "#5c7cfa" };
+
+    private SalesService Service => new(dataService);
+    private DateTime month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime? selectedDay = DateTime.Today;
+    private List<SalesVisitViewDto> visits = new();
+    private string filterUserId = "";       // κενό = όλοι μαζί (προεπιλογή)
+
+    // Πωλητές = ρόλος vendor, συν όποιον άλλο έχει επισκέψεις στον μήνα (π.χ. admin).
+    // Σταθερή σειρά (IdUser), ώστε ο καθένας να κρατά το ίδιο χρώμα από μήνα σε μήνα.
+    private List<IssueUserDto> Salespeople => Users
+        .Where(u => string.Equals(u.Role?.Trim(), "vendor", StringComparison.OrdinalIgnoreCase)
+                 || visits.Any(v => v.UserID == u.IdUser))
+        .OrderBy(u => string.Equals(u.Role?.Trim(), "vendor", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+        .ThenBy(u => u.IdUser)
+        .ToList();
+
+    private string ColorFor(int userId)
+    {
+        var index = Users
+            .Where(u => string.Equals(u.Role?.Trim(), "vendor", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(u => u.IdUser)
+            .Select(u => u.IdUser)
+            .ToList()
+            .IndexOf(userId);
+        // Όποιος δεν είναι vendor παίρνει χρώμα μετά τους πωλητές, με βάση το IdUser.
+        if (index < 0) index = Palette.Length - 1 - (userId % 3);
+        return Palette[index % Palette.Length];
+    }
+
+    private string ChipStyle(int userId) => $"background:{ColorFor(userId)};color:#fff";
+
+    // Πρώτη φόρτωση και κάθε φορά που η σελίδα αλλάζει το Version.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedVersion == Version) return;
+        loadedVersion = Version;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var (from, to) = MonthCalendar.GridRange(month);
+        int? uid = int.TryParse(filterUserId, out var id) ? id : null;
+        visits = await Service.GetVisits(from, to, uid, null);
+    }
+
+    private async Task OnMonthChanged(DateTime newMonth)
+    {
+        month = newMonth;
+        await Load();
+    }
+
+    private async Task OnFilterChanged(ChangeEventArgs e)
+    {
+        filterUserId = e.Value?.ToString() ?? "";
+        await Load();
+    }
+
+    private IEnumerable<SalesVisitViewDto> VisitsOn(DateTime day) =>
+        visits.Where(v => v.VisitDate.Date == day).OrderBy(v => v.UserID).ThenBy(v => v.DoctorName);
+
+    private IReadOnlyList<string> DotsFor(DateTime day) =>
+        VisitsOn(day).Select(v => ColorFor(v.UserID)).ToList();
+
+    private async Task DeleteVisit(SalesVisitViewDto v)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Διαγραφή επίσκεψης στον «{v.DoctorName}» ({v.VisitDate:dd/MM/yyyy});");
+        if (!ok) return;
+        await Service.DeleteVisit(new DeleteSalesVisitRequest
+        {
+            VisitID = v.VisitID,
+            UserID = userManager.User?.IdUser ?? 0
+        });
+        // Η σελίδα ξαναφορτώνει και αυξάνει το Version -> ξαναφορτώνεται και εδώ.
+        await Changed.InvokeAsync();
+    }
+}

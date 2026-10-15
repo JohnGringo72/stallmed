@@ -9,6 +9,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Κλειδιά ειδοποιήσεων push σε δικό τους αρχείο: ανεβαίνει χωρίς να πειραχτεί
 // το appsettings.json του server. Αν λείπει, απλώς δεν στέλνονται push.
 builder.Configuration.AddJsonFile("appsettings.Push.json", optional: true, reloadOnChange: true);
+// Στοιχεία σύνδεσης με τον Traccar (Παρακολούθηση Συσκευών) -- μόνο στον server.
+builder.Configuration.AddJsonFile("appsettings.Tracking.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
 {
@@ -64,6 +66,8 @@ builder.Services.AddScoped<QuotePdfService>();
 builder.Services.AddScoped<QuoteEmailService>();
 // Singleton: στέλνει στο παρασκήνιο με δικό του scope (DbContext), μετά το τέλος του request.
 builder.Services.AddSingleton<PushNotificationService>();
+// Client του υπάρχοντος Traccar (μόνο ανάγνωση μέσω REST API).
+builder.Services.AddHttpClient<TraccarClient>();
 
 var app = builder.Build();
 

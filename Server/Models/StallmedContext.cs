@@ -43,10 +43,19 @@ namespace StallmedManager.Server.Models
         // ---- Προσωπικά Todo ανά χρήστη ----
         public virtual DbSet<PersonalTodo> PersonalTodos { get; set; }
 
+        // ---- Ημερολόγιο (sql/calendar_events.sql) ----
+        public virtual DbSet<CalendarEvent> CalendarEvents { get; set; }
+
         // ---- Sales Module (Επισκέψεις πωλητών + Εξοδολόγιο) ----
         public virtual DbSet<SalesVisit> SalesVisits { get; set; }
         public virtual DbSet<SalesExpense> SalesExpenses { get; set; }
         public virtual DbSet<SalesExpenseMonth> SalesExpenseMonths { get; set; }
+
+        // ---- Tracking (sql/tracking_module.sql) -- μόνο metadata, τα GPS μένουν στον Traccar ----
+        public virtual DbSet<TrackingAsset> TrackingAssets { get; set; }
+        public virtual DbSet<TrackingAssetDevice> TrackingAssetDevices { get; set; }
+        public virtual DbSet<TrackingUserAccess> TrackingUserAccess { get; set; }
+        public virtual DbSet<TrackingTempRange> TrackingTempRanges { get; set; }
 
         public StallmedContext(DbContextOptions<StallmedContext> options) : base(options)
         {

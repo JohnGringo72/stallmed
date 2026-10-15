@@ -7,9 +7,8 @@ using StallmedManager.Shared.Models;
 namespace StallmedManager.Server.Controllers
 {
     // ---- Προσωπική λίστα Todo (sql/personal_todos.sql) ----
-    // Ιδιωτική ανά χρήστη: κάθε χρήστης βλέπει/αλλάζει μόνο τα δικά του.
-    // Εξαίρεση ο ρόλος admin: βλέπει και διαχειρίζεται τα todo όλων.
-    // Ο ρόλος ελέγχεται στη βάση (Users) -- όχι από ό,τι δηλώσει ο client.
+    // Αυστηρά προσωπική: κάθε χρήστης βλέπει/αλλάζει μόνο τα δικά του -- και ο admin.
+    // (Τα κοινά πράγματα, π.χ. γιορτές, μπαίνουν στο Ημερολόγιο: CalendarController.)
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
@@ -22,23 +21,10 @@ namespace StallmedManager.Server.Controllers
             _context = context;
         }
 
-        private async Task<bool> IsAdmin(int userId)
-        {
-            var role = await _context.Users
-                .Where(u => u.IdUser == userId)
-                .Select(u => u.Role)
-                .FirstOrDefaultAsync();
-            return string.Equals(role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
-        }
-
         [HttpGet]
         public async Task<ActionResult<List<PersonalTodoViewDto>>> GetTodos([FromQuery] int userId, [FromQuery] bool includeDone = false)
         {
-            var admin = await IsAdmin(userId);
-
-            var query = admin
-                ? _context.PersonalTodos.AsQueryable()
-                : _context.PersonalTodos.Where(t => t.UserID == userId);
+            var query = _context.PersonalTodos.Where(t => t.UserID == userId);
             if (!includeDone)
                 query = query.Where(t => !t.IsDone);
 
@@ -49,20 +35,10 @@ namespace StallmedManager.Server.Controllers
                 .ThenByDescending(t => t.TodoID)
                 .ToListAsync();
 
-            Dictionary<int, string> names = new();
-            if (admin)
-            {
-                var ownerIds = list.Select(t => t.UserID).Distinct().ToList();
-                names = await _context.Users
-                    .Where(u => ownerIds.Contains(u.IdUser))
-                    .ToDictionaryAsync(u => u.IdUser, u => (u.Firstname + " " + u.Lastname).Trim());
-            }
-
             return Ok(list.Select(t => new PersonalTodoViewDto
             {
                 TodoID = t.TodoID,
                 UserID = t.UserID,
-                OwnerName = admin ? (names.TryGetValue(t.UserID, out var n) ? n : $"user #{t.UserID}") : null,
                 TodoText = t.TodoText,
                 Notes = t.Notes,
                 Priority = t.Priority,
@@ -84,7 +60,7 @@ namespace StallmedManager.Server.Controllers
             {
                 todo = await _context.PersonalTodos.FindAsync(req.TodoID.Value);
                 if (todo == null) return NotFound();
-                if (todo.UserID != req.UserID && !await IsAdmin(req.UserID)) return NotFound();
+                if (todo.UserID != req.UserID) return NotFound();
             }
             else
             {
@@ -107,7 +83,7 @@ namespace StallmedManager.Server.Controllers
         {
             var todo = await _context.PersonalTodos.FindAsync(todoId);
             if (todo == null) return NotFound();
-            if (todo.UserID != userId && !await IsAdmin(userId)) return NotFound();
+            if (todo.UserID != userId) return NotFound();
             todo.IsDone = !todo.IsDone;
             todo.DoneAt = todo.IsDone ? DateTime.Now : null;
             todo.UpdatedAt = DateTime.Now;
@@ -120,7 +96,7 @@ namespace StallmedManager.Server.Controllers
         {
             var todo = await _context.PersonalTodos.FindAsync(todoId);
             if (todo == null) return NotFound();
-            if (todo.UserID != userId && !await IsAdmin(userId)) return NotFound();
+            if (todo.UserID != userId) return NotFound();
             _context.PersonalTodos.Remove(todo);
             await _context.SaveChangesAsync();
             return Ok(new { Success = true });

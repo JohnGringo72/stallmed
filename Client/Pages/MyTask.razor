@@ -149,7 +149,7 @@ else
                             }
                             else if (!string.IsNullOrEmpty(i.AssignedTeam))
                             {
-                                <span class="badge bg-primary">🏢 @Teams.Label(i.AssignedTeam)</span>
+                                <CompanyBadge Code="@i.AssignedTeam">🏢 @Teams.Label(i.AssignedTeam)</CompanyBadge>
                             }
                             else
                             {
@@ -217,6 +217,10 @@ else
                                ΚΛΕΙΣΤΕΣ και ανοίγουν με το βελάκι για επιλογή προσώπου.
                                Κλικ στο όνομα της ομάδας = ανάθεση σε όλη την ομάδα. *@
                             <button type="button" class="form-select text-start" @onclick="() => assignOpen = !assignOpen">
+                                @if (!editAssignedToAll && editAssignedTeam != null)
+                                {
+                                    <CompanyDot Code="@editAssignedTeam" />
+                                }
                                 @CurrentAssignLabel()
                             </button>
                             @if (assignOpen)
@@ -230,13 +234,13 @@ else
                                                   title="@Hint("Άνοιγμα/κλείσιμο των ατόμων της ομάδας")">
                                                 @(expandedTeams.Contains(team.Code) ? "▼" : "▶")
                                             </span>
-                                            <span class="flex-grow-1" @onclick='() => SelectAssign($"team:{team.Code}")'>🏢 @team.Label</span>
+                                            <span class="flex-grow-1" @onclick='() => SelectAssign($"team:{team.Code}")'><CompanyDot Code="@team.Code" />@team.Label</span>
                                         </div>
                                         @if (expandedTeams.Contains(team.Code))
                                         {
                                             @foreach (var u in MembersOf(team.Code))
                                             {
-                                                <div class="assign-row assign-member" @onclick="() => SelectAssign(u.IdUser.ToString())">@PersonName.Short(u.FullName)</div>
+                                                <div class="assign-row assign-member" @onclick="() => SelectAssign(u.IdUser.ToString())"><CompanyDot Code="@team.Code" />@PersonName.Short(u.FullName)</div>
                                             }
                                         }
                                     }
@@ -399,7 +403,19 @@ else
                             <table class="table table-sm mb-2">
                                 <tbody>
                                     <tr><th>Άνοιξε</th><td>@(string.IsNullOrEmpty(iss.CreatedByName) ? "—" : PersonName.Short(iss.CreatedByName)) · @iss.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
-                                    <tr><th>Ανάθεση</th><td>@AssignmentLabel(iss)</td></tr>
+                                    <tr>
+                                        <th>Ανάθεση</th>
+                                        <td>
+                                            @if (!iss.AssignedToAll && !string.IsNullOrEmpty(iss.AssignedTeam))
+                                            {
+                                                <CompanyBadge Code="@iss.AssignedTeam">🏢 @Teams.Label(iss.AssignedTeam)</CompanyBadge>
+                                            }
+                                            else
+                                            {
+                                                @AssignmentLabel(iss)
+                                            }
+                                        </td>
+                                    </tr>
                                     <tr><th>Προθεσμία</th><td>@(iss.DueDate?.ToString("dd/MM/yyyy") ?? "—")</td></tr>
                                     <tr><th>Προτεραιότητα</th><td>@PriorityLabel(iss.Priority)</td></tr>
                                     <tr><th>Τελ. ενημέρωση</th><td>@iss.UpdatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>

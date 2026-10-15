@@ -1,0 +1,95 @@
+@* Κοινό ημερολόγιο μήνα (Δευτέρα-Κυριακή) για όλη την εφαρμογή: Todo, Visits κλπ.
+   Η σελίδα που το χρησιμοποιεί δίνει μόνο ΤΙ δείχνει κάθε μέρα (DayContent) και
+   τα χρώματα για τις τελίτσες στο κινητό (DayDots) -- το πλέγμα, η πλοήγηση και
+   η εμφάνιση σε κινητό είναι εδώ, μία φορά.
+   Για τα «κουτάκια» μέσα στη μέρα: <span class="cal-chip" style="background:...">. *@
+
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <button class="btn btn-sm btn-outline-secondary" @onclick="() => Move(-1)" title="Προηγούμενος μήνας">‹</button>
+    <h5 class="mb-0 cal-title">@MonthNames[Month.Month - 1] @Month.Year</h5>
+    <button class="btn btn-sm btn-outline-secondary" @onclick="() => Move(1)" title="Επόμενος μήνας">›</button>
+    <button class="btn btn-sm btn-outline-primary" @onclick="GoToday">Σήμερα</button>
+    @if (Toolbar != null)
+    {
+        <div class="ms-auto d-flex flex-wrap align-items-center gap-2">@Toolbar</div>
+    }
+</div>
+
+<div class="cal-grid mb-3">
+    @foreach (var wd in WeekDays)
+    {
+        <div class="cal-head">@wd</div>
+    }
+    @{ var (from, to) = GridRange(Month); }
+    @for (var d = from; d <= to; d = d.AddDays(1))
+    {
+        var day = d;
+        var dots = DayDots?.Invoke(day) ?? Array.Empty<string>();
+        <div class="cal-day @(day.Month != Month.Month ? "other" : "") @(day == DateTime.Today ? "today" : "") @(day == SelectedDay ? "selected" : "")"
+             @onclick="() => Select(day)">
+            <span class="cal-num">@day.Day</span>
+            @if (DayContent != null)
+            {
+                <div class="cal-content">@DayContent(day)</div>
+            }
+            @if (dots.Count > 0)
+            {
+                <div class="cal-dots">
+                    @foreach (var color in dots.Take(5))
+                    {
+                        <span class="cal-dot" style="background:@color"></span>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    // Ο μήνας που δείχνει (οποιαδήποτε μέρα του -- κρατιέται η 1η).
+    [Parameter] public DateTime Month { get; set; } = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    [Parameter] public EventCallback<DateTime> MonthChanged { get; set; }
+
+    [Parameter] public DateTime? SelectedDay { get; set; }
+    [Parameter] public EventCallback<DateTime?> SelectedDayChanged { get; set; }
+
+    // Τι δείχνει κάθε μέρα σε υπολογιστή (στο κινητό κρύβεται -- δείχνονται τελίτσες).
+    [Parameter] public RenderFragment<DateTime>? DayContent { get; set; }
+    // Χρώματα για τις τελίτσες κάθε μέρας στο κινητό (μία ανά εγγραφή).
+    [Parameter] public Func<DateTime, IReadOnlyList<string>>? DayDots { get; set; }
+    // Επιπλέον κουμπιά/φίλτρα δεξιά από την πλοήγηση.
+    [Parameter] public RenderFragment? Toolbar { get; set; }
+
+    public static readonly string[] MonthNames =
+        { "Ιανουάριος", "Φεβρουάριος", "Μάρτιος", "Απρίλιος", "Μάιος", "Ιούνιος",
+          "Ιούλιος", "Αύγουστος", "Σεπτέμβριος", "Οκτώβριος", "Νοέμβριος", "Δεκέμβριος" };
+    private static readonly string[] WeekDays = { "Δευ", "Τρι", "Τετ", "Πεμ", "Παρ", "Σαβ", "Κυρ" };
+    private static readonly string[] WeekDayFull = { "Κυριακή", "Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτη", "Παρασκευή", "Σάββατο" };
+
+    public static string WeekDayName(DateTime d) => WeekDayFull[(int)d.DayOfWeek];
+
+    // Το διάστημα που καλύπτει το πλέγμα: από τη Δευτέρα πριν την 1η μέχρι την
+    // Κυριακή μετά την τελευταία του μήνα. Οι σελίδες φορτώνουν δεδομένα γι' αυτό.
+    public static (DateTime From, DateTime To) GridRange(DateTime month)
+    {
+        var first = new DateTime(month.Year, month.Month, 1);
+        var last = first.AddMonths(1).AddDays(-1);
+        return (first.AddDays(-(((int)first.DayOfWeek + 6) % 7)),
+                last.AddDays(6 - ((int)last.DayOfWeek + 6) % 7));
+    }
+
+    private async Task Move(int delta)
+    {
+        var first = new DateTime(Month.Year, Month.Month, 1).AddMonths(delta);
+        await SelectedDayChanged.InvokeAsync(null);
+        await MonthChanged.InvokeAsync(first);
+    }
+
+    private async Task GoToday()
+    {
+        await SelectedDayChanged.InvokeAsync(DateTime.Today);
+        await MonthChanged.InvokeAsync(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
+    }
+
+    private Task Select(DateTime day) => SelectedDayChanged.InvokeAsync(day);
+}

@@ -19,6 +19,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <link href="StallmedManager.Client.styles.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- Χάρτες Παρακολούθησης Συσκευών -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
     <div id="app">
@@ -230,6 +232,7 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/gr.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         window.initDatePicker = (elementId, dotNetRef, defaultDate) => {
             flatpickr("#" + elementId, {
@@ -348,6 +351,49 @@
                 options: {
                     responsive: true,
                     plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        };
+
+        // Θερμοκρασίες (Παρακολούθηση Συσκευών): μία γραμμή ανά αισθητήρα +
+        // διακεκομμένα όρια min/max. Οι ετικέτες έρχονται ήδη σε ώρα Ελλάδας.
+        window.renderTempChart = (canvasId, labels, series, minC, maxC) => {
+            if (window.chartInstances[canvasId]) {
+                window.chartInstances[canvasId].destroy();
+            }
+            const ctx = document.getElementById(canvasId);
+            if (!ctx) return;
+            const palette = ["#4a90d9", "#e67e22", "#2ecc71", "#9b59b6"];
+            const datasets = series.map((s, i) => ({
+                label: s.key,
+                data: s.values,
+                borderColor: palette[i % palette.length],
+                backgroundColor: palette[i % palette.length],
+                pointRadius: 0,
+                borderWidth: 2,
+                spanGaps: false,
+                tension: 0.2
+            }));
+            if (minC !== null && maxC !== null) {
+                const limit = (label, v) => ({
+                    label: label, data: labels.map(() => v), borderColor: '#dc3545',
+                    borderDash: [6, 4], borderWidth: 1, pointRadius: 0
+                });
+                datasets.push(limit('Min ' + minC + '°C', minC), limit('Max ' + maxC + '°C', maxC));
+            }
+            window.chartInstances[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 14 } } },
+                    scales: {
+                        x: { ticks: { maxTicksLimit: 10, autoSkip: true } },
+                        y: { title: { display: true, text: '°C' } }
+                    }
                 }
             });
         };

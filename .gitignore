@@ -23,3 +23,5 @@ setups
 /.vs
 connectionString
 appsettings.Development.json
+# Token του Traccar (Παρακολούθηση Συσκευών) -- μόνο στον server
+Server/appsettings.Tracking.json

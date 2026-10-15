@@ -1,0 +1,9 @@
+@using StallmedManager.Shared.Models
+
+@* Τελίτσα στο χρώμα της εταιρείας (CompanyColors) -- για λίστες όπου ένα σήμα θα ήταν πολύ. *@
+<span class="company-dot" style="background:@CompanyColors.For(Code)" title="@Title"></span>
+
+@code {
+    [Parameter] public string? Code { get; set; }
+    [Parameter] public string? Title { get; set; }
+}

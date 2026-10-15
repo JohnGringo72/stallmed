@@ -90,12 +90,17 @@
 </div>
 
 @* ===== Εναλλαγή: Λίστα επισκέψεων / Στατιστικά παραμέλησης ===== *@
-<div class="btn-group mb-3">
-    <button class="btn @(showStats ? "btn-outline-primary" : "btn-primary")" @onclick="() => showStats = false">📋 Επισκέψεις</button>
+<div class="btn-group mb-3 flex-wrap">
+    <button class="btn @(!showStats && !showCalendar ? "btn-primary" : "btn-outline-primary")" @onclick="ShowList">📋 Επισκέψεις</button>
+    <button class="btn @(showCalendar ? "btn-primary" : "btn-outline-primary")" @onclick="ShowCalendar">📅 Ημερολόγιο</button>
     <button class="btn @(showStats ? "btn-primary" : "btn-outline-primary")" @onclick="ShowStats">📊 Πού πρέπει να πάμε</button>
 </div>
 
-@if (showStats)
+@if (showCalendar)
+{
+    <VisitsCalendar Users="users" Version="visitsVersion" Changed="Load" />
+}
+else if (showStats)
 {
     @if (statsLoading)
     {
@@ -272,6 +277,19 @@ else
 
     // ---- Στατιστικά «πού πρέπει να πάμε» ----
     private bool showStats = false;
+    private bool showCalendar = false;
+
+    private void ShowList()
+    {
+        showStats = false;
+        showCalendar = false;
+    }
+
+    private void ShowCalendar()
+    {
+        showStats = false;
+        showCalendar = true;
+    }
     private bool statsLoading = false;
     private List<SalesVisitStatsRow> stats = new();
     private string regionFilter = "";
@@ -282,6 +300,7 @@ else
     private async Task ShowStats()
     {
         showStats = true;
+        showCalendar = false;
         statsLoading = true;
         stats = await Service.GetVisitStats();
         statsLoading = false;
@@ -305,8 +324,12 @@ else
         await Load();
     }
 
+    // Αυξάνεται σε κάθε φόρτωση (νέα/διαγραφή επίσκεψης, φίλτρα): ξαναφορτώνει και το ημερολόγιο.
+    private int visitsVersion;
+
     private async Task Load()
     {
+        visitsVersion++;
         loading = true;
         int? uid = int.TryParse(filterUserId, out var id) ? id : null;
         visits = await Service.GetVisits(

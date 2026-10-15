@@ -1,0 +1,68 @@
+.cal-title { min-width: 150px; text-align: center; }
+
+.cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    border-left: 1px solid #dee2e6;
+    border-top: 1px solid #dee2e6;
+}
+
+.cal-head {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: .8rem;
+    text-align: center;
+    padding: 4px 0;
+    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.cal-day {
+    min-height: 92px;
+    padding: 2px 4px;
+    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+    cursor: pointer;
+    overflow: hidden;
+}
+.cal-day:hover { background: #f1f8ff; }
+.cal-day.other { background: #fafafa; color: #adb5bd; }
+.cal-day.today .cal-num { background: #0d6efd; color: #fff; border-radius: 50%; }
+.cal-day.selected { outline: 2px solid #0d6efd; outline-offset: -2px; }
+
+.cal-num {
+    display: inline-block;
+    min-width: 1.6em;
+    text-align: center;
+    font-size: .8rem;
+    font-weight: 600;
+}
+
+/* «Κουτάκια» που βάζει η σελίδα μέσα σε κάθε μέρα (DayContent). */
+.cal-content ::deep .cal-chip {
+    display: block;
+    font-size: .72rem;
+    line-height: 1.25;
+    padding: 1px 4px;
+    margin-top: 2px;
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: #e2e3e5;
+    color: #41464b;
+}
+.cal-content ::deep .cal-chip.done { text-decoration: line-through; opacity: .6; }
+.cal-content ::deep .cal-more { display: block; font-size: .7rem; color: #6c757d; margin-top: 1px; }
+
+.cal-dots { display: none; }
+.cal-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; }
+
+/* Κινητό: στις μέρες μόνο χρωματιστές τελίτσες -- οι λεπτομέρειες φαίνονται από κάτω. */
+@media (max-width: 575.98px) {
+    .cal-day { min-height: 48px; }
+    .cal-content { display: none; }
+    .cal-dots { display: block; line-height: 1; }
+    .cal-head { font-size: .7rem; }
+    .cal-title { min-width: 120px; font-size: 1rem; }
+}

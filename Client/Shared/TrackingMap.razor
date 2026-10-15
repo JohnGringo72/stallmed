@@ -1,0 +1,97 @@
+@* Χάρτης Leaflet για την Παρακολούθηση Συσκευών (overview + detail).
+   Ο γονέας καλεί SetMarkers / Focus / DrawRoute μέσω @ref. *@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div id="@elementId" style="height:@Height; width:100%; border-radius:.25rem;" class="border"></div>
+@if (unavailable)
+{
+    <div class="text-muted small mt-1">Ο χάρτης δεν φορτώθηκε (πρόβλημα σύνδεσης με τη βιβλιοθήκη χαρτών).</div>
+}
+
+@code {
+    [Parameter] public string Height { get; set; } = "450px";
+    [Parameter] public EventCallback<int> OnMarkerClick { get; set; }
+
+    public record Marker(int id, double lat, double lon, string label, string status, List<string> lines);
+    public record Stop(double lat, double lon, string label);
+
+    private readonly string elementId = "tmap-" + Guid.NewGuid().ToString("N");
+    private IJSObjectReference? module;
+    private DotNetObjectReference<TrackingMap>? selfRef;
+    private bool ready;
+    private bool unavailable;
+    private TaskCompletionSource readyTcs = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./Shared/TrackingMap.razor.js");
+            selfRef = DotNetObjectReference.Create(this);
+            ready = await module.InvokeAsync<bool>("init", elementId, selfRef);
+            unavailable = !ready;
+        }
+        catch (Exception)
+        {
+            unavailable = true;
+        }
+        readyTcs.TrySetResult();
+        if (unavailable) StateHasChanged();
+    }
+
+    // Οι κλήσεις πριν φορτωθεί ο χάρτης περιμένουν το init.
+    private async Task<bool> WaitReady()
+    {
+        await readyTcs.Task;
+        return ready && module != null;
+    }
+
+    public async Task SetMarkers(IEnumerable<Marker> markers, bool fit = false)
+    {
+        if (!await WaitReady()) return;
+        try { await module!.InvokeVoidAsync("setMarkers", elementId, markers.ToList(), fit); } catch (JSException) { }
+    }
+
+    public async Task Focus(int deviceId)
+    {
+        if (!await WaitReady()) return;
+        try { await module!.InvokeVoidAsync("focus", elementId, deviceId); } catch (JSException) { }
+    }
+
+    public async Task DrawRoute(List<double[]> points, string startLabel, string endLabel, List<Stop>? stops = null)
+    {
+        if (!await WaitReady()) return;
+        try { await module!.InvokeVoidAsync("drawRoute", elementId, points, startLabel, endLabel, stops ?? new()); } catch (JSException) { }
+    }
+
+    public async Task ClearRoute()
+    {
+        if (!await WaitReady()) return;
+        try { await module!.InvokeVoidAsync("clearRoute", elementId); } catch (JSException) { }
+    }
+
+    public async Task Invalidate()
+    {
+        if (!await WaitReady()) return;
+        try { await module!.InvokeVoidAsync("invalidate", elementId); } catch (JSException) { }
+    }
+
+    [JSInvokable]
+    public Task OnMarkerClickJs(int id) => OnMarkerClick.InvokeAsync(id);
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (module != null)
+            {
+                await module.InvokeVoidAsync("dispose", elementId);
+                await module.DisposeAsync();
+            }
+        }
+        catch (Exception) { /* η σελίδα κλείνει */ }
+        selfRef?.Dispose();
+    }
+}
