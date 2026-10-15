@@ -173,8 +173,9 @@
                     {
                         <span class="badge bg-success"
                               title="@($"Ετοιμάστηκε από {(order.PreparedByName == null ? "—" : PersonName.Short(order.PreparedByName))} στις {order.PreparedAt:dd/MM/yyyy HH:mm}")">
-                            ✅ Έτοιμο@(string.IsNullOrEmpty(order.PreparedByName) ? "" : $" · {PersonName.Short(order.PreparedByName)}")
+                            ✅ Έτοιμο
                         </span>
+                        <PersonBadge Name="@order.PreparedByName" />
                     }
                     <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
                     <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
@@ -200,7 +201,7 @@
                         @if (order.IsPrepared)
                         {
                             <span class="text-success">
-                                ✅ Ετοιμάστηκε από <strong>@(order.PreparedByName == null ? "—" : PersonName.Short(order.PreparedByName))</strong>
+                                ✅ Ετοιμάστηκε από <PersonBadge Name="@order.PreparedByName" Empty="—" />
                                 στις @order.PreparedAt?.ToString("dd/MM/yyyy HH:mm")
                             </span>
                             <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetPrepared(order, false)"
@@ -236,15 +237,15 @@
                     <table class="table table-sm mb-0 sticky-head">
                         <thead>
                             <tr>
-                                <th class="sortable" @onclick='() => LineSortBy("code")'>Κωδικός<span>@LineArrow("code")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("desc")'>Αλλεργιογόνο<span>@LineArrow("desc")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("type")'>Τύπος<span>@LineArrow("type")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("req")'>Ζητ.<span>@LineArrow("req")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("alloc")'>Δεσμ.<span>@LineArrow("alloc")</span></th>
+                                <SortTh Sorter="LinesSort" Key="code" By="l => l.CodePrick">Κωδικός</SortTh>
+                                <SortTh Sorter="LinesSort" Key="desc" By="l => l.AllergenDescription">Αλλεργιογόνο</SortTh>
+                                <SortTh Sorter="LinesSort" Key="type" By="l => l.ProductTypeCode">Τύπος</SortTh>
+                                <SortTh Sorter="LinesSort" Key="req" By="l => l.QuantityRequested">Ζητ.</SortTh>
+                                <SortTh Sorter="LinesSort" Key="alloc" By="l => l.QuantityAllocated">Δεσμ.</SortTh>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var line in SortLines(shipLines))
+                            @foreach (var line in LinesSort.Apply(shipLines))
                             {
                                 <tr>
                                     <td>@line.CodePrick</td>
@@ -442,33 +443,10 @@
     private string selectedCompany = "";
     private string searchQuery = "";
 
-    // --- Ταξινόμηση γραμμών με κλικ στην επικεφαλίδα (μέσα σε κάθε αποστολή) ---
-    private string lineSortField = "";
-    private bool lineSortAsc = true;
-
-    private void LineSortBy(string field)
-    {
-        if (lineSortField == field) lineSortAsc = !lineSortAsc;
-        else { lineSortField = field; lineSortAsc = true; }
-    }
-
-    private string LineArrow(string field)
-        => lineSortField == field ? (lineSortAsc ? " ▲" : " ▼") : "";
-
-    private IEnumerable<DoctorOrderLineViewDto> SortLines(IEnumerable<DoctorOrderLineViewDto> lines)
-    {
-        if (string.IsNullOrEmpty(lineSortField)) return lines;
-
-        IEnumerable<DoctorOrderLineViewDto> sorted = lineSortField switch
-        {
-            "desc" => lines.OrderBy(l => l.AllergenDescription),
-            "type" => lines.OrderBy(l => l.ProductTypeCode),
-            "req" => lines.OrderBy(l => l.QuantityRequested),
-            "alloc" => lines.OrderBy(l => l.QuantityAllocated),
-            _ => lines.OrderBy(l => l.CodePrick)
-        };
-        return lineSortAsc ? sorted : sorted.Reverse();
-    }
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    // Τα κλειδιά (code/desc/type/req/alloc) τα καταλαβαίνει και ο server στο φύλλο προετοιμασίας.
+    private TableSort<DoctorOrderLineViewDto>? linesSort;
+    private TableSort<DoctorOrderLineViewDto> LinesSort => linesSort ??= new(this, "shipments-lines");
     private string status = "idle";
     private string topBannerMessage = "";
     private string loadError = "";
@@ -723,7 +701,7 @@
 
     private async Task PrintOrder(DoctorOrderViewDto order)
     {
-        var bytes = await new PrickDoctorOrderService(dataService).PrintPickingSheet(order.OrderID, lineSortField, lineSortAsc);
+        var bytes = await new PrickDoctorOrderService(dataService).PrintPickingSheet(order.OrderID, LinesSort.Column ?? "", !LinesSort.Descending);
         if (bytes != null)
             await JS.InvokeVoidAsync("downloadFileFromBytes", $"{order.OrderCode}_Προετοιμασία.pdf", bytes);
         else

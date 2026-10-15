@@ -1,0 +1,60 @@
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+
+@* Κοινή αναζήτηση γιατρού (Visits, Διανομές, ...): γράφεις 2+ γράμματα, διαλέγεις από τη λίστα.
+   Ελεύθερο κείμενο επιτρέπεται -- τότε δεν υπάρχει DoctorID (το αποφασίζει η σελίδα). *@
+<div class="position-relative">
+    <input class="form-control" placeholder="@Placeholder" value="@Text" @oninput="OnInput" autocomplete="off" />
+    @if (suggestions.Count > 0)
+    {
+        <div class="doctor-suggestions">
+            @foreach (var d in suggestions)
+            {
+                <div class="doctor-suggestion-row" @onclick="() => Select(d)">
+                    <strong>@d.DisplayName</strong>
+                    @if (!string.IsNullOrEmpty(d.City))
+                    {
+                        <span class="text-muted"> · @d.City</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Text { get; set; }
+    // Κάθε πληκτρολόγηση: η σελίδα ξέρει ότι η επιλογή γιατρού ακυρώθηκε.
+    [Parameter] public EventCallback<string> TextChanged { get; set; }
+    [Parameter] public EventCallback<SalesDoctorOptionDto> OnSelected { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Γράψε όνομα γιατρού...";
+
+    private List<SalesDoctorOptionDto> suggestions = new();
+    private int searchVersion;   // αποτελέσματα παλιότερης αναζήτησης δεν σκεπάζουν νεότερης
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString() ?? "";
+        Text = text;
+        await TextChanged.InvokeAsync(text);
+
+        var version = ++searchVersion;
+        if (text.Trim().Length < 2)
+        {
+            suggestions.Clear();
+            return;
+        }
+        var found = await dataService.Get<List<SalesDoctorOptionDto>>(
+            $"api/doctorlookup?search={Uri.EscapeDataString(text.Trim())}") ?? new();
+        if (version == searchVersion) suggestions = found;
+    }
+
+    private async Task Select(SalesDoctorOptionDto d)
+    {
+        searchVersion++;
+        suggestions.Clear();
+        Text = d.DisplayName;
+        await TextChanged.InvokeAsync(d.DisplayName);
+        await OnSelected.InvokeAsync(d);
+    }
+}

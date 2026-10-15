@@ -15,6 +15,7 @@ builder.Services.AddScoped<UiPreferencesService>();
 builder.Services.AddScoped<DataService>();
 builder.Services.AddScoped<NotificationsState>();
 builder.Services.AddScoped<PushClientService>();
+builder.Services.AddScoped<PersonColors>();
 builder.Services.AddScoped<StockSearchClientService>();
 
 var host = builder.Build();

@@ -64,6 +64,37 @@ namespace StallmedManager.Server.Controllers
                 .FirstOrDefaultAsync();
         }
 
+        // ---- Ποιος βλέπει ένα θέμα (όσοι ΔΕΝ βλέπουν «Όλα») ----
+        // Ένας κανόνας για λίστα ΚΑΙ λεπτομέρειες:
+        //  - πάντα όσοι εμπλέκονται: το άνοιξε, του ανατέθηκε, το αφορά, έγραψε μέσα,
+        //    ή ανατέθηκε στην ομάδα του
+        //  - αν ΔΕΝ είναι 🔒 Private, επιπλέον: «Προς όλους», όλη η ομάδα αυτού που το
+        //    άνοιξε και όλη η ομάδα του αποδέκτη -- ώστε κάθε εταιρεία/ομάδα να ξέρει τι
+        //    γράφτηκε από αυτήν ή προς αυτήν.
+        private async Task<System.Linq.Expressions.Expression<Func<IssueTask, bool>>> VisibleToAsync(int? userId)
+        {
+            var uid = userId ?? 0;
+            var myTeam = await TeamOf(userId);
+            var teamMates = myTeam == null
+                ? new List<int>()
+                : await _context.Users.Where(u => u.Team == myTeam).Select(u => u.IdUser).ToListAsync();
+            var commented = await _context.IssueComments
+                .Where(c => c.UserID == uid)
+                .Select(c => c.IssueID)
+                .Distinct()
+                .ToListAsync();
+
+            return i => i.CreatedBy == uid
+                     || i.AssignedUserID == uid
+                     || i.RegardingUserID == uid
+                     || commented.Contains(i.IssueID)
+                     || (myTeam != null && i.AssignedTeam == myTeam)
+                     || (!i.IsPrivate
+                         && (i.AssignedToAll
+                             || (i.CreatedBy != null && teamMates.Contains(i.CreatedBy.Value))
+                             || (i.AssignedUserID != null && teamMates.Contains(i.AssignedUserID.Value))));
+        }
+
         // ---- Λίστα με προαιρετικά φίλτρα ----
         [HttpGet]
         public async Task<ActionResult<List<IssueListItemDto>>> GetIssues(
@@ -75,15 +106,9 @@ namespace StallmedManager.Server.Controllers
             if (!includeArchived)
                 query = query.Where(i => i.ArchivedAt == null);
 
-            // Όποιος δεν βλέπει τα πάντα, βλέπει όσα άνοιξε ο ίδιος ή του ανατέθηκαν.
+            // Όποιος δεν βλέπει τα πάντα: ο κοινός κανόνας ορατότητας (ομάδες, Private).
             if (!await SeesAllIssues(userId))
-            {
-                var myTeam = await TeamOf(userId);
-                query = query.Where(i => i.CreatedBy == userId
-                                      || i.AssignedUserID == userId
-                                      || i.AssignedToAll
-                                      || (myTeam != null && i.AssignedTeam == myTeam));
-            }
+                query = query.Where(await VisibleToAsync(userId));
             if (!string.IsNullOrEmpty(status))
                 query = query.Where(i => i.Status == status);
             if (regardingUserId.HasValue)
@@ -143,6 +168,7 @@ namespace StallmedManager.Server.Controllers
                 AssignedName = i.AssignedName,
                 AssignedToAll = i.AssignedToAll,
                 AssignedTeam = i.AssignedTeam,
+                IsPrivate = i.IsPrivate,
                 Status = i.Status,
                 Priority = i.Priority,
                 DueDate = i.DueDate,
@@ -165,11 +191,8 @@ namespace StallmedManager.Server.Controllers
             if (issue == null) return NotFound();
 
             // Χωρίς αυτόν τον έλεγχο, όποιος ήξερε το id θα έβλεπε ξένο θέμα.
-            var myTeam = await TeamOf(userId);
-            var minePersonally = issue.CreatedBy == userId || issue.AssignedUserID == userId;
-            var mineByTeam = issue.AssignedTeam != null && issue.AssignedTeam == myTeam;
-
-            if (!await SeesAllIssues(userId) && !issue.AssignedToAll && !minePersonally && !mineByTeam)
+            // Ίδιος κανόνας με τη λίστα (VisibleToAsync).
+            if (!await SeesAllIssues(userId) && !(await VisibleToAsync(userId)).Compile()(issue))
             {
                 return NotFound();
             }
@@ -270,6 +293,8 @@ namespace StallmedManager.Server.Controllers
             // Οι τρεις μορφές ανάθεσης αλληλοαποκλείονται: όλοι / ομάδα / πρόσωπο
             issue.AssignedToAll = req.AssignedToAll;
             issue.AssignedTeam = req.AssignedToAll ? null : team;
+            // «Προς όλους» και Private αλληλοαποκλείονται.
+            issue.IsPrivate = req.IsPrivate && !req.AssignedToAll;
             issue.AssignedUserID = (req.AssignedToAll || team != null) ? null : req.AssignedUserID;
             issue.AssignedName = req.AssignedToAll ? "Προς όλους"
                                : team != null ? Teams.Label(team)

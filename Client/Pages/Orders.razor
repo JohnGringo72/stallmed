@@ -123,16 +123,6 @@
             opacity: 1;
         }
 
-    .sortable-th {
-        cursor: pointer;
-        user-select: none;
-        white-space: nowrap;
-    }
-
-        .sortable-th:hover {
-            background-color: #f0f0f0;
-        }
-
     .pending-group-card {
         border-left: 4px solid #6c757d;
     }
@@ -317,19 +307,20 @@
                 @if (expandedGroups.Contains(groupKey))
                 {
                     <hr />
-                    <div class="table-responsive">
+                    @* stopPropagation: το κλικ στις κεφαλίδες (ταξινόμηση) να μην κλείνει την κάρτα *@
+                    <div class="table-responsive" @onclick:stopPropagation="true">
                         <table class="table table-sm mb-0">
                             <thead>
                                 <tr>
-                                    <th>Θεραπεία</th>
-                                    <th>Αλλεργιογόνο</th>
-                                    <th>Ποσ.</th>
-                                    <th>Ημ. Παραλαβής</th>
-                                    <th>Φαρμακείο</th>
+                                    <SortTh Sorter="PendingItemsSort" Key="treatment" By="x => x.TreatmentDescription">Θεραπεία</SortTh>
+                                    <SortTh Sorter="PendingItemsSort" Key="allergen" By="x => x.Allergen">Αλλεργιογόνο</SortTh>
+                                    <SortTh Sorter="PendingItemsSort" Key="qnt" By="x => x.QNT">Ποσ.</SortTh>
+                                    <SortTh Sorter="PendingItemsSort" Key="taking" By="x => x.TakingDDate">Ημ. Παραλαβής</SortTh>
+                                    <SortTh Sorter="PendingItemsSort" Key="pharmacy" By="x => x.Pharmacy">Φαρμακείο</SortTh>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var item in group.Items)
+                                @foreach (var item in PendingItemsSort.Apply(group.Items))
                                 {
                                     <tr>
                                         <td>@item.TreatmentDescription</td>
@@ -363,7 +354,7 @@
                     <tr>
                         @foreach (var col in sortableColumns)
                         {
-                            <th class="sortable-th" @onclick="() => SortBy(col.Column)">@col.Label@SortIndicator(col.Column)</th>
+                            <SortTh Sorter="OrdersSort" Key="@col.Column" By="x => OrderSortValue(col.Column, x)" Style="white-space:nowrap;">@col.Label</SortTh>
                         }
                     </tr>
                 </thead>
@@ -481,9 +472,12 @@
     private List<string> companyOptions = new();
     private List<string> treatmentOptions = new();
 
-    // ---- Sorting state (normal list view) ----
-    private string sortColumn = "Ordered";
-    private bool sortAscending = false;
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    // Προεπιλογή: νεότερες παραγγελίες πρώτα.
+    private TableSort<WebOrder>? ordersSort;
+    private TableSort<WebOrder> OrdersSort => ordersSort ??= new(this, "orders-list", "Ordered", true);
+    private TableSort<WebOrder>? pendingItemsSort;
+    private TableSort<WebOrder> PendingItemsSort => pendingItemsSort ??= new(this, "orders-pending-items");
 
     private readonly (string Label, string Column)[] sortableColumns = new[]
     {
@@ -527,7 +521,7 @@
         .Where(x => string.IsNullOrEmpty(selectedTreatment) || x.TreatmentDescription == selectedTreatment)
         .ToArray();
 
-    private WebOrder[] FilteredPeople => ApplySort(FilteredPeopleUnsorted).ToArray();
+    private WebOrder[] FilteredPeople => OrdersSort.Apply(FilteredPeopleUnsorted).ToArray();
 
     // Σύνολα "μόνο εμβόλια": εξαιρούνται Δερματικές Δοκιμασίες/IDR (υλικό πρικ,
     // με χύμα ποσότητες που παραμόρφωναν το QNT) και οι ακυρωμένες. Αν όμως ο
@@ -541,39 +535,21 @@
         .Where(x => !string.IsNullOrEmpty(selectedStatus) || x.Status != "5")
         .ToArray();
 
-    private IEnumerable<WebOrder> ApplySort(IEnumerable<WebOrder> source)
+    // Με ποια τιμή ταξινομείται κάθε στήλη του πίνακα (κενά πάντα στο τέλος).
+    private static object? OrderSortValue(string column, WebOrder x) => column switch
     {
-        Func<WebOrder, object> keySelector = sortColumn switch
-        {
-            "ID" => x => x.TreatmentID ?? "",
-            "Company" => x => x.CompanyLabel ?? "",
-            "Doctor" => x => x.Doctor ?? "",
-            "Patient" => x => x.Patient ?? "",
-            "Treatment" => x => x.TreatmentDescription ?? "",
-            "Allergen" => x => x.Allergen ?? "",
-            "QNT" => x => x.QNT ?? 0,
-            "Ordered" => x => x.Ordered ?? DateTime.MinValue,
-            "TakingDDate" => x => x.TakingDDate ?? DateTime.MinValue,
-            "Status" => x => x.StatusLabel ?? "",
-            _ => x => x.Ordered ?? DateTime.MinValue
-        };
-
-        return sortAscending ? source.OrderBy(keySelector) : source.OrderByDescending(keySelector);
-    }
-
-    private void SortBy(string column)
-    {
-        if (sortColumn == column)
-            sortAscending = !sortAscending;
-        else
-        {
-            sortColumn = column;
-            sortAscending = true;
-        }
-    }
-
-    private string SortIndicator(string column) =>
-        sortColumn != column ? "" : (sortAscending ? " ▲" : " ▼");
+        "ID" => x.TreatmentID,
+        "Company" => x.CompanyLabel,
+        "Doctor" => x.Doctor,
+        "Patient" => x.Patient,
+        "Treatment" => x.TreatmentDescription,
+        "Allergen" => x.Allergen,
+        "QNT" => x.QNT,
+        "Ordered" => x.Ordered,
+        "TakingDDate" => x.TakingDDate,
+        "Status" => x.StatusLabel,
+        _ => null
+    };
 
     // Πάντα Status == "11", ανεξάρτητα από το dropdown Status· τα υπόλοιπα φίλτρα (εταιρεία/γιατρός/ασθενής/φαρμακείο/θεραπεία) εφαρμόζονται κανονικά.
     // Πηγή δεδομένων: pendingData (ξεχωριστό, φορτωμένο μόνο με status=11) -- ΟΧΙ το "people" της κανονικής λίστας,

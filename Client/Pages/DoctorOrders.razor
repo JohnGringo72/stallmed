@@ -324,9 +324,17 @@
     {
         <div class="stock-check-results">
             <table class="table table-sm mb-0 sticky-head">
-                <thead><tr><th>Κωδικός</th><th>Περιγραφή</th><th>Τύπος</th><th>Εταιρεία</th><th>Διαθέσιμο</th></tr></thead>
+                <thead>
+                    <tr>
+                        <SortTh Sorter="StockCheckSort" Key="code" By="s => s.CodePrick">Κωδικός</SortTh>
+                        <SortTh Sorter="StockCheckSort" Key="desc" By="s => s.Description">Περιγραφή</SortTh>
+                        <SortTh Sorter="StockCheckSort" Key="type" By="s => s.ProductTypeCode">Τύπος</SortTh>
+                        <SortTh Sorter="StockCheckSort" Key="company" By="s => s.Company">Εταιρεία</SortTh>
+                        <SortTh Sorter="StockCheckSort" Key="available" By="s => s.TotalRemaining">Διαθέσιμο</SortTh>
+                    </tr>
+                </thead>
                 <tbody>
-                    @foreach (var s in stockCheckResults)
+                    @foreach (var s in StockCheckSort.Apply(stockCheckResults))
                     {
                         <tr>
                             <td>@s.CodePrick</td>
@@ -496,7 +504,7 @@
                                     <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
                                     <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
                                     <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
-                                    <span class="summary-pill" title="@Hint("Ποιος πέρασε την παραγγελία")">👤 @(order.CreatedByName == null ? "—" : PersonName.Short(order.CreatedByName))</span>
+                                    <span class="summary-pill" title="@Hint("Ποιος πέρασε την παραγγελία")">👤 <PersonBadge Name="@order.CreatedByName" UserId="@order.CreatedBy" Empty="—" /></span>
                                     <span class="summary-pill">🧪 @typeDescription</span>
                                     @if (order.OrderStatus == "ReadyToShip")
                                     {
@@ -578,13 +586,13 @@
                                     <table class="table table-sm mb-2 sticky-head" style="max-width:560px;">
                                         <thead>
                                             <tr>
-                                                <th class="sortable" @onclick='() => LineSortBy("code")'>Κωδικός<span>@LineArrow("code")</span></th>
-                                                <th class="sortable" @onclick='() => LineSortBy("type")'>Τύπος<span>@LineArrow("type")</span></th>
-                                                <th class="sortable" @onclick='() => LineSortBy("alloc")'>Απεστάλη<span>@LineArrow("alloc")</span></th>
+                                                <SortTh Sorter="LinesSort" Key="code" By="l => l.CodePrick">Κωδικός</SortTh>
+                                                <SortTh Sorter="LinesSort" Key="type" By="l => l.ProductTypeCode">Τύπος</SortTh>
+                                                <SortTh Sorter="LinesSort" Key="alloc" By="l => l.QuantityAllocated">Απεστάλη</SortTh>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            @foreach (var line in SortLines(order.Lines.Where(l => l.QuantityAllocated > 0)))
+                                            @foreach (var line in LinesSort.Apply(order.Lines.Where(l => l.QuantityAllocated > 0)))
                                             {
                                                 <tr>
                                                     <td>@line.CodePrick <small class="text-muted">@line.AllergenDescription</small></td>
@@ -602,22 +610,23 @@
                                 <table class="table table-sm mb-2 sticky-head">
                                     <thead>
                                         <tr>
-                                            <th class="sortable" @onclick='() => LineSortBy("code")'>Κωδικός<span>@LineArrow("code")</span></th>
-                                            <th class="sortable" @onclick='() => LineSortBy("type")'>Τύπος<span>@LineArrow("type")</span></th>
-                                            <th class="sortable" @onclick='() => LineSortBy("req")'>Ζητ.<span>@LineArrow("req")</span></th>
-                                            <th class="sortable" @onclick='() => LineSortBy("alloc")'>Δεσμ.<span>@LineArrow("alloc")</span></th>
-                                            <th class="sortable" @onclick='() => LineSortBy("canc")'>Ακυρ.<span>@LineArrow("canc")</span></th>
-                                            <th class="sortable" @onclick='() => LineSortBy("pending")'>Εκκρεμές<span>@LineArrow("pending")</span></th>
-                                            <th class="sortable" @onclick='() => LineSortBy("avail")'>Διαθέσιμο<span>@LineArrow("avail")</span></th>
-                                            <th class="sortable" @onclick='() => LineSortBy("elsewhere")'>Αλλού<span>@LineArrow("elsewhere")</span></th>
-                                            <th class="sortable" @onclick='() => LineSortBy("status")'>Status<span>@LineArrow("status")</span></th>
+                                            <SortTh Sorter="LinesSort" Key="code" By="l => l.CodePrick">Κωδικός</SortTh>
+                                            <SortTh Sorter="LinesSort" Key="type" By="l => l.ProductTypeCode">Τύπος</SortTh>
+                                            <SortTh Sorter="LinesSort" Key="req" By="l => l.QuantityRequested">Ζητ.</SortTh>
+                                            <SortTh Sorter="LinesSort" Key="alloc" By="l => l.QuantityAllocated">Δεσμ.</SortTh>
+                                            <SortTh Sorter="LinesSort" Key="canc" By="l => l.QuantityCancelled">Ακυρ.</SortTh>
+                                            <SortTh Sorter="LinesSort" Key="pending" By="l => l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled">Εκκρεμές</SortTh>
+                                            <SortTh Sorter="LinesSort" Key="avail" By="l => l.AvailableStock">Διαθέσιμο</SortTh>
+                                            <SortTh Sorter="LinesSort" Key="elsewhere" By="l => l.ElsewhereQuantity">Αλλού</SortTh>
+                                            @* Αλφαβητικά, όπως και στο τυπωμένο φύλλο προετοιμασίας *@
+                                            <SortTh Sorter="LinesSort" Key="status" By="l => l.LineStatus">Status</SortTh>
                                             <th></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @* Οι μηδενικές Cancelled γραμμές που αφήνει πίσω ο Διαχωρισμός
                                            (μένουν στη βάση μόνο λόγω FK ιστορικού δεσμεύσεων) δεν εμφανίζονται. *@
-                                        @foreach (var line in SortLines(order.Lines.Where(l => !(l.LineStatus == "Cancelled" && l.QuantityRequested == 0))))
+                                        @foreach (var line in LinesSort.Apply(order.Lines.Where(l => !(l.LineStatus == "Cancelled" && l.QuantityRequested == 0))))
                                         {
                                             var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
                                             var markedRemove = pendingForOrder.RemoveLines.Contains(line.OrderLineID);
@@ -925,13 +934,14 @@
                     <table class="table table-sm table-hover mb-0">
                         <thead style="position:sticky; top:0; background:#f8f9fa; z-index:1;">
                             <tr>
-                                <th>Κωδικός</th>
-                                <th>Περιγραφή</th>
+                                <SortTh Sorter="NewOrderAllergensSort" Key="code" By="a => a.Code">Κωδικός</SortTh>
+                                <SortTh Sorter="NewOrderAllergensSort" Key="desc" By="a => a.DescriptionGreek">Περιγραφή</SortTh>
+                                @* Επεξεργάσιμη ποσότητα: χωρίς ταξινόμηση, για να μη μετακινούνται οι γραμμές με τα +/- *@
                                 <th style="width:110px; text-align:center;">Ποσότητα</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var a in FilteredNewOrderAllergens)
+                            @foreach (var a in NewOrderAllergensSort.Apply(FilteredNewOrderAllergens))
                             {
                                 var qty = GetNewOrderQty(a.Code);
                                 <tr class="@(qty > 0 ? "table-success" : "")">
@@ -1658,7 +1668,8 @@
 
     private async Task PrintOrder(DoctorOrderViewDto order)
     {
-        var bytes = await new PrickDoctorOrderService(dataService).PrintPickingSheet(order.OrderID, lineSortField, lineSortAsc);
+        // Το φύλλο τυπώνεται με την ίδια ταξινόμηση γραμμών που βλέπεις στην οθόνη.
+        var bytes = await new PrickDoctorOrderService(dataService).PrintPickingSheet(order.OrderID, LinesSort.Column ?? "", !LinesSort.Descending);
         if (bytes != null)
             await JS.InvokeVoidAsync("downloadFileFromBytes", $"{order.OrderCode}_Προετοιμασία.pdf", bytes);
         else
@@ -1720,39 +1731,16 @@
             .Select(g => new DoctorGroup { DoctorName = g.Key, Orders = g.ToList() })
             .ToList();
 
-    // --- Ταξινόμηση των γραμμών με κλικ στην επικεφαλίδα ---
-    // Ισχύει για όλες τις παραγγελίες: η ομαδοποίηση ανά γιατρό/παραγγελία μένει,
-    // ταξινομούνται οι γραμμές μέσα σε κάθε παραγγελία. "" = σειρά καταχώρησης.
-    private string lineSortField = "";
-    private bool lineSortAsc = true;
-
-    private void LineSortBy(string field)
-    {
-        if (lineSortField == field) lineSortAsc = !lineSortAsc;
-        else { lineSortField = field; lineSortAsc = true; }
-    }
-
-    private string LineArrow(string field)
-        => lineSortField == field ? (lineSortAsc ? " ▲" : " ▼") : "";
-
-    private IEnumerable<DoctorOrderLineViewDto> SortLines(IEnumerable<DoctorOrderLineViewDto> lines)
-    {
-        if (string.IsNullOrEmpty(lineSortField)) return lines;
-
-        IEnumerable<DoctorOrderLineViewDto> sorted = lineSortField switch
-        {
-            "type" => lines.OrderBy(l => l.ProductTypeCode),
-            "req" => lines.OrderBy(l => l.QuantityRequested),
-            "alloc" => lines.OrderBy(l => l.QuantityAllocated),
-            "canc" => lines.OrderBy(l => l.QuantityCancelled),
-            "pending" => lines.OrderBy(l => l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled),
-            "avail" => lines.OrderBy(l => l.AvailableStock),
-            "elsewhere" => lines.OrderBy(l => l.ElsewhereQuantity),
-            "status" => lines.OrderBy(l => l.LineStatus),
-            _ => lines.OrderBy(l => l.CodePrick)
-        };
-        return lineSortAsc ? sorted : sorted.Reverse();
-    }
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    // Γραμμές: ισχύει για όλες τις παραγγελίες (ανοιχτές και απεσταλμένες) -- η ομαδοποίηση
+    // ανά γιατρό/παραγγελία μένει, ταξινομούνται οι γραμμές μέσα σε κάθε παραγγελία.
+    // Χωρίς επιλογή = σειρά καταχώρησης. Τα κλειδιά τα καταλαβαίνει και η εκτύπωση (PrintOrder).
+    private TableSort<DoctorOrderLineViewDto>? linesSort;
+    private TableSort<DoctorOrderLineViewDto> LinesSort => linesSort ??= new(this, "doctororders-lines");
+    private TableSort<StockCheckDto>? stockCheckSort;
+    private TableSort<StockCheckDto> StockCheckSort => stockCheckSort ??= new(this, "doctororders-stockcheck");
+    private TableSort<SimpleCodeOptionDto>? newOrderAllergensSort;
+    private TableSort<SimpleCodeOptionDto> NewOrderAllergensSort => newOrderAllergensSort ??= new(this, "doctororders-new-allergens");
 
     // "" = όλοι, "none" = παλιές παραγγελίες χωρίς καταχωρητή (migration), αλλιώς IdUser
     private bool MatchesCreator(DoctorOrderViewDto o) => selectedCreator switch

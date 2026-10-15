@@ -7,13 +7,6 @@
 <PageTitle>Επισκέψεις</PageTitle>
 
 <style>
-    .visit-suggestions {
-        position: absolute; z-index: 1050; background: white;
-        border: 1px solid #dee2e6; border-radius: 6px; width: 100%;
-        max-height: 260px; overflow-y: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.12);
-    }
-    .visit-suggestion-row { padding: 6px 10px; cursor: pointer; }
-    .visit-suggestion-row:hover { background: #f1f3f5; }
     .last-visit-info { font-size: 0.88rem; }
 </style>
 
@@ -46,25 +39,9 @@
                 <label class="form-label mb-1">Ημερομηνία</label>
                 <InputDate @bind-Value="newDate" class="form-control" />
             </div>
-            <div class="col-12 col-md-4 position-relative">
+            <div class="col-12 col-md-4">
                 <label class="form-label mb-1">Γιατρός</label>
-                <input class="form-control" placeholder="Γράψε όνομα γιατρού..."
-                       value="@newDoctorText" @oninput="e => OnDoctorSearch(e.Value?.ToString() ?? string.Empty)" />
-                @if (doctorSuggestions.Count > 0)
-                {
-                    <div class="visit-suggestions">
-                        @foreach (var d in doctorSuggestions)
-                        {
-                            <div class="visit-suggestion-row" @onclick="() => SelectDoctor(d)">
-                                <strong>@d.DisplayName</strong>
-                                @if (!string.IsNullOrEmpty(d.City))
-                                {
-                                    <span class="text-muted"> · @d.City</span>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
+                <DoctorPicker Text="@newDoctorText" TextChanged="OnDoctorTextChanged" OnSelected="SelectDoctor" />
             </div>
             <div class="col-12 col-md-4">
                 <label class="form-label mb-1">Σημείωση (προαιρετικά)</label>
@@ -79,7 +56,7 @@
         {
             <div class="mt-2 last-visit-info @(lastVisit.UserID == userManager.User?.IdUser ? "text-primary" : "text-danger")">
                 ℹ️ Τελευταία επίσκεψη στον <strong>@lastVisit.DoctorName</strong>:
-                <strong>@PersonName.Short(lastVisit.UserName)</strong> στις <strong>@lastVisit.VisitDate.ToString("dd/MM/yyyy")</strong>
+                <PersonBadge Name="@lastVisit.UserName" UserId="@lastVisit.UserID" /> στις <strong>@lastVisit.VisitDate.ToString("dd/MM/yyyy")</strong>
             </div>
         }
         else if (lastVisitChecked && selectedDoctor != null)
@@ -122,16 +99,17 @@ else if (showStats)
             <table class="table table-hover table-sm align-middle">
                 <thead>
                     <tr>
-                        <th style="width:90px" class="text-end">Μέρες</th>
-                        <th>Γιατρός</th>
+                        <SortTh Sorter="StatsSort" Key="days" By="s => s.DaysSince" Style="width:90px" Class="text-end">Μέρες</SortTh>
+                        <SortTh Sorter="StatsSort" Key="doctor" By="s => s.DoctorName">Γιατρός</SortTh>
+                        @* Η περιοχή διορθώνεται επιτόπου (select) -- χωρίς ταξινόμηση, αλλιώς η γραμμή θα πηδούσε. *@
                         <th style="width:130px">Περιοχή</th>
-                        <th style="width:120px">Τελευταία</th>
-                        <th style="width:180px">Από ποιον</th>
-                        <th style="width:110px" class="text-end d-none d-md-table-cell">Σύνολο επισκ.</th>
+                        <SortTh Sorter="StatsSort" Key="last" By="s => s.LastVisitDate" Style="width:120px">Τελευταία</SortTh>
+                        <SortTh Sorter="StatsSort" Key="by" By="s => PersonName.Short(s.LastVisitBy)" Style="width:180px">Από ποιον</SortTh>
+                        <SortTh Sorter="StatsSort" Key="total" By="s => s.TotalVisits" Style="width:110px" Class="text-end d-none d-md-table-cell">Σύνολο επισκ.</SortTh>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var s in FilteredStats)
+                    @foreach (var s in StatsSort.Apply(FilteredStats))
                     {
                         <tr>
                             <td class="text-end">
@@ -153,7 +131,7 @@ else if (showStats)
                                 }
                             </td>
                             <td>@s.LastVisitDate.ToString("dd/MM/yyyy")</td>
-                            <td><span class="badge @(s.LastVisitBy == UserFullNameSafe() ? "bg-primary" : "bg-secondary")">@PersonName.Short(s.LastVisitBy)</span></td>
+                            <td><PersonBadge Name="@s.LastVisitBy" /></td>
                             <td class="text-end d-none d-md-table-cell">@s.TotalVisits</td>
                         </tr>
                     }
@@ -209,22 +187,22 @@ else
         <table class="table table-hover table-sm align-middle">
             <thead>
                 <tr>
-                    <th style="width:110px">Ημερομηνία</th>
-                    <th>Γιατρός</th>
-                    <th style="width:180px">Πωλητής</th>
-                    <th>Σημείωση</th>
+                    <SortTh Sorter="VisitsSort" Key="date" By="v => v.VisitDate" Style="width:110px">Ημερομηνία</SortTh>
+                    <SortTh Sorter="VisitsSort" Key="doctor" By="v => v.DoctorName">Γιατρός</SortTh>
+                    <SortTh Sorter="VisitsSort" Key="user" By="v => PersonName.Short(v.UserName)" Style="width:180px">Πωλητής</SortTh>
+                    <SortTh Sorter="VisitsSort" Key="notes" By="v => v.Notes">Σημείωση</SortTh>
                     <th style="width:50px"></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var v in visits)
+                @foreach (var v in VisitsSort.Apply(visits))
                 {
                     var mine = v.UserID == userManager.User?.IdUser;
                     <tr>
                         <td>@v.VisitDate.ToString("dd/MM/yyyy")</td>
                         <td>@v.DoctorName</td>
                         <td>
-                            <span class="badge @(mine ? "bg-primary" : "bg-secondary")">@PersonName.Short(v.UserName)</span>
+                            <PersonBadge Name="@v.UserName" UserId="@v.UserID" />
                         </td>
                         <td class="text-muted">@v.Notes</td>
                         <td class="text-end">
@@ -268,7 +246,6 @@ else
     private string newDoctorText = "";
     private string newNotes = "";
     private SalesDoctorOptionDto? selectedDoctor;
-    private List<SalesDoctorOptionDto> doctorSuggestions = new();
     private SalesVisitViewDto? lastVisit;
     private bool lastVisitChecked = false;
 
@@ -297,6 +274,12 @@ else
     private IEnumerable<SalesVisitStatsRow> FilteredStats =>
         string.IsNullOrEmpty(regionFilter) ? stats : stats.Where(s => s.Region == regionFilter);
 
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    private TableSort<SalesVisitStatsRow>? statsSort;
+    private TableSort<SalesVisitStatsRow> StatsSort => statsSort ??= new(this, "visits-stats");
+    private TableSort<SalesVisitViewDto>? visitsSort;
+    private TableSort<SalesVisitViewDto> VisitsSort => visitsSort ??= new(this, "visits-list");
+
     private async Task ShowStats()
     {
         showStats = true;
@@ -312,9 +295,6 @@ else
         s.Region = string.IsNullOrEmpty(region) ? null : region;
         await Service.SetDoctorRegion(new SetDoctorRegionRequest { DoctorID = s.DoctorID.Value, Region = s.Region });
     }
-
-    private string UserFullNameSafe()
-        => ($"{userManager.User?.Firstname} {userManager.User?.Lastname}").Trim();
 
     protected override async Task OnInitializedAsync()
     {
@@ -345,23 +325,19 @@ else
         if (e.Key == "Enter") await Load();
     }
 
-    private async Task OnDoctorSearch(string text)
+    // Η αναζήτηση γίνεται από το κοινό <DoctorPicker>· εδώ μόνο: πληκτρολόγηση = όχι επιλεγμένος γιατρός.
+    private void OnDoctorTextChanged(string text)
     {
         newDoctorText = text;
         selectedDoctor = null;
         lastVisit = null;
         lastVisitChecked = false;
-        if (text.Trim().Length >= 2)
-            doctorSuggestions = await Service.SearchDoctors(text.Trim());
-        else
-            doctorSuggestions.Clear();
     }
 
     private async Task SelectDoctor(SalesDoctorOptionDto d)
     {
         selectedDoctor = d;
         newDoctorText = d.DisplayName;
-        doctorSuggestions.Clear();
         lastVisit = await Service.GetLastVisit(d.DoctorID, null);
         lastVisitChecked = true;
     }

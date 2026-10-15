@@ -176,18 +176,19 @@ else if (status == "loaded")
                         <table class="table table-hover table-sm mb-0 sticky-head">
                             <thead>
                                 <tr>
-                                    <th class="sortable" @onclick='() => StockSortBy("code")'>Κωδικός<span>@StockArrow("code")</span></th>
-                                    <th class="sortable" @onclick='() => StockSortBy("desc")'>Περιγραφή<span>@StockArrow("desc")</span></th>
-                                    <th class="sortable" title="Φυσικό απόθεμα στην αποθήκη" @onclick='() => StockSortBy("onhand")'>Φυσικό<span>@StockArrow("onhand")</span></th>
-                                    <th class="sortable" title="Δεσμευμένο από ανοιχτές παραγγελίες γιατρών" @onclick='() => StockSortBy("committed")'>Δεσμευμένο<span>@StockArrow("committed")</span></th>
-                                    <th class="sortable" title="Παραγγελμένα στην παραγωγή, αναμένεται παραλαβή" @onclick='() => StockSortBy("onorder")'>Παραγγελμένα<span>@StockArrow("onorder")</span></th>
-                                    <th class="sortable" title="Διαθέσιμο = Φυσικό - Δεσμευμένο" @onclick='() => StockSortBy("available")'>Διαθέσιμο<span>@StockArrow("available")</span></th>
-                                    <th class="sortable" title="Όριο (σημείο) αναπαραγγελίας -- επεξεργάσιμο" @onclick='() => StockSortBy("rop")'>Όριο<span>@StockArrow("rop")</span></th>
-                                    <th class="sortable" title="Για παραγγελία = max(0, Όριο - (Διαθέσιμο + Παραγγελμένα))" @onclick='() => StockSortBy("toorder")'>Για παραγγελία<span>@StockArrow("toorder")</span></th>
+                                    <SortTh Sorter="StockSort" Key="code" By="x => x.CodePrick">Κωδικός</SortTh>
+                                    <SortTh Sorter="StockSort" Key="desc" By="x => x.Description">Περιγραφή</SortTh>
+                                    <SortTh Sorter="StockSort" Key="onhand" By="x => x.OnHand" Title="Φυσικό απόθεμα στην αποθήκη">Φυσικό</SortTh>
+                                    <SortTh Sorter="StockSort" Key="committed" By="x => x.Committed" Title="Δεσμευμένο από ανοιχτές παραγγελίες γιατρών">Δεσμευμένο</SortTh>
+                                    <SortTh Sorter="StockSort" Key="onorder" By="x => x.OnOrder" Title="Παραγγελμένα στην παραγωγή, αναμένεται παραλαβή">Παραγγελμένα</SortTh>
+                                    <SortTh Sorter="StockSort" Key="available" By="x => x.Available" Title="Διαθέσιμο = Φυσικό - Δεσμευμένο">Διαθέσιμο</SortTh>
+                                    @* Επεξεργάσιμη στήλη: χωρίς ταξινόμηση, για να μη μετακινούνται οι γραμμές την ώρα που γράφεις *@
+                                    <th title="Όριο (σημείο) αναπαραγγελίας -- επεξεργάσιμο">Όριο</th>
+                                    <SortTh Sorter="StockSort" Key="toorder" By="x => x.ToOrder" Title="Για παραγγελία = max(0, Όριο - (Διαθέσιμο + Παραγγελμένα))">Για παραγγελία</SortTh>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var item in SortItems(group.Items))
+                                @foreach (var item in StockSort.Apply(group.Items))
                                 {
                                     var rowClass = item.Urgency == StockDashboardLogic.UrgencyUrgent ? "stock-row-danger"
                                                  : item.Urgency == StockDashboardLogic.UrgencyLow ? "stock-row-warn"
@@ -328,19 +329,20 @@ else if (status == "loaded")
                                         <table class="table table-hover table-sm mb-0 sticky-head">
                                             <thead>
                                                 <tr>
-                                                    <th>Κωδικός</th>
-                                                    <th>Περιγραφή</th>
-                                                    <th>Εταιρεία</th>
-                                                    <th title="Μέσος εβδομαδιαίος όγκος (90 ημέρες / 13 εβδ.)">Εβδ. Μέσος</th>
-                                                    <th title="12% του μέσου όρου">Security</th>
-                                                    <th title="Τρέχον διαθέσιμο stock">Stock</th>
-                                                    <th title="Ήδη σε παραγγελία παραγωγής (Open/PartiallyReceived)">Παραγγελμένο</th>
-                                                    <th title="Εκκρεμής ζήτηση από γιατρούς">Εκκρεμές</th>
+                                                    <SortTh Sorter="ProposalSort" Key="code" By="x => x.CodePrick">Κωδικός</SortTh>
+                                                    <SortTh Sorter="ProposalSort" Key="desc" By="x => x.AllergenDescription">Περιγραφή</SortTh>
+                                                    <SortTh Sorter="ProposalSort" Key="company" By="x => x.Company">Εταιρεία</SortTh>
+                                                    <SortTh Sorter="ProposalSort" Key="weekly" By="x => x.WeeklyAvg" Title="Μέσος εβδομαδιαίος όγκος (90 ημέρες / 13 εβδ.)">Εβδ. Μέσος</SortTh>
+                                                    <SortTh Sorter="ProposalSort" Key="security" By="x => x.SecurityStock" Title="12% του μέσου όρου">Security</SortTh>
+                                                    <SortTh Sorter="ProposalSort" Key="stock" By="x => x.CurrentStock" Title="Τρέχον διαθέσιμο stock">Stock</SortTh>
+                                                    <SortTh Sorter="ProposalSort" Key="ordered" By="x => x.AlreadyOrdered" Title="Ήδη σε παραγγελία παραγωγής (Open/PartiallyReceived)">Παραγγελμένο</SortTh>
+                                                    <SortTh Sorter="ProposalSort" Key="pending" By="x => x.PendingDemand" Title="Εκκρεμής ζήτηση από γιατρούς">Εκκρεμές</SortTh>
+                                                    @* Επεξεργάσιμη ποσότητα: χωρίς ταξινόμηση, για να μη μετακινούνται οι γραμμές με τα +/- *@
                                                     <th>Πρόταση</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                @foreach (var item in grp.OrderBy(x => x.CodePrick))
+                                                @foreach (var item in ProposalSort.Apply(grp.OrderBy(x => x.CodePrick)))
                                                 {
                                                     var rowClass = item.CurrentStock == 0 && item.PendingDemand > 0 ? "proposal-row-danger"
                                                                  : item.Proposed > 0 ? "proposal-row-warn"
@@ -428,19 +430,19 @@ else if (status == "loaded")
                         <table class="table table-hover table-sm mb-0">
                             <thead>
                                 <tr>
-                                    <th>Παραγγελία</th>
-                                    <th>Γιατρός</th>
-                                    <th>Κωδικός</th>
-                                    <th>Τύπος</th>
-                                    <th>Ζητ.</th>
-                                    <th>Δεσμ.</th>
-                                    <th>Εκκρεμές</th>
-                                    <th>Ημ. Παραγγελίας</th>
-                                    <th>Μέρες Εκκρεμότητας</th>
+                                    <SortTh Sorter="AgingSort" Key="order" By="a => a.OrderCode">Παραγγελία</SortTh>
+                                    <SortTh Sorter="AgingSort" Key="doctor" By="a => a.DoctorName">Γιατρός</SortTh>
+                                    <SortTh Sorter="AgingSort" Key="code" By="a => a.CodePrick">Κωδικός</SortTh>
+                                    <SortTh Sorter="AgingSort" Key="type" By="a => a.ProductTypeCode">Τύπος</SortTh>
+                                    <SortTh Sorter="AgingSort" Key="requested" By="a => a.QuantityRequested">Ζητ.</SortTh>
+                                    <SortTh Sorter="AgingSort" Key="allocated" By="a => a.QuantityAllocated">Δεσμ.</SortTh>
+                                    <SortTh Sorter="AgingSort" Key="pending" By="a => a.QuantityPending">Εκκρεμές</SortTh>
+                                    <SortTh Sorter="AgingSort" Key="date" By="a => a.OrderDate">Ημ. Παραγγελίας</SortTh>
+                                    <SortTh Sorter="AgingSort" Key="days" By="a => a.DaysPending">Μέρες Εκκρεμότητας</SortTh>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var a in summary.AgingLines)
+                                @foreach (var a in AgingSort.Apply(summary.AgingLines))
                                 {
                                     <tr class="@(a.DaysPending > 60 ? "aging-row-danger" : a.DaysPending > 30 ? "aging-row-warn" : "")">
                                         <td>@a.OrderCode</td>
@@ -490,14 +492,14 @@ else if (status == "loaded")
                             <table class="table table-hover table-sm mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Γιατρός</th>
-                                        <th>Ημερομηνία</th>
-                                        <th>Παραγγελία</th>
-                                        <th class="text-end">Τεμάχια</th>
+                                        <SortTh Sorter="PendingDoctorsSort" Key="doctor" By="d => d.DoctorName">Γιατρός</SortTh>
+                                        <SortTh Sorter="PendingDoctorsSort" Key="date" By="d => d.OrderDate">Ημερομηνία</SortTh>
+                                        <SortTh Sorter="PendingDoctorsSort" Key="order" By="d => d.OrderCode">Παραγγελία</SortTh>
+                                        <SortTh Sorter="PendingDoctorsSort" Key="qty" By="d => d.QuantityPending" Class="text-end">Τεμάχια</SortTh>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var d in pendingDoctors)
+                                    @foreach (var d in PendingDoctorsSort.Apply(pendingDoctors))
                                     {
                                         <tr>
                                             <td>@(string.IsNullOrEmpty(d.DoctorName) ? "—" : d.DoctorName)</td>
@@ -551,17 +553,17 @@ else if (status == "loaded")
                             <table class="table table-hover table-sm mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Γιατρός</th>
-                                        <th>Ημερομηνία</th>
-                                        <th>Παραγγελία</th>
-                                        <th>Κατάσταση</th>
-                                        <th class="text-end" title="Ζητήθηκαν μείον ακυρωμένα">Δεσμ.</th>
-                                        <th class="text-end" title="Έχει ήδη δεσμευτεί stock">Πήρε</th>
-                                        <th class="text-end" title="Περιμένει ακόμα stock">Εκκρεμές</th>
+                                        <SortTh Sorter="CommittedSort" Key="doctor" By="c => c.DoctorName">Γιατρός</SortTh>
+                                        <SortTh Sorter="CommittedSort" Key="date" By="c => c.OrderDate">Ημερομηνία</SortTh>
+                                        <SortTh Sorter="CommittedSort" Key="order" By="c => c.OrderCode">Παραγγελία</SortTh>
+                                        <SortTh Sorter="CommittedSort" Key="status" By="c => CommittedStatusLabel(c.OrderStatus)">Κατάσταση</SortTh>
+                                        <SortTh Sorter="CommittedSort" Key="committed" By="c => c.Committed" Class="text-end" Title="Ζητήθηκαν μείον ακυρωμένα">Δεσμ.</SortTh>
+                                        <SortTh Sorter="CommittedSort" Key="allocated" By="c => c.Allocated" Class="text-end" Title="Έχει ήδη δεσμευτεί stock">Πήρε</SortTh>
+                                        <SortTh Sorter="CommittedSort" Key="pending" By="c => c.Pending" Class="text-end" Title="Περιμένει ακόμα stock">Εκκρεμές</SortTh>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var c in committedOrders)
+                                    @foreach (var c in CommittedSort.Apply(committedOrders))
                                     {
                                         <tr>
                                             <td>@(string.IsNullOrEmpty(c.DoctorName) ? "—" : c.DoctorName)</td>
@@ -774,35 +776,19 @@ else if (status == "loaded")
         pendingDoctorsStatus = "idle";
     }
 
-    // --- Ταξινόμηση της λίστας αποθέματος με κλικ στην επικεφαλίδα ---
-    // Η ομαδοποίηση ανά τύπο προϊόντος μένει: ταξινομείται κάθε ομάδα ξεχωριστά.
-    private string stockSortField = "code";
-    private bool stockSortAsc = true;
-
-    private void StockSortBy(string field)
-    {
-        if (stockSortField == field) stockSortAsc = !stockSortAsc;
-        else { stockSortField = field; stockSortAsc = true; }
-    }
-
-    private string StockArrow(string field)
-        => stockSortField == field ? (stockSortAsc ? " ▲" : " ▼") : "";
-
-    private List<StockDashboardItemDto> SortItems(List<StockDashboardItemDto> items)
-    {
-        IEnumerable<StockDashboardItemDto> sorted = stockSortField switch
-        {
-            "desc" => items.OrderBy(x => x.Description),
-            "onhand" => items.OrderBy(x => x.OnHand),
-            "committed" => items.OrderBy(x => x.Committed),
-            "onorder" => items.OrderBy(x => x.OnOrder),
-            "available" => items.OrderBy(x => x.Available),
-            "rop" => items.OrderBy(x => x.ReorderPoint),
-            "toorder" => items.OrderBy(x => x.ToOrder),
-            _ => items.OrderBy(x => x.CodePrick)
-        };
-        return (stockSortAsc ? sorted : sorted.Reverse()).ToList();
-    }
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    // Απόθεμα: η ομαδοποίηση ανά τύπο μένει, ταξινομείται κάθε ομάδα ξεχωριστά
+    // (χωρίς επιλογή: κατά κωδικό, όπως έρχονται από τις ομάδες).
+    private TableSort<StockDashboardItemDto>? stockSort;
+    private TableSort<StockDashboardItemDto> StockSort => stockSort ??= new(this, "apothema-stock");
+    private TableSort<SmartStockProposalDto>? proposalSort;
+    private TableSort<SmartStockProposalDto> ProposalSort => proposalSort ??= new(this, "apothema-proposal");
+    private TableSort<PrickAgingLineDto>? agingSort;
+    private TableSort<PrickAgingLineDto> AgingSort => agingSort ??= new(this, "apothema-aging");
+    private TableSort<SmartProposalPendingDoctorDto>? pendingDoctorsSort;
+    private TableSort<SmartProposalPendingDoctorDto> PendingDoctorsSort => pendingDoctorsSort ??= new(this, "apothema-pending-doctors");
+    private TableSort<CommittedOrderDto>? committedSort;
+    private TableSort<CommittedOrderDto> CommittedSort => committedSort ??= new(this, "apothema-committed");
 
     // --- Φακός στο "Δεσμευμένο": ποιες παραγγελίες γιατρών το κρατάνε ---
     private StockDashboardItemDto? committedItem;

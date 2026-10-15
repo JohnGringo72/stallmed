@@ -81,6 +81,8 @@
                             <li><a class="dropdown-item" href="/visits" @onclick="CloseMenu">Visits</a></li>
                         }
                         <li><a class="dropdown-item" href="/expenses" @onclick="CloseMenu">Εξοδολόγιο</a></li>
+                        @* Διανομές σε γιατρούς (ημερολόγια κλπ.) -- για όλους *@
+                        <li><a class="dropdown-item" href="/distributions" @onclick="CloseMenu">🎁 Διανομές</a></li>
                     </ul>
                 </div>
             }
@@ -89,6 +91,15 @@
             <div class="nav-item">
                 <a class="nav-link" href="/daily-summary" @onclick="CloseMenu">📊 ΣΥΝΟΨΗ</a>
             </div>
+
+            @* Παρακολούθηση Συσκευών: μόνο σε όσους έχουν πρόσβαση (admin ή TrackingUserAccess) --
+               ο server ελέγχει ξανά σε κάθε κλήση. *@
+            @if (canTrack)
+            {
+                <div class="nav-item">
+                    <a class="nav-link" href="/tracking" @onclick="CloseMenu">📍 ΠΑΡΑΚΟΛΟΥΘΗΣΗ</a>
+                </div>
+            }
 
             @* Ορατό μόνο σε admin -- τα ίδια endpoints ελέγχονται και στον server. *@
             @if (userManager.IsAdmin)
@@ -248,6 +259,17 @@
         userManager.StatusChanged += OnStatusChanged;
         await uiPrefs.Initialize();
         await InitPushAsync();
+        await CheckTrackingAccessAsync();
+    }
+
+    // Εμφάνιση του «ΠΑΡΑΚΟΛΟΥΘΗΣΗ» μόνο σε όσους έχουν πρόσβαση (admin ή TrackingUserAccess).
+    private bool canTrack;
+    private async Task CheckTrackingAccessAsync()
+    {
+        if (!userManager.IsLoggedIn) { canTrack = false; return; }
+        if (userManager.IsAdmin) { canTrack = true; return; }
+        try { canTrack = (await new TrackingService(dataService).Me())?.CanView == true; }
+        catch (Exception) { canTrack = false; }
     }
 
     // Μία φορά ανά χρήστη που συνδέεται (και ξανά μετά από logout/login).
@@ -292,7 +314,7 @@
     }
     private void OnStatusChanged(object sender, EventArgs e)
     {
-        InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(async () => { await CheckTrackingAccessAsync(); StateHasChanged(); });
         _ = InvokeAsync(InitPushAsync);
     }
     private async Task Logout()

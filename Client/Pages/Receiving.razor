@@ -177,18 +177,18 @@
                     <table class="table table-sm table-hover mb-0 sticky-head">
                         <thead>
                             <tr>
-                                <th>Ημ. παραλαβής</th>
-                                <th>Κωδικός</th>
-                                <th>Αλλεργιογόνο</th>
-                                <th>Τύπος</th>
-                                <th class="text-end">Ήρθαν</th>
-                                <th class="text-end">Υπόλοιπο</th>
-                                <th>Ποιος</th>
-                                <th>Πότε</th>
+                                <SortTh Sorter="LogSort" Key="date" By="r => r.ReceivedDate">Ημ. παραλαβής</SortTh>
+                                <SortTh Sorter="LogSort" Key="code" By="r => r.CodePrick">Κωδικός</SortTh>
+                                <SortTh Sorter="LogSort" Key="allergen" By="r => r.AllergenDescription">Αλλεργιογόνο</SortTh>
+                                <SortTh Sorter="LogSort" Key="type" By="r => r.ProductTypeCode">Τύπος</SortTh>
+                                <SortTh Sorter="LogSort" Key="received" By="r => r.QuantityReceived" Class="text-end">Ήρθαν</SortTh>
+                                <SortTh Sorter="LogSort" Key="remaining" By="r => r.QuantityRemaining" Class="text-end">Υπόλοιπο</SortTh>
+                                <SortTh Sorter="LogSort" Key="by" By="r => r.CreatedByName">Ποιος</SortTh>
+                                <SortTh Sorter="LogSort" Key="created" By="r => r.CreatedAt">Πότε</SortTh>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var r in receiptLog)
+                            @foreach (var r in LogSort.Apply(receiptLog))
                             {
                                 <tr class="@(r.PossibleDuplicate ? "table-danger" : "")">
                                     <td>@r.ReceivedDate.ToString("dd/MM/yyyy")</td>
@@ -197,7 +197,7 @@
                                     <td>@r.ProductTypeCode <small class="text-muted">@r.ProductDescription</small></td>
                                     <td class="text-end fw-bold">@r.QuantityReceived</td>
                                     <td class="text-end @(r.QuantityRemaining > 0 ? "" : "text-muted")">@r.QuantityRemaining</td>
-                                    <td><small>@(string.IsNullOrWhiteSpace(r.CreatedByName) ? "—" : r.CreatedByName)</small></td>
+                                    <td><PersonBadge Name="@r.CreatedByName" Empty="—" /></td>
                                     <td><small class="text-muted">@r.CreatedAt.ToString("dd/MM HH:mm")</small></td>
                                 </tr>
                             }
@@ -218,9 +218,17 @@
     {
         <div class="stock-check-results">
             <table class="table table-sm mb-0 sticky-head">
-                <thead><tr><th>Κωδικός</th><th>Περιγραφή</th><th>Τύπος</th><th>Εταιρεία</th><th>Διαθέσιμο</th></tr></thead>
+                <thead>
+                    <tr>
+                        <SortTh Sorter="StockCheckSort" Key="code" By="s => s.CodePrick">Κωδικός</SortTh>
+                        <SortTh Sorter="StockCheckSort" Key="description" By="s => s.Description">Περιγραφή</SortTh>
+                        <SortTh Sorter="StockCheckSort" Key="type" By="s => s.ProductTypeCode">Τύπος</SortTh>
+                        <SortTh Sorter="StockCheckSort" Key="company" By="s => s.Company">Εταιρεία</SortTh>
+                        <SortTh Sorter="StockCheckSort" Key="remaining" By="s => s.TotalRemaining">Διαθέσιμο</SortTh>
+                    </tr>
+                </thead>
                 <tbody>
-                    @foreach (var s in stockCheckResults)
+                    @foreach (var s in StockCheckSort.Apply(stockCheckResults))
                     {
                         <tr>
                             <td>@s.CodePrick</td>
@@ -351,10 +359,15 @@
                 <div style="max-height:280px; overflow-y:auto;">
                     <table class="table table-sm sticky-head">
                         <thead>
-                            <tr><th>Είδος</th><th>Κωδικός</th><th>Τεμάχια</th><th>Κατάσταση</th></tr>
+                            <tr>
+                                <SortTh Sorter="ImportSort" Key="type" By="r => r.ProductTypeCode">Είδος</SortTh>
+                                <SortTh Sorter="ImportSort" Key="code" By="r => r.CodePrick">Κωδικός</SortTh>
+                                <SortTh Sorter="ImportSort" Key="quantity" By="r => r.Quantity">Τεμάχια</SortTh>
+                                <SortTh Sorter="ImportSort" Key="status" By="r => r.Valid ? 0 : 1">Κατάσταση</SortTh>
+                            </tr>
                         </thead>
                         <tbody>
-                            @foreach (var row in importPreviewRows)
+                            @foreach (var row in ImportSort.Apply(importPreviewRows))
                             {
                                 <tr class="@(row.Valid ? "" : "table-danger")">
                                     <td>@row.ProductTypeCode</td>
@@ -448,6 +461,14 @@
     private string stockCheckQuery = "";
     private List<StockCheckDto> stockCheckResults = new();
     private CancellationTokenSource? stockCheckDebounce;
+
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    private TableSort<StockReceiptLogDto>? logSort;
+    private TableSort<StockReceiptLogDto> LogSort => logSort ??= new(this, "receiving-log");
+    private TableSort<StockCheckDto>? stockCheckSort;
+    private TableSort<StockCheckDto> StockCheckSort => stockCheckSort ??= new(this, "receiving-stockcheck");
+    private TableSort<ImportPreviewRow>? importSort;
+    private TableSort<ImportPreviewRow> ImportSort => importSort ??= new(this, "receiving-import");
 
     private class ReceiveInput
     {

@@ -97,17 +97,18 @@ else if (activeTab == "types")
         <table class="table table-hover align-middle catalog-table">
             <thead>
                 <tr>
-                    <th>Κωδικός</th>
-                    <th>Εταιρεία</th>
+                    <SortTh Sorter="TypesSort" Key="code" By="t => t.ProductTypeCode">Κωδικός</SortTh>
+                    <SortTh Sorter="TypesSort" Key="company" By="t => t.Company">Εταιρεία</SortTh>
+                    @* Στήλες με πεδία επεξεργασίας: χωρίς ταξινόμηση (η γραμμή θα πηδούσε όσο γράφεις). *@
                     <th>Περιγραφή</th>
                     <th>Τιμή Λιανικής €</th>
                     <th>Τιμή Ex-Factory €</th>
-                    <th>Ενεργό</th>
+                    <SortTh Sorter="TypesSort" Key="active" By="t => t.IsActive">Ενεργό</SortTh>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var t in FilteredTypes)
+                @foreach (var t in TypesSort.Apply(FilteredTypes))
                 {
                     <tr class="@(t.IsActive ? "" : "table-secondary")">
                         <td class="fw-bold">@t.ProductTypeCode</td>
@@ -154,17 +155,18 @@ else
         <table class="table table-hover align-middle catalog-table">
             <thead>
                 <tr>
-                    <th>Κωδικός</th>
-                    <th>Εταιρεία</th>
+                    <SortTh Sorter="AllergensSort" Key="code" By="a => a.CodePrick">Κωδικός</SortTh>
+                    <SortTh Sorter="AllergensSort" Key="company" By="a => a.Company">Εταιρεία</SortTh>
+                    @* Στήλες με πεδία επεξεργασίας: χωρίς ταξινόμηση (η γραμμή θα πηδούσε όσο γράφεις). *@
                     <th>Περιγραφή (GR)</th>
                     <th>Περιγραφή (EN)</th>
                     <th>Κατηγορία</th>
-                    <th>Ενεργό</th>
+                    <SortTh Sorter="AllergensSort" Key="active" By="a => a.IsActive">Ενεργό</SortTh>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var a in FilteredAllergens)
+                @foreach (var a in AllergensSort.Apply(FilteredAllergens))
                 {
                     <tr class="@(a.IsActive ? "" : "table-secondary")">
                         <td class="fw-bold">@a.CodePrick</td>
@@ -238,6 +240,12 @@ else
             || a.CodePrick.Contains(filterSearch, StringComparison.OrdinalIgnoreCase)
             || (a.DescriptionGreek ?? "").Contains(filterSearch, StringComparison.OrdinalIgnoreCase)
             || (a.Description ?? "").Contains(filterSearch, StringComparison.OrdinalIgnoreCase));
+
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    private TableSort<ProductType>? typesSort;
+    private TableSort<ProductType> TypesSort => typesSort ??= new(this, "catalogadmin-types");
+    private TableSort<AllergenCode>? allergensSort;
+    private TableSort<AllergenCode> AllergensSort => allergensSort ??= new(this, "catalogadmin-allergens");
 
     private void ShowMessage(string text, bool isError = false)
     {

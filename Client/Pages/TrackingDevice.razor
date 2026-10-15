@@ -1,0 +1,651 @@
+@page "/tracking/{DeviceId:int}"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>@(device?.Name ?? "Συσκευή") -- Παρακολούθηση</PageTitle>
+
+<style>
+    .trk-kv td:first-child { color: #6c757d; width: 45%; }
+    .trk-raw { font-family: Consolas, monospace; font-size: .8rem; word-break: break-all; white-space: pre-wrap; }
+    .trk-table td, .trk-table th { vertical-align: middle; }
+</style>
+
+<div class="sbt-page-header d-flex flex-wrap align-items-center gap-2">
+    <img src="images/icons/icon-tracking.svg" alt="" class="sbt-page-icon" />
+    <div class="mb-3 me-auto">
+        <a href="/tracking" class="small">← Όλες οι συσκευές</a>
+        <h3 class="mb-0">
+            @(device?.AssetName != null ? $"{device.AssetName} · " : "")@(device?.Name ?? $"Συσκευή #{DeviceId}")
+            @if (device != null)
+            {
+                <span class="badge @TrackingFormat.StatusBadge(device.Status) fs-6 align-middle">@TrackingFormat.StatusLabel(device.Status)</span>
+            }
+        </h3>
+        @if (device != null)
+        {
+            <div class="text-muted small">
+                ID/IMEI: @device.UniqueId
+                @if (!string.IsNullOrEmpty(device.Model)) { <span> · @device.Model</span> }
+                @if (!string.IsNullOrEmpty(device.Position?.Protocol)) { <span> · πρωτόκολλο @device.Position.Protocol</span> }
+                · τελευταία επικοινωνία @TrackingFormat.Time(device.LastUpdate)
+            </div>
+        }
+    </div>
+</div>
+
+@if (me != null && !me.CanView)
+{
+    <div class="alert alert-warning">Δεν έχετε πρόσβαση στην Παρακολούθηση Συσκευών.</div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(liveError))
+    {
+        <div class="alert alert-danger py-2">⚠ @liveError</div>
+    }
+
+    <ul class="nav nav-tabs mb-3">
+        @foreach (var (key, label) in Tabs)
+        {
+            <li class="nav-item">
+                <a class="nav-link @(tab == key ? "active" : "")" href="javascript:void(0)" @onclick="() => SwitchTab(key)">@label</a>
+            </li>
+        }
+    </ul>
+
+    @if (tab != "live")
+    {
+        @* Κοινό χρονικό διάστημα για History / Trips / Θερμοκρασία / Events / Raw (ώρα Ελλάδας) *@
+        <div class="card mb-3">
+            <div class="card-body py-2">
+                <div class="row g-2 align-items-end">
+                    <div class="col-6 col-md-3">
+                        <label class="form-label mb-1">Από</label>
+                        <input type="datetime-local" class="form-control form-control-sm" @bind="fromLocal" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label mb-1">Έως</label>
+                        <input type="datetime-local" class="form-control form-control-sm" @bind="toLocal" />
+                    </div>
+                    <div class="col-12 col-md-auto d-flex flex-wrap gap-1">
+                        <button class="btn btn-outline-secondary btn-sm" @onclick='() => Preset("1h")'>1 ώρα</button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick='() => Preset("today")'>Σήμερα</button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick='() => Preset("yesterday")'>Χθες</button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick='() => Preset("7d")'>7 ημέρες</button>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-primary btn-sm" @onclick="LoadTab" disabled="@busy">@(busy ? "Φόρτωση..." : "Εμφάνιση")</button>
+                    </div>
+                </div>
+                <div class="text-muted small mt-1">@RangeHint</div>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(tabError))
+        {
+            <div class="alert alert-danger py-2">⚠ @tabError</div>
+        }
+    }
+
+    <div class="row g-3">
+        @* Ο χάρτης μένει πάντα στη σελίδα (κρυφός όπου δεν χρειάζεται) ώστε να μη ξαναφορτώνεται. *@
+        <div class="@(ShowMap ? (tab == "live" ? "col-lg-7" : "col-12") : "d-none")">
+            <TrackingMap @ref="map" Height="@(tab == "live" ? "520px" : "460px")" />
+        </div>
+
+        @if (tab == "live")
+        {
+            <div class="col-lg-5">
+                @if (device?.Position == null)
+                {
+                    <div class="alert alert-secondary">@(device == null ? "Φόρτωση..." : "Η συσκευή δεν έχει στείλει ακόμα θέση.")</div>
+                }
+                else
+                {
+                    var p = device.Position;
+                    @if (!p.Valid)
+                    {
+                        <div class="alert alert-warning py-2">Η τελευταία θέση δεν έχει έγκυρο GPS fix -- μπορεί να μην είναι ακριβής.</div>
+                    }
+                    @if (p.Outdated)
+                    {
+                        <div class="alert alert-warning py-2">Ο Traccar σημειώνει τη θέση ως παλιά (outdated).</div>
+                    }
+                    @if (!string.IsNullOrEmpty(p.Alarm))
+                    {
+                        <div class="alert alert-danger py-2">🚨 Alarm: @TrackingFormat.AlarmLabel(p.Alarm)</div>
+                    }
+                    <div class="card mb-3">
+                        <div class="card-header py-1"><strong>Live</strong> <span class="text-muted small">(ανανέωση κάθε @PollSeconds'')</span></div>
+                        <table class="table table-sm mb-0 trk-kv">
+                            <tbody>
+                                @foreach (var (label, value) in LiveRows(p))
+                                {
+                                    <tr><td>@label</td><td>@value</td></tr>
+                                }
+                                @foreach (var t in p.Temperatures)
+                                {
+                                    <tr>
+                                        <td>Θερμοκρασία @t.Key</td>
+                                        <td>
+                                            @if (t.Malformed || t.Value == null)
+                                            {
+                                                <span class="text-warning">Μη διαθέσιμη (η συσκευή έστειλε @t.RawValue)</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="@(TrackingFormat.IsExcursion(t.Value, device.TempRange) ? "text-danger fw-bold" : "")">@TrackingFormat.Num(t.Value, " °C")</span>
+                                                @if (device.TempRange != null)
+                                                {
+                                                    <span class="text-muted small"> (όρια @device.TempRange.MinC – @device.TempRange.MaxC °C)</span>
+                                                }
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @* Όλα τα δεδομένα όπως τα στέλνει η συγκεκριμένη συσκευή -- τίποτα placeholder. *@
+                    <div class="card">
+                        <div class="card-header py-1"><strong>Telemetry συσκευής</strong> <span class="text-muted small">(@p.Attributes.Count πεδία)</span></div>
+                        <table class="table table-sm mb-0 trk-kv">
+                            <tbody>
+                                @foreach (var kv in p.Attributes.OrderBy(k => k.Key))
+                                {
+                                    <tr><td title="@kv.Key">@TrackingFormat.AttributeLabel(kv.Key)</td><td>@kv.Value</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (tab == "history" && route != null)
+    {
+        <div class="card mt-3">
+            <div class="card-body py-2 small">
+                @if (route.Positions.Count == 0)
+                {
+                    <span class="text-muted">Δεν υπάρχουν θέσεις στο διάστημα.</span>
+                }
+                else
+                {
+                    <span>Σημεία: <strong>@route.Positions.Count</strong></span>
+                    <span class="ms-3">Από: @TrackingFormat.Time(route.Positions.First().FixTime)</span>
+                    <span class="ms-3">Έως: @TrackingFormat.Time(route.Positions.Last().FixTime)</span>
+                    <span class="ms-3">Μέγ. ταχύτητα: @TrackingFormat.Num(route.Positions.Max(x => x.SpeedKmh), " km/h", 0)</span>
+                    @if (route.Truncated)
+                    {
+                        <span class="ms-3 text-warning">Πολλά σημεία -- εμφανίζεται αραιωμένη διαδρομή.</span>
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    @if (tab == "trips" && trips != null)
+    {
+        <div class="card mt-3">
+            <div class="card-header py-1"><strong>Διαδρομές</strong> <span class="text-muted small">(Traccar trips report -- κλικ για εμφάνιση στον χάρτη)</span></div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0 trk-table">
+                    <thead class="table-light">
+                        <tr><th>Έναρξη</th><th>Λήξη</th><th>Από</th><th>Προς</th><th class="text-end">Διάρκεια</th><th class="text-end">km</th><th class="text-end">Μέγ. km/h</th><th class="text-end">Μ.Ο. km/h</th><th>Οδηγός</th></tr>
+                    </thead>
+                    <tbody>
+                        @if (trips.Trips.Count == 0)
+                        {
+                            <tr><td colspan="9" class="text-muted">Δεν υπάρχουν διαδρομές στο διάστημα.</td></tr>
+                        }
+                        @foreach (var t in trips.Trips)
+                        {
+                            <tr style="cursor:pointer" class="@(t == selectedTrip ? "table-primary" : "")" @onclick="() => ShowTrip(t)">
+                                <td>@TrackingFormat.ShortTime(t.StartTime)</td>
+                                <td>@TrackingFormat.ShortTime(t.EndTime)</td>
+                                <td class="small">@(t.StartAddress ?? "—")</td>
+                                <td class="small">@(t.EndAddress ?? "—")</td>
+                                <td class="text-end">@TrackingFormat.Duration(t.DurationMs)</td>
+                                <td class="text-end">@TrackingFormat.Num(t.DistanceKm, "", 1)</td>
+                                <td class="text-end">@TrackingFormat.Num(t.MaxSpeedKmh, "", 0)</td>
+                                <td class="text-end">@TrackingFormat.Num(t.AverageSpeedKmh, "", 0)</td>
+                                <td>@(t.DriverName ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card mt-3">
+            <div class="card-header py-1"><strong>Στάσεις</strong></div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 trk-table">
+                    <thead class="table-light"><tr><th>Από</th><th>Έως</th><th class="text-end">Διάρκεια</th><th>Θέση</th></tr></thead>
+                    <tbody>
+                        @if (trips.Stops.Count == 0)
+                        {
+                            <tr><td colspan="4" class="text-muted">Δεν υπάρχουν στάσεις στο διάστημα.</td></tr>
+                        }
+                        @foreach (var s in trips.Stops)
+                        {
+                            <tr>
+                                <td>@TrackingFormat.ShortTime(s.StartTime)</td>
+                                <td>@TrackingFormat.ShortTime(s.EndTime)</td>
+                                <td class="text-end">@TrackingFormat.Duration(s.DurationMs)</td>
+                                <td class="small">@(s.Address ?? (s.Latitude.HasValue ? $"{s.Latitude:0.00000}, {s.Longitude:0.00000}" : "—"))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    @if (tab == "temp")
+    {
+        @if (temperature != null)
+        {
+            @if (temperature.Range != null)
+            {
+                <div class="text-muted small mb-2">
+                    Επιτρεπτό εύρος: <strong>@temperature.Range.MinC – @temperature.Range.MaxC °C</strong>
+                    (@(temperature.Range.Scope switch { "Device" => "ορισμός συσκευής", "Asset" => "ορισμός οχήματος", _ => "προεπιλογή" }))
+                </div>
+            }
+            @if (temperature.Series.Count == 0)
+            {
+                <div class="alert alert-secondary">Η συσκευή δεν έστειλε θερμοκρασίες στο διάστημα.</div>
+            }
+            <div class="row g-2 mb-3">
+                @foreach (var s in temperature.Series)
+                {
+                    <div class="col-md-6 col-xl-3">
+                        <div class="card h-100">
+                            <div class="card-body py-2">
+                                <div class="fw-bold">@s.Key</div>
+                                @if (s.Points.Count == 0)
+                                {
+                                    <div class="text-muted small">Χωρίς έγκυρες μετρήσεις</div>
+                                }
+                                else
+                                {
+                                    <div class="small">
+                                        Τρέχουσα: <strong class="@(TrackingFormat.IsExcursion(s.Points.Last().Value, temperature.Range) ? "text-danger" : "")">@TrackingFormat.Num(s.Points.Last().Value, " °C")</strong>
+                                        <span class="text-muted">(@TrackingFormat.ShortTime(s.Points.Last().Time))</span>
+                                    </div>
+                                    <div class="small">Min @TrackingFormat.Num(s.Min, "°") · Max @TrackingFormat.Num(s.Max, "°") · Μ.Ο. @TrackingFormat.Num(s.Avg, "°", 2)</div>
+                                }
+                                @if (s.MalformedCount > 0)
+                                {
+                                    <div class="small text-warning">@s.MalformedCount μη έγκυρες τιμές αγνοήθηκαν</div>
+                                }
+                                <div class="small @(s.Excursions.Count > 0 ? "text-danger fw-bold" : "text-success")">
+                                    @(s.Excursions.Count > 0 ? $"{s.Excursions.Count} excursions" : "Εντός ορίων")
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+            @if (temperature.Truncated)
+            {
+                <div class="text-warning small mb-1">Πολλά σημεία -- το γράφημα είναι αραιωμένο (τα min/max/excursions υπολογίστηκαν σε όλα).</div>
+            }
+        }
+        <div class="card mb-3" style="@(temperature?.Series.Any(s => s.Points.Count > 0) == true ? "" : "display:none")">
+            <div class="card-body" style="height:360px"><canvas id="@chartId"></canvas></div>
+        </div>
+        @if (temperature != null && temperature.Series.Any(s => s.Excursions.Count > 0))
+        {
+            <div class="card">
+                <div class="card-header py-1"><strong>Excursions εκτός ορίων</strong></div>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light"><tr><th>Αισθητήρας</th><th>Από</th><th>Έως</th><th>Τύπος</th><th class="text-end">Ακραία τιμή</th></tr></thead>
+                        <tbody>
+                            @foreach (var s in temperature.Series)
+                            {
+                                @foreach (var x in s.Excursions)
+                                {
+                                    <tr>
+                                        <td>@s.Key</td>
+                                        <td>@TrackingFormat.Time(x.Start)</td>
+                                        <td>@TrackingFormat.Time(x.End)</td>
+                                        <td>@(x.Kind == "low" ? "Κάτω από το όριο" : "Πάνω από το όριο")</td>
+                                        <td class="text-end text-danger">@TrackingFormat.Num(x.Peak, " °C")</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+
+    @if (tab == "events" && events != null)
+    {
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 trk-table">
+                    <thead class="table-light"><tr><th>Ώρα</th><th>Συμβάν</th><th>Λεπτομέρειες</th></tr></thead>
+                    <tbody>
+                        @if (events.Count == 0)
+                        {
+                            <tr><td colspan="3" class="text-muted">Δεν υπάρχουν συμβάντα στο διάστημα.</td></tr>
+                        }
+                        @foreach (var e in events)
+                        {
+                            <tr class="@(e.Type == "alarm" ? "table-danger" : "")">
+                                <td class="text-nowrap">@TrackingFormat.Time(e.EventTime)</td>
+                                <td>@TrackingFormat.EventLabel(e.Type)@(e.Alarm != null ? $": {TrackingFormat.AlarmLabel(e.Alarm)}" : "")</td>
+                                <td class="small text-muted">@string.Join(" · ", e.Attributes.Where(a => a.Key != "alarm").Select(a => $"{a.Key}={a.Value}"))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    @if (tab == "raw" && raw != null)
+    {
+        @if (raw.Count > 0 && raw.All(r => string.IsNullOrEmpty(r.Raw)))
+        {
+            <div class="alert alert-secondary py-2 small">
+                Ο Traccar δεν αποθηκεύει τα αρχικά packets (ρύθμιση <code>database.saveOriginal</code>) -- εμφανίζονται μόνο τα αποκωδικοποιημένα attributes.
+            </div>
+        }
+        <div class="text-muted small mb-1">Τελευταίες @raw.Count εγγραφές (νεότερες πρώτα, έως 500).</div>
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 trk-table">
+                    <thead class="table-light"><tr><th>Server time</th><th>Device / Fix time</th><th>Πρωτόκολλο</th><th>Θέση</th><th>Raw packet</th><th>Parsed attributes</th></tr></thead>
+                    <tbody>
+                        @if (raw.Count == 0)
+                        {
+                            <tr><td colspan="6" class="text-muted">Καμία εγγραφή στο διάστημα.</td></tr>
+                        }
+                        @foreach (var r in raw)
+                        {
+                            <tr>
+                                <td class="text-nowrap small">@TrackingFormat.Time(r.ServerTime)</td>
+                                <td class="text-nowrap small">@TrackingFormat.Time(r.DeviceTime)<br />@TrackingFormat.Time(r.FixTime)</td>
+                                <td class="small">@r.Protocol</td>
+                                <td class="small text-nowrap">@r.Latitude.ToString("0.00000", System.Globalization.CultureInfo.InvariantCulture), @r.Longitude.ToString("0.00000", System.Globalization.CultureInfo.InvariantCulture)@(r.Valid ? "" : " (χωρίς fix)")</td>
+                                <td class="trk-raw">@(r.Raw ?? "—")</td>
+                                <td class="trk-raw">@string.Join("\n", r.Attributes.OrderBy(a => a.Key).Select(a => $"{a.Key}: {a.Value}"))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int DeviceId { get; set; }
+
+    private const int PollSeconds = 10;
+
+    private TrackingMeDto? me;
+    private TrackingDeviceDto? device;
+    private string? liveError;
+    private string tab = "live";
+    private string? tabError;
+    private bool busy;
+    private TrackingMap? map;
+    private CancellationTokenSource? pollCts;
+    private readonly string chartId = "tchart-" + Guid.NewGuid().ToString("N");
+
+    private DateTime fromLocal;
+    private DateTime toLocal;
+
+    private TrackingRouteDto? route;
+    private TrackingTripsDto? trips;
+    private TrackingTripDto? selectedTrip;
+    private TrackingTemperatureDto? temperature;
+    private List<TrackingEventDto>? events;
+    private List<TrackingRawRowDto>? raw;
+
+    private TrackingService Service => new TrackingService(dataService);
+
+    private bool HasTemperature => device?.DeviceRole == "TEMP" || device?.Position?.Temperatures.Count > 0;
+    private bool ShowMap => tab is "live" or "history" or "trips";
+
+    private IEnumerable<(string Key, string Label)> Tabs
+    {
+        get
+        {
+            yield return ("live", "Live");
+            yield return ("history", "Ιστορικό");
+            yield return ("trips", "Διαδρομές");
+            if (HasTemperature) yield return ("temp", "Θερμοκρασία");
+            yield return ("events", "Συμβάντα");
+            if (me?.CanSeeRaw == true) yield return ("raw", "Raw Data");
+        }
+    }
+
+    private string RangeHint => tab switch
+    {
+        "history" => "Μέγιστο διάστημα ιστορικού: 7 ημέρες.",
+        "temp" => "Μέγιστο διάστημα: 14 ημέρες.",
+        "raw" => "Μέγιστο διάστημα: 1 ημέρα (έως 500 εγγραφές).",
+        _ => "Μέγιστο διάστημα: 31 ημέρες."
+    };
+
+    // Μόνο όσα δίνει πραγματικά η συσκευή (null = δεν εμφανίζεται).
+    private IEnumerable<(string, string)> LiveRows(TrackingPositionDto p)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        yield return ("Κατάσταση σύνδεσης", TrackingFormat.StatusLabel(device?.Status));
+        yield return ("Τελευταία ενημέρωση", TrackingFormat.Time(device?.LastUpdate));
+        yield return ("Ώρα θέσης (fix)", TrackingFormat.Time(p.FixTime));
+        if (p.Address != null) yield return ("Διεύθυνση", p.Address);
+        yield return ("Latitude / Longitude", $"{p.Latitude.ToString("0.000000", inv)}, {p.Longitude.ToString("0.000000", inv)}");
+        yield return ("GPS fix", p.Valid ? "Έγκυρο" : "Όχι");
+        if (p.SpeedKmh != null) yield return ("Ταχύτητα", TrackingFormat.Num(p.SpeedKmh, " km/h", 0));
+        if (p.Course != null) yield return ("Πορεία", TrackingFormat.Num(p.Course, "°", 0));
+        if (p.Altitude != null) yield return ("Υψόμετρο", TrackingFormat.Num(p.Altitude, " m", 0));
+        if (p.Ignition != null) yield return ("Μίζα", TrackingFormat.Ignition(p.Ignition));
+        if (p.Motion != null) yield return ("Κίνηση", p.Motion == true ? "Ναι" : "Όχι");
+        if (p.PowerV != null) yield return ("Τάση τροφοδοσίας", TrackingFormat.Num(p.PowerV, " V", 2));
+        if (p.BatteryV != null) yield return ("Μπαταρία", TrackingFormat.Num(p.BatteryV, " V", 2));
+        if (p.BatteryLevel != null) yield return ("Μπαταρία", TrackingFormat.Num(p.BatteryLevel, " %", 0));
+        if (p.Rssi != null) yield return ("Σήμα GSM", p.Rssi.Value.ToString());
+        if (p.Satellites != null) yield return ("Δορυφόροι", p.Satellites.Value.ToString());
+        if (p.DeviceTemp != null) yield return ("Θερμοκρασία συσκευής", TrackingFormat.Num(p.DeviceTemp, " °C"));
+        if (p.OdometerKm != null) yield return ("Συνολική απόσταση", TrackingFormat.Num(p.OdometerKm, " km", 1));
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Preset("today");
+        me = await Service.Me() ?? new TrackingMeDto();
+        if (!me.CanView) return;
+        pollCts = new CancellationTokenSource();
+        _ = PollAsync(pollCts.Token);
+    }
+
+    private async Task PollAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(PollSeconds));
+        try
+        {
+            do
+            {
+                await LoadLiveAsync();
+            }
+            while (await timer.WaitForNextTickAsync(token));
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task LoadLiveAsync()
+    {
+        var (data, err) = await Service.Device(DeviceId);
+        liveError = err;
+        if (data != null) device = data;
+        await InvokeAsync(StateHasChanged);
+        if (tab == "live" && device?.Position != null && map != null)
+            await map.SetMarkers(new[] { new TrackingMap.Marker(device.Id, device.Position.Latitude, device.Position.Longitude,
+                device.AssetName ?? device.Name, TrackingFormat.MarkerStatus(device),
+                new List<string> { TrackingFormat.Time(device.Position.FixTime), $"Ταχύτητα: {TrackingFormat.Num(device.Position.SpeedKmh, " km/h", 0)}" }) });
+    }
+
+    private void Preset(string key)
+    {
+        var now = TrackingFormat.NowLocal();
+        (fromLocal, toLocal) = key switch
+        {
+            "1h" => (now.AddHours(-1), now),
+            "yesterday" => (now.Date.AddDays(-1), now.Date.AddSeconds(-1)),
+            "7d" => (now.AddDays(-7), now),
+            _ => (now.Date, now)
+        };
+        fromLocal = TrimSeconds(fromLocal);
+        toLocal = TrimSeconds(toLocal);
+    }
+
+    private static DateTime TrimSeconds(DateTime d) => new(d.Year, d.Month, d.Day, d.Hour, d.Minute, 0);
+
+    private async Task SwitchTab(string key)
+    {
+        tab = key;
+        tabError = null;
+        if (key == "raw") Preset("1h");
+        StateHasChanged();
+        if (map != null)
+        {
+            await map.Invalidate();
+            if (key == "live")
+            {
+                await map.ClearRoute();
+                await LoadLiveAsync();
+            }
+            else
+            {
+                await map.SetMarkers(Array.Empty<TrackingMap.Marker>());
+            }
+        }
+        if (key != "live") await LoadTab();
+    }
+
+    private async Task LoadTab()
+    {
+        var from = TrackingFormat.FromLocal(fromLocal);
+        var to = TrackingFormat.FromLocal(toLocal);
+        busy = true;
+        tabError = null;
+        StateHasChanged();
+        try
+        {
+            switch (tab)
+            {
+                case "history":
+                    {
+                        var (data, err) = await Service.Route(DeviceId, from, to);
+                        tabError = err;
+                        route = data;
+                        await DrawPositions(route?.Positions);
+                        break;
+                    }
+                case "trips":
+                    {
+                        var (data, err) = await Service.Trips(DeviceId, from, to);
+                        tabError = err;
+                        trips = data;
+                        selectedTrip = null;
+                        if (map != null) await map.ClearRoute();
+                        break;
+                    }
+                case "temp":
+                    {
+                        var (data, err) = await Service.Temperature(DeviceId, from, to);
+                        tabError = err;
+                        temperature = data;
+                        StateHasChanged();
+                        await Task.Delay(1);   // να εμφανιστεί πρώτα το canvas
+                        await RenderChart();
+                        break;
+                    }
+                case "events":
+                    {
+                        var (data, err) = await Service.Events(DeviceId, from, to);
+                        tabError = err;
+                        events = data;
+                        break;
+                    }
+                case "raw":
+                    {
+                        var (data, err) = await Service.Raw(DeviceId, from, to);
+                        tabError = err;
+                        raw = data;
+                        break;
+                    }
+            }
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DrawPositions(List<TrackingPositionDto>? positions, List<TrackingMap.Stop>? stops = null)
+    {
+        if (map == null) return;
+        var valid = positions?.Where(p => p.Valid && !(p.Latitude == 0 && p.Longitude == 0)).ToList() ?? new();
+        if (valid.Count == 0)
+        {
+            await map.ClearRoute();
+            return;
+        }
+        await map.DrawRoute(valid.Select(p => new[] { p.Latitude, p.Longitude }).ToList(),
+            $"Αρχή: {TrackingFormat.Time(valid.First().FixTime)}",
+            $"Τέλος: {TrackingFormat.Time(valid.Last().FixTime)}",
+            stops);
+    }
+
+    // Trip → διαδρομή του συγκεκριμένου διαστήματος + στάσεις μέσα σε αυτό.
+    private async Task ShowTrip(TrackingTripDto trip)
+    {
+        if (trip.StartTime == null || trip.EndTime == null) return;
+        selectedTrip = trip;
+        var (data, err) = await Service.Route(DeviceId, trip.StartTime.Value, trip.EndTime.Value);
+        tabError = err;
+        var stops = trips?.Stops
+            .Where(s => s.Latitude.HasValue && s.StartTime >= trip.StartTime && s.StartTime <= trip.EndTime)
+            .Select(s => new TrackingMap.Stop(s.Latitude!.Value, s.Longitude!.Value, $"Στάση {TrackingFormat.ShortTime(s.StartTime)} ({TrackingFormat.Duration(s.DurationMs)})"))
+            .ToList();
+        await DrawPositions(data?.Positions, stops);
+    }
+
+    // Ενιαίος άξονας χρόνου για όλους τους αισθητήρες· κενό (null) όπου ένας δεν έχει τιμή.
+    private async Task RenderChart()
+    {
+        if (temperature == null || temperature.Series.All(s => s.Points.Count == 0)) return;
+        var times = temperature.Series.SelectMany(s => s.Points.Select(p => p.Time)).Distinct().OrderBy(t => t).ToList();
+        var labels = times.Select(t => TrackingFormat.ToLocal(t).ToString("dd/MM HH:mm")).ToList();
+        var series = temperature.Series.Where(s => s.Points.Count > 0).Select(s =>
+        {
+            var byTime = s.Points.GroupBy(p => p.Time).ToDictionary(g => g.Key, g => g.First().Value);
+            return new { key = s.Key, values = times.Select(t => byTime.TryGetValue(t, out var v) ? (double?)v : null).ToList() };
+        }).ToList();
+        try
+        {
+            await JS.InvokeVoidAsync("renderTempChart", chartId, labels, series,
+                temperature.Range?.MinC, temperature.Range?.MaxC);
+        }
+        catch (JSException) { /* παλιό index.html από cache -- χωρίς γράφημα */ }
+    }
+
+    public void Dispose()
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+    }
+}

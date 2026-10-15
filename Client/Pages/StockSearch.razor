@@ -81,12 +81,12 @@
             <table class="table table-hover stock-table">
                 <thead>
                     <tr>
-                        <th>Περιγραφή Treatment</th>
-                        <th>Αλλεργιογόνο</th>
+                        <SortTh Sorter="ResultsSort" Key="treatment" By="r => r.TreatmentDescription">Περιγραφή Treatment</SortTh>
+                        <SortTh Sorter="ResultsSort" Key="allergen" By="r => r.Allergen">Αλλεργιογόνο</SortTh>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var row in Results)
+                    @foreach (var row in ResultsSort.Apply(Results))
                     {
                         <tr>
                             <td colspan="2" class="p-0">
@@ -228,6 +228,10 @@
     private bool   IsLoading         { get; set; } = false;
     private StockFilterOptions FilterOptions { get; set; } = new();
     private List<StockSearchResult>? Results { get; set; } = null;
+
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    private TableSort<StockSearchResult>? resultsSort;
+    private TableSort<StockSearchResult> ResultsSort => resultsSort ??= new(this, "stocksearch-results");
 
     protected override async Task OnInitializedAsync()
     {

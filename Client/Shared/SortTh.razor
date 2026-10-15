@@ -1,0 +1,23 @@
+@typeparam TItem
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+
+@* Κεφαλίδα στήλης που ταξινομεί με κλικ -- κοινή για όλους τους πίνακες (βλ. TableSort). *@
+<th class="sortable @Class" style="@Style" title="@Title" @onclick="Toggle">@ChildContent<span class="sort-ind">@Sorter.Indicator(Key)</span></th>
+
+@code {
+    [Parameter, EditorRequired] public TableSort<TItem> Sorter { get; set; } = default!;
+    // Μοναδικό μέσα στον πίνακα· είναι και αυτό που θυμάται η επιλογή.
+    [Parameter, EditorRequired] public string Key { get; set; } = "";
+    // Με ποια τιμή ταξινομείται η στήλη (ημερομηνία, αριθμός, κείμενο...).
+    [Parameter, EditorRequired] public Func<TItem, object?> By { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public string? Title { get; set; }
+
+    protected override void OnParametersSet() => Sorter.Register(Key, By);
+
+    protected override Task OnInitializedAsync() => Sorter.EnsureLoadedAsync(localStorage);
+
+    private Task Toggle() => Sorter.ToggleAsync(Key);
+}

@@ -1,0 +1,297 @@
+@page "/tracking"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Παρακολούθηση Συσκευών</PageTitle>
+
+<style>
+    .trk-table td, .trk-table th { white-space: nowrap; vertical-align: middle; }
+    .trk-table tr { cursor: pointer; }
+    .trk-table tr.trk-selected td { background: #e7f1ff; }
+    .trk-map-col { position: sticky; top: .5rem; }
+    .trk-addr { max-width: 220px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: bottom; }
+</style>
+
+<div class="sbt-page-header d-flex flex-wrap align-items-center gap-2">
+    <img src="images/icons/icon-tracking.svg" alt="" class="sbt-page-icon" />
+    <h3 class="mb-3 me-auto">Παρακολούθηση Συσκευών</h3>
+    @if (me?.IsAdmin == true)
+    {
+        <a class="btn btn-outline-secondary btn-sm mb-3" href="/tracking/admin">⚙ Οχήματα &amp; Πρόσβαση</a>
+    }
+</div>
+
+@if (me == null)
+{
+    <div class="text-muted">Φόρτωση...</div>
+}
+else if (!me.CanView)
+{
+    <div class="alert alert-warning">Δεν σας έχουν ανατεθεί οχήματα ή συσκευές. Επικοινωνήστε με τον διαχειριστή.</div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="alert alert-danger py-2">
+            ⚠ @error
+            @if (overview != null)
+            {
+                <span> -- εμφανίζονται τα δεδομένα της τελευταίας επιτυχούς ενημέρωσης (@TrackingFormat.Time(overview.FetchedAt)).</span>
+            }
+        </div>
+    }
+
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="badge bg-dark">Σύνολο @devices.Count</span>
+        <span class="badge bg-success">Online @devices.Count(d => d.Status == "online")</span>
+        <span class="badge bg-secondary">Offline @devices.Count(d => d.Status != "online")</span>
+        @if (AlarmCount > 0)
+        {
+            <span class="badge bg-danger">Alarms @AlarmCount</span>
+        }
+        @if (ExcursionCount > 0)
+        {
+            <span class="badge bg-danger">Εκτός ορίων θερμ. @ExcursionCount</span>
+        }
+        <input class="form-control form-control-sm ms-md-3" style="max-width:240px" placeholder="Αναζήτηση όνομα / IMEI / όχημα"
+               @bind="search" @bind:event="oninput" />
+        <select class="form-select form-select-sm" style="max-width:160px" @bind="statusFilter">
+            <option value="">Όλες</option>
+            <option value="online">Μόνο online</option>
+            <option value="offline">Μόνο offline</option>
+            <option value="alarm">Με alarm</option>
+        </select>
+        <span class="text-muted small ms-auto">
+            @if (overview != null)
+            {
+                <span>Ενημέρωση: @TrackingFormat.Time(overview.FetchedAt)</span>
+            }
+            <span class="ms-1">(αυτόματα κάθε @PollSeconds'')</span>
+        </span>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-xl-7 order-2 order-xl-1">
+            <div class="card">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 trk-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Συσκευή</th>
+                                <th>Όχημα</th>
+                                <th>ID / IMEI</th>
+                                <th>Κατάσταση</th>
+                                <th>Τελ. επικοινωνία</th>
+                                <th>Θέση</th>
+                                <th class="text-end">km/h</th>
+                                <th>Μίζα</th>
+                                <th class="text-end">Τάση / Μπατ.</th>
+                                <th class="text-end">GSM</th>
+                                <th>Θερμ.</th>
+                                <th>Alarm</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (overview == null && string.IsNullOrEmpty(error))
+                            {
+                                <tr><td colspan="13" class="text-muted">Φόρτωση από τον Traccar...</td></tr>
+                            }
+                            else if (Filtered.Count == 0)
+                            {
+                                <tr><td colspan="13" class="text-muted">Δεν βρέθηκαν συσκευές.</td></tr>
+                            }
+                            @foreach (var d in Filtered)
+                            {
+                                var p = d.Position;
+                                <tr class="@(d.Id == selectedId ? "trk-selected" : "")" @onclick="() => Select(d.Id)">
+                                    <td>
+                                        <strong>@d.Name</strong>
+                                        @if (!string.IsNullOrEmpty(DeviceType(d)))
+                                        {
+                                            <div class="text-muted small">@DeviceType(d)</div>
+                                        }
+                                    </td>
+                                    <td>@(d.AssetName ?? "—")</td>
+                                    <td class="small">@d.UniqueId</td>
+                                    <td><span class="badge @TrackingFormat.StatusBadge(d.Status)">@TrackingFormat.StatusLabel(d.Status)</span></td>
+                                    <td title="@TrackingFormat.Time(d.LastUpdate)">@TrackingFormat.Ago(d.LastUpdate)</td>
+                                    <td class="small">
+                                        @if (p == null)
+                                        {
+                                            <span class="text-muted">Χωρίς θέση</span>
+                                        }
+                                        else
+                                        {
+                                            @if (!p.Valid)
+                                            {
+                                                <span class="badge bg-warning text-dark me-1" title="Η τελευταία θέση δεν έχει έγκυρο GPS fix">χωρίς fix</span>
+                                            }
+                                            <span class="trk-addr" title="@(p.Address ?? Coords(p))">@(p.Address ?? Coords(p))</span>
+                                            <div class="text-muted">@TrackingFormat.ShortTime(p.FixTime)</div>
+                                        }
+                                    </td>
+                                    <td class="text-end">@TrackingFormat.Num(p?.SpeedKmh, "", 0)</td>
+                                    <td>
+                                        @if (p?.Ignition == true) { <span class="badge bg-success">ON</span> }
+                                        else if (p?.Ignition == false) { <span class="badge bg-light text-dark border">OFF</span> }
+                                        else { <span class="text-muted">—</span> }
+                                    </td>
+                                    <td class="text-end small">
+                                        @if (p?.PowerV != null) { <div>@TrackingFormat.Num(p.PowerV, " V")</div> }
+                                        @if (p?.BatteryV != null) { <div class="text-muted">🔋 @TrackingFormat.Num(p.BatteryV, " V", 2)</div> }
+                                        else if (p?.BatteryLevel != null) { <div class="text-muted">🔋 @TrackingFormat.Num(p.BatteryLevel, "%", 0)</div> }
+                                        @if (p?.PowerV == null && p?.BatteryV == null && p?.BatteryLevel == null) { <span class="text-muted">—</span> }
+                                    </td>
+                                    <td class="text-end">@(p?.Rssi?.ToString() ?? "—")</td>
+                                    <td class="small">
+                                        @if (p == null || p.Temperatures.Count == 0)
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var t in p.Temperatures)
+                                            {
+                                                <div>
+                                                    @if (t.Malformed || t.Value == null)
+                                                    {
+                                                        <span class="text-warning" title="@t.Key: μη έγκυρη τιμή (@t.RawValue)">@t.Key: σφάλμα</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="@(TrackingFormat.IsExcursion(t.Value, d.TempRange) ? "text-danger fw-bold" : "")">@TrackingFormat.Num(t.Value, "°C")</span>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(p?.Alarm))
+                                        {
+                                            <span class="badge bg-danger">@TrackingFormat.AlarmLabel(p.Alarm)</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <a class="btn btn-outline-primary btn-sm py-0" href="/tracking/@d.Id" @onclick:stopPropagation="true">Άνοιγμα</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-5 order-1 order-xl-2">
+            <div class="trk-map-col">
+                <TrackingMap @ref="map" Height="calc(100vh - 220px)" OnMarkerClick="OnMarkerClick" />
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const int PollSeconds = 10;
+
+    private TrackingMeDto? me;
+    private TrackingOverviewDto? overview;
+    private List<TrackingDeviceDto> devices = new();
+    private string? error;
+    private string search = "";
+    private string statusFilter = "";
+    private int? selectedId;
+    private TrackingMap? map;
+    private CancellationTokenSource? pollCts;
+
+    private TrackingService Service => new TrackingService(dataService);
+
+    private int AlarmCount => devices.Count(d => !string.IsNullOrEmpty(d.Position?.Alarm));
+    private int ExcursionCount => devices.Count(d => d.Position?.Temperatures.Any(t => TrackingFormat.IsExcursion(t.Value, d.TempRange)) == true);
+
+    private List<TrackingDeviceDto> Filtered => devices.Where(d =>
+        (string.IsNullOrWhiteSpace(search) ||
+            d.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            d.UniqueId.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            (d.AssetName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)) &&
+        (statusFilter == "" ||
+            (statusFilter == "online" && d.Status == "online") ||
+            (statusFilter == "offline" && d.Status != "online") ||
+            (statusFilter == "alarm" && !string.IsNullOrEmpty(d.Position?.Alarm)))).ToList();
+
+    private static string Coords(TrackingPositionDto p) =>
+        $"{p.Latitude.ToString("0.00000", System.Globalization.CultureInfo.InvariantCulture)}, {p.Longitude.ToString("0.00000", System.Globalization.CultureInfo.InvariantCulture)}";
+
+    private static string? DeviceType(TrackingDeviceDto d) =>
+        string.Join(" · ", new[] { d.Model, d.Position?.Protocol }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        me = await Service.Me() ?? new TrackingMeDto();
+        if (!me.CanView) return;
+        pollCts = new CancellationTokenSource();
+        _ = PollAsync(pollCts.Token);
+    }
+
+    // Ίδιος μηχανισμός με το υπόλοιπο site (PeriodicTimer): near-real-time χωρίς refresh.
+    private async Task PollAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(PollSeconds));
+        try
+        {
+            do
+            {
+                await LoadAsync();
+            }
+            while (await timer.WaitForNextTickAsync(token));
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task LoadAsync()
+    {
+        var (data, err) = await Service.Overview();
+        error = err;
+        if (data != null)
+        {
+            overview = data;
+            devices = data.Devices;
+        }
+        await InvokeAsync(StateHasChanged);
+        if (data != null && map != null)
+            await map.SetMarkers(Markers());
+    }
+
+    private IEnumerable<TrackingMap.Marker> Markers() => devices
+        .Where(d => d.Position != null && !(d.Position.Latitude == 0 && d.Position.Longitude == 0))
+        .Select(d => new TrackingMap.Marker(
+            d.Id, d.Position!.Latitude, d.Position.Longitude,
+            d.AssetName != null ? $"{d.AssetName} ({d.Name})" : d.Name,
+            TrackingFormat.MarkerStatus(d),
+            new List<string>
+            {
+                $"{TrackingFormat.StatusLabel(d.Status)} · {TrackingFormat.Time(d.Position.FixTime)}",
+                $"Ταχύτητα: {TrackingFormat.Num(d.Position.SpeedKmh, " km/h", 0)}",
+                d.Position.Valid ? "" : "Χωρίς έγκυρο GPS fix"
+            }.Where(l => l != "").ToList()));
+
+    private async Task Select(int id)
+    {
+        selectedId = id;
+        if (map != null) await map.Focus(id);
+    }
+
+    private void OnMarkerClick(int id)
+    {
+        selectedId = id;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+    }
+}

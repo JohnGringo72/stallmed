@@ -75,16 +75,16 @@ else
         <table class="table table-hover table-sm align-middle">
             <thead>
                 <tr>
-                    <th style="width:36px"></th>
-                    <th>Εκκρεμότητα</th>
-                    <th style="width:110px" class="d-none d-md-table-cell">Προτ/τητα</th>
-                    <th style="width:120px">Προθεσμία</th>
-                    <th style="width:150px" class="d-none d-md-table-cell">Καταχώρηση</th>
+                    <SortTh Sorter="TodoSort" Key="done" By="t => t.IsDone" Style="width:36px" Title="Ολοκληρωμένα / εκκρεμή">✓</SortTh>
+                    <SortTh Sorter="TodoSort" Key="text" By="t => t.TodoText">Εκκρεμότητα</SortTh>
+                    <SortTh Sorter="TodoSort" Key="priority" By="t => PriorityRank(t.Priority)" Style="width:110px" Class="d-none d-md-table-cell">Προτ/τητα</SortTh>
+                    <SortTh Sorter="TodoSort" Key="due" By="t => t.DueDate" Style="width:120px">Προθεσμία</SortTh>
+                    <SortTh Sorter="TodoSort" Key="created" By="t => t.CreatedAt" Style="width:150px" Class="d-none d-md-table-cell">Καταχώρηση</SortTh>
                     <th style="width:90px"></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var t in todos)
+                @foreach (var t in TodoSort.Apply(todos))
                 {
                     var overdue = !t.IsDone && t.DueDate != null && t.DueDate.Value.Date < DateTime.Today;
                     <tr class="@(t.IsDone ? "todo-done" : "")">
@@ -174,6 +174,18 @@ else
     private string newText = "";
     private string newPriority = "Normal";
     private DateTime? newDueDate;
+
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    private TableSort<PersonalTodoViewDto>? todoSort;
+    private TableSort<PersonalTodoViewDto> TodoSort => todoSort ??= new(this, "todo");
+
+    private static int PriorityRank(string priority) => priority switch
+    {
+        "High" => 3,
+        "Normal" => 2,
+        "Low" => 1,
+        _ => 0
+    };
 
     private PersonalTodoViewDto? editing;
     private string editText = "";

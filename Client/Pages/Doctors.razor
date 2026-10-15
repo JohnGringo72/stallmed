@@ -156,17 +156,18 @@
         <table class="table table-hover table-sm">
             <thead>
                 <tr>
+                    @* Αύξων αριθμός της τρέχουσας σειράς -- όχι στήλη δεδομένων *@
                     <th>#</th>
-                    <th>Γιατρός</th>
-                    <th class="text-end" style="cursor:pointer" @onclick='() => summarySortBy = "sm"'>SM @(summarySortBy == "sm" ? "▼" : "")</th>
-                    <th class="text-end" style="cursor:pointer" @onclick='() => summarySortBy = "bm"'>BM @(summarySortBy == "bm" ? "▼" : "")</th>
-                    <th class="text-end" style="cursor:pointer" @onclick='() => summarySortBy = "total"'>Total @(summarySortBy == "total" ? "▼" : "")</th>
-                    <th class="text-end">Τάση</th>
-                    <th class="text-end">Πρικ</th>
+                    <SortTh Sorter="SummarySort" Key="doctor" By="r => r.Doctor">Γιατρός</SortTh>
+                    <SortTh Sorter="SummarySort" Key="sm" By="r => r.QtySM" Class="text-end">SM</SortTh>
+                    <SortTh Sorter="SummarySort" Key="bm" By="r => r.QtyBM" Class="text-end">BM</SortTh>
+                    <SortTh Sorter="SummarySort" Key="total" By="r => r.QtyTotal" Class="text-end">Total</SortTh>
+                    <SortTh Sorter="SummarySort" Key="trend" By="r => TrendSortValue(r)" Class="text-end">Τάση</SortTh>
+                    <SortTh Sorter="SummarySort" Key="prick" By="r => r.PrickQtyTotal" Class="text-end">Πρικ</SortTh>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var (row, idx) in SortedSummary.Select((r, i) => (r, i)))
+                @foreach (var (row, idx) in SummarySort.Apply(summary).Select((r, i) => (r, i)))
                 {
                     <tr style="cursor:pointer" @onclick="() => SelectFromSummary(row.Doctor)">
                         <td>@(idx + 1)</td>
@@ -313,14 +314,17 @@
     private List<string> doctorOptions = new();
     private DoctorStats? stats = null;
     private List<DoctorSummaryRow> summary = new();
-    private string summarySortBy = "total";
 
-    private IEnumerable<DoctorSummaryRow> SortedSummary => summarySortBy switch
-    {
-        "sm" => summary.OrderByDescending(r => r.QtySM),
-        "bm" => summary.OrderByDescending(r => r.QtyBM),
-        _ => summary.OrderByDescending(r => r.QtyTotal)
-    };
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    // Προεπιλογή: κατάταξη με τα περισσότερα τεμάχια πρώτα.
+    private TableSort<DoctorSummaryRow>? summarySort;
+    private TableSort<DoctorSummaryRow> SummarySort => summarySort ??= new(this, "doctors-summary", "total", true);
+
+    // Τάση % όπως φαίνεται στη στήλη· "νέο" (χωρίς ποσότητα πέρυσι) πάνω από όλα, κενό στο τέλος.
+    private static decimal? TrendSortValue(DoctorSummaryRow r) =>
+        r.PrevQtyTotal > 0 ? (decimal)(r.QtyTotal - r.PrevQtyTotal) / r.PrevQtyTotal * 100
+        : r.QtyTotal > 0 ? decimal.MaxValue
+        : (decimal?)null;
 
     protected override async Task OnInitializedAsync()
     {

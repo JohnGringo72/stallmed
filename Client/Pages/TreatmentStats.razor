@@ -146,16 +146,17 @@
                 <table class="table table-sm mix-table mb-0">
                     <thead>
                         <tr>
-                            <th>Μείγμα</th>
-                            <th class="text-end col-qnt">Ποσότητα</th>
-                            <th class="text-end col-qnt" title="Μέσος όρος ανά μήνα για την επιλεγμένη περίοδο">Μ.Ο./μήνα</th>
-                            <th class="text-end col-qnt" title="Πόσα υπάρχουν εδώ -- σε παρένθεση όσα αναμένονται">Εδώ (αναμ.)</th>
-                            <th class="text-end col-qnt" title="Ημερήσιος ρυθμός × @securityDays ημέρες μείον ό,τι ήδη έχουμε (εδώ + αναμενόμενα)">Ασφαλείας</th>
-                            <th class="col-share">%</th>
+                            @* Μία ταξινόμηση για όλους τους πίνακες: κάθε είδος ταξινομείται μέσα στον δικό του πίνακα. *@
+                            <SortTh Sorter="MixSort" Key="mix" By="m => m.Allergen">Μείγμα</SortTh>
+                            <SortTh Sorter="MixSort" Key="qnt" By="m => m.QNT" Class="text-end col-qnt">Ποσότητα</SortTh>
+                            <SortTh Sorter="MixSort" Key="avg" By="m => MonthlyAverageValue(m.QNT)" Class="text-end col-qnt" Title="Μέσος όρος ανά μήνα για την επιλεγμένη περίοδο">Μ.Ο./μήνα</SortTh>
+                            <SortTh Sorter="MixSort" Key="here" By="m => m.StockHere" Class="text-end col-qnt" Title="Πόσα υπάρχουν εδώ -- σε παρένθεση όσα αναμένονται">Εδώ (αναμ.)</SortTh>
+                            <SortTh Sorter="MixSort" Key="need" By="m => NeedOrNull(m)" Class="text-end col-qnt" Title="@($"Ημερήσιος ρυθμός × {securityDays} ημέρες μείον ό,τι ήδη έχουμε (εδώ + αναμενόμενα)")">Ασφαλείας</SortTh>
+                            <SortTh Sorter="MixSort" Key="share" By="m => m.QNT" Class="col-share">%</SortTh>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var m in g.Mixes)
+                        @foreach (var m in MixSort.Apply(g.Mixes))
                         {
                             var pct = g.TotalQNT > 0 ? (double)m.QNT / g.TotalQNT * 100 : 0;
                             <tr>
@@ -366,6 +367,17 @@
     // ανά μείγμα, οπότε τα πλεονάσματα ενός μείγματος δεν καλύπτουν άλλο.
     private int GroupSecurityStock(TreatmentMixGroup g) =>
         g.Mixes.Sum(m => Math.Max(0, SecurityStock(m.QNT, m.StockHere, m.StockExpected)));
+
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    private TableSort<TreatmentMixRow>? mixSort;
+    private TableSort<TreatmentMixRow> MixSort => mixSort ??= new(this, "treatmentstats-mixes");
+
+    // Ταξινόμηση «Ασφαλείας»: όσα επαρκούν (εμφανίζονται «—») πάνε στο τέλος.
+    private int? NeedOrNull(TreatmentMixRow m)
+    {
+        var need = SecurityStock(m.QNT, m.StockHere, m.StockExpected);
+        return need > 0 ? need : null;
+    }
 
     private void OnSecurityDaysChanged(ChangeEventArgs e)
     {

@@ -121,18 +121,18 @@ else
         <table class="table table-hover align-middle sticky-head">
             <thead>
                 <tr>
-                    <th class="sortable" @onclick='() => QuoteSortBy("number")'>Αριθμός<span>@QuoteArrow("number")</span></th>
-                    <th class="sortable" @onclick='() => QuoteSortBy("date")'>Ημ/νία<span>@QuoteArrow("date")</span></th>
-                    <th class="sortable" @onclick='() => QuoteSortBy("customer")'>Πελάτης<span>@QuoteArrow("customer")</span></th>
-                    <th class="sortable" @onclick='() => QuoteSortBy("company")'>Εταιρεία<span>@QuoteArrow("company")</span></th>
-                    <th class="sortable" @onclick='() => QuoteSortBy("valid")'>Ισχύς έως<span>@QuoteArrow("valid")</span></th>
-                    <th class="sortable text-end" @onclick='() => QuoteSortBy("total")'>Σύνολο<span>@QuoteArrow("total")</span></th>
-                    <th class="sortable" @onclick='() => QuoteSortBy("status")'>Κατάσταση<span>@QuoteArrow("status")</span></th>
+                    <SortTh Sorter="QuotesSort" Key="number" By="q => q.QuoteNumber">Αριθμός</SortTh>
+                    <SortTh Sorter="QuotesSort" Key="date" By="q => q.IssueDate">Ημ/νία</SortTh>
+                    <SortTh Sorter="QuotesSort" Key="customer" By="q => q.CustomerName">Πελάτης</SortTh>
+                    <SortTh Sorter="QuotesSort" Key="company" By="q => q.Company">Εταιρεία</SortTh>
+                    <SortTh Sorter="QuotesSort" Key="valid" By="q => q.ValidUntil">Ισχύς έως</SortTh>
+                    <SortTh Sorter="QuotesSort" Key="total" By="q => q.Total" Class="text-end">Σύνολο</SortTh>
+                    <SortTh Sorter="QuotesSort" Key="status" By="q => StatusRank(q.Status)">Κατάσταση</SortTh>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var q in SortedQuotes)
+                @foreach (var q in QuotesSort.Apply(quotes))
                 {
                     <tr style="cursor:pointer" @onclick="() => OpenDetails(q)">
                         <td class="fw-bold">@q.QuoteNumber</td>
@@ -229,23 +229,24 @@ else
             <table class="table table-sm sticky-head">
                 <thead>
                     <tr>
-                        <th>#</th>
-                        <th>Κωδικός</th>
-                        <th>Περιγραφή</th>
-                        <th class="text-end">Ποσ.</th>
-                        <th class="text-end">Τιμή μον.</th>
-                        <th class="text-end">Έκπτ.</th>
-                        <th class="text-end">ΦΠΑ</th>
-                        <th class="text-end">Σύνολο</th>
+                        @* # = η θέση της γραμμής στην προσφορά (όχι στη ταξινομημένη λίστα) *@
+                        <SortTh Sorter="DetailsLinesSort" Key="index" By="l => detailsQuote!.Lines.IndexOf(l)">#</SortTh>
+                        <SortTh Sorter="DetailsLinesSort" Key="code" By="l => l.CodePrick">Κωδικός</SortTh>
+                        <SortTh Sorter="DetailsLinesSort" Key="desc" By="l => LineDescription(l)">Περιγραφή</SortTh>
+                        <SortTh Sorter="DetailsLinesSort" Key="qty" By="l => l.Quantity" Class="text-end">Ποσ.</SortTh>
+                        <SortTh Sorter="DetailsLinesSort" Key="price" By="l => l.UnitPrice" Class="text-end">Τιμή μον.</SortTh>
+                        <SortTh Sorter="DetailsLinesSort" Key="discount" By="l => l.DiscountPct" Class="text-end">Έκπτ.</SortTh>
+                        <SortTh Sorter="DetailsLinesSort" Key="vat" By="l => l.VatRate" Class="text-end">ΦΠΑ</SortTh>
+                        <SortTh Sorter="DetailsLinesSort" Key="total" By="l => l.LineTotal" Class="text-end">Σύνολο</SortTh>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var (line, idx) in detailsQuote.Lines.Select((l, i) => (l, i)))
+                    @foreach (var line in DetailsLinesSort.Apply(detailsQuote.Lines))
                     {
                         <tr>
-                            <td>@(idx + 1)</td>
+                            <td>@(detailsQuote.Lines.IndexOf(line) + 1)</td>
                             <td>@line.CodePrick / @line.ProductTypeCode</td>
-                            <td>@(string.IsNullOrEmpty(line.Description) ? $"{line.AllergenDescription} - {line.ProductDescription}" : line.Description)</td>
+                            <td>@LineDescription(line)</td>
                             <td class="text-end">@line.Quantity @line.Unit</td>
                             <td class="text-end">@line.UnitPrice.ToString("N2") €</td>
                             <td class="text-end">@(line.DiscountPct > 0 ? $"{line.DiscountPct:N1}%" : "-")</td>
@@ -562,38 +563,26 @@ else
 
     private List<QuoteViewDto> quotes = new();
 
-    // --- Ταξινόμηση της λίστας προσφορών με κλικ στην επικεφαλίδα ---
-    private string quoteSortField = "";
-    private bool quoteSortAsc = true;
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    private TableSort<QuoteViewDto>? quotesSort;
+    private TableSort<QuoteViewDto> QuotesSort => quotesSort ??= new(this, "quotes-list");
+    private TableSort<QuoteLineViewDto>? detailsLinesSort;
+    private TableSort<QuoteLineViewDto> DetailsLinesSort => detailsLinesSort ??= new(this, "quotes-details-lines");
 
-    private void QuoteSortBy(string field)
+    // Κατάσταση με τη σειρά της ροής (όχι αλφαβητικά).
+    private static int StatusRank(string? status) => status switch
     {
-        if (quoteSortField == field) quoteSortAsc = !quoteSortAsc;
-        else { quoteSortField = field; quoteSortAsc = true; }
-    }
+        QuoteStatus.Draft => 1,
+        QuoteStatus.Sent => 2,
+        QuoteStatus.Accepted => 3,
+        QuoteStatus.Converted => 4,
+        QuoteStatus.Rejected => 5,
+        QuoteStatus.Expired => 6,
+        _ => 7
+    };
 
-    private string QuoteArrow(string field)
-        => quoteSortField == field ? (quoteSortAsc ? " ▲" : " ▼") : "";
-
-    private IEnumerable<QuoteViewDto> SortedQuotes
-    {
-        get
-        {
-            if (string.IsNullOrEmpty(quoteSortField)) return quotes;
-
-            IEnumerable<QuoteViewDto> sorted = quoteSortField switch
-            {
-                "date" => quotes.OrderBy(q => q.IssueDate),
-                "customer" => quotes.OrderBy(q => q.CustomerName),
-                "company" => quotes.OrderBy(q => q.Company),
-                "valid" => quotes.OrderBy(q => q.ValidUntil),
-                "total" => quotes.OrderBy(q => q.Total),
-                "status" => quotes.OrderBy(q => q.Status),
-                _ => quotes.OrderBy(q => q.QuoteNumber)
-            };
-            return quoteSortAsc ? sorted : sorted.Reverse();
-        }
-    }
+    private static string LineDescription(QuoteLineViewDto line) =>
+        string.IsNullOrEmpty(line.Description) ? $"{line.AllergenDescription} - {line.ProductDescription}" : line.Description;
     private string filterCompany = "";
     private string filterStatus = "All";
     private DateTime? filterFrom;

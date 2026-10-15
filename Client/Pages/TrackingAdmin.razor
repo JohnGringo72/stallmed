@@ -1,0 +1,303 @@
+@page "/tracking/admin"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+
+<PageTitle>Οχήματα & Πρόσβαση -- Παρακολούθηση</PageTitle>
+
+<div class="sbt-page-header">
+    <img src="images/icons/icon-tracking.svg" alt="" class="sbt-page-icon" />
+    <div class="mb-3">
+        <a href="/tracking" class="small">← Παρακολούθηση Συσκευών</a>
+        <h3 class="mb-0">Οχήματα &amp; Πρόσβαση</h3>
+    </div>
+</div>
+
+@if (!userManager.IsAdmin)
+{
+    <div class="alert alert-warning">Η σελίδα είναι διαθέσιμη μόνο σε διαχειριστές.</div>
+}
+else if (data == null)
+{
+    <div class="@(error != null ? "alert alert-danger" : "text-muted")">@(error ?? "Φόρτωση...")</div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="alert @(messageOk ? "alert-success" : "alert-danger") alert-dismissible py-2">
+            @message
+            <button type="button" class="btn-close" @onclick="() => message = null"></button>
+        </div>
+    }
+    @if (data.Devices.Count == 0)
+    {
+        <div class="alert alert-warning py-2">Δεν ήρθαν συσκευές από τον Traccar (δεν απαντά ή δεν έχει ρυθμιστεί το appsettings.Tracking.json).</div>
+    }
+
+    @* ===== Όχημα (asset) ===== *@
+    <div class="card mb-3">
+        <div class="card-header py-1"><strong>@(edit.AssetID.HasValue ? "Επεξεργασία οχήματος" : "Νέο όχημα / asset")</strong></div>
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-3">
+                    <label class="form-label mb-1">Όνομα</label>
+                    <input class="form-control form-control-sm" @bind="edit.Name" />
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1">Τύπος</label>
+                    <select class="form-select form-select-sm" @bind="edit.AssetType">
+                        <option value="Vehicle">Όχημα</option>
+                        <option value="Fridge">Ψυγείο</option>
+                        <option value="Container">Container</option>
+                        <option value="Other">Άλλο</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1">Πινακίδα</label>
+                    <input class="form-control form-control-sm" @bind="edit.PlateNumber" />
+                </div>
+                <div class="col-6 col-md-1">
+                    <label class="form-label mb-1">Εταιρεία</label>
+                    <select class="form-select form-select-sm" @bind="edit.Team">
+                        <option value="">—</option>
+                        @foreach (var t in Teams) { <option value="@t">@t</option> }
+                    </select>
+                </div>
+                <div class="col-3 col-md-1">
+                    <label class="form-label mb-1" title="Κενό = προεπιλογή">Min °C</label>
+                    <input type="number" step="0.1" class="form-control form-control-sm" @bind="edit.MinC" />
+                </div>
+                <div class="col-3 col-md-1">
+                    <label class="form-label mb-1" title="Κενό = προεπιλογή">Max °C</label>
+                    <input type="number" step="0.1" class="form-control form-control-sm" @bind="edit.MaxC" />
+                </div>
+                <div class="col-auto form-check ms-2 mb-1">
+                    <input type="checkbox" class="form-check-input" id="assetActive" @bind="edit.IsActive" />
+                    <label class="form-check-label" for="assetActive">Ενεργό</label>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary btn-sm" @onclick="SaveAsset" disabled="@busy">Αποθήκευση</button>
+                    @if (edit.AssetID.HasValue)
+                    {
+                        <button class="btn btn-link btn-sm" @onclick="() => edit = new()">Άκυρο</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ===== Λίστα οχημάτων + συνδέσεις tracker ===== *@
+    <div class="card mb-3">
+        <div class="card-header py-1"><strong>Οχήματα και συσκευές</strong> <span class="text-muted small">(η αλλαγή tracker κλείνει την παλιά σύνδεση -- το ιστορικό μένει)</span></div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+                <thead class="table-light"><tr><th>Όχημα</th><th>Εταιρεία</th><th>Όρια θερμ.</th><th>Συσκευές (τρέχουσες / παλιές)</th><th>Σύνδεση συσκευής</th><th></th></tr></thead>
+                <tbody>
+                    @if (data.Assets.Count == 0)
+                    {
+                        <tr><td colspan="6" class="text-muted">Δεν υπάρχουν οχήματα ακόμα.</td></tr>
+                    }
+                    @foreach (var a in data.Assets)
+                    {
+                        <tr class="@(a.IsActive ? "" : "text-muted")">
+                            <td><strong>@a.Name</strong> <span class="small text-muted">@a.PlateNumber · @a.AssetType</span></td>
+                            <td>@if (!string.IsNullOrEmpty(a.Team)) { <CompanyBadge Code="@a.Team" Text="@a.Team" /> }</td>
+                            <td class="small">@(a.MinC.HasValue ? $"{a.MinC} – {a.MaxC} °C" : "προεπιλογή")</td>
+                            <td class="small">
+                                @foreach (var l in a.Links)
+                                {
+                                    <div class="@(l.ValidTo.HasValue ? "text-muted" : "")">
+                                        @(l.DeviceName ?? $"#{l.TraccarDeviceId}") <span class="badge bg-light text-dark border">@l.DeviceRole</span>
+                                        @TrackingFormat.ShortTime(l.ValidFrom) → @(l.ValidTo.HasValue ? TrackingFormat.ShortTime(l.ValidTo) : "σήμερα")
+                                        @if (!l.ValidTo.HasValue)
+                                        {
+                                            <button class="btn btn-link btn-sm text-danger p-0 ms-1" @onclick="() => Unlink(l)" title="Τέλος σύνδεσης (το ιστορικό μένει)">αποσύνδεση</button>
+                                        }
+                                    </div>
+                                }
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <select class="form-select form-select-sm" style="min-width:160px" @bind="linkDevice[a.AssetID]">
+                                        <option value="0">— συσκευή —</option>
+                                        @foreach (var d in data.Devices) { <option value="@d.Id">@d.Name (@d.UniqueId)</option> }
+                                    </select>
+                                    <select class="form-select form-select-sm" style="width:90px" @bind="linkRole[a.AssetID]">
+                                        <option value="GPS">GPS</option>
+                                        <option value="TEMP">TEMP</option>
+                                        <option value="OTHER">OTHER</option>
+                                    </select>
+                                    <button class="btn btn-outline-primary btn-sm" @onclick="() => Link(a)" disabled="@(busy || linkDevice[a.AssetID] == 0)">+</button>
+                                </div>
+                            </td>
+                            <td><button class="btn btn-outline-secondary btn-sm" @onclick="() => Edit(a)">Επεξεργασία</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @* ===== Πρόσβαση χρηστών ===== *@
+    <div class="card mb-3">
+        <div class="card-header py-1"><strong>Πρόσβαση χρηστών</strong> <span class="text-muted small">(οι admin του site βλέπουν ήδη τα πάντα)</span></div>
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-3">
+                    <label class="form-label mb-1">Χρήστης</label>
+                    <select class="form-select form-select-sm" @bind="access.UserID">
+                        <option value="0">— επιλογή —</option>
+                        @foreach (var u in data.Users) { <option value="@u.IdUser">@u.Name @(u.Team != null ? $"({u.Team})" : "")</option> }
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label mb-1">Επίπεδο</label>
+                    <select class="form-select form-select-sm" @bind="access.AccessLevel">
+                        <option value="@TrackingAccessLevels.User">Χρήστης (ένα όχημα)</option>
+                        <option value="@TrackingAccessLevels.CompanyAdmin">Company Admin</option>
+                        <option value="@TrackingAccessLevels.Technical">Technical (όλα + Raw)</option>
+                    </select>
+                </div>
+                @if (access.AccessLevel == TrackingAccessLevels.CompanyAdmin)
+                {
+                    <div class="col-6 col-md-2">
+                        <label class="form-label mb-1">Εταιρεία</label>
+                        <select class="form-select form-select-sm" @bind="access.Team">
+                            <option value="">—</option>
+                            @foreach (var t in Teams) { <option value="@t">@t</option> }
+                        </select>
+                    </div>
+                }
+                @if (access.AccessLevel == TrackingAccessLevels.User)
+                {
+                    <div class="col-6 col-md-3">
+                        <label class="form-label mb-1">Όχημα</label>
+                        <select class="form-select form-select-sm" @bind="accessAssetId">
+                            <option value="0">—</option>
+                            @foreach (var a in data.Assets.Where(x => x.IsActive)) { <option value="@a.AssetID">@a.Name</option> }
+                        </select>
+                    </div>
+                }
+                <div class="col-auto">
+                    <button class="btn btn-primary btn-sm" @onclick="SaveAccess" disabled="@(busy || access.UserID == 0)">+ Προσθήκη</button>
+                </div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead class="table-light"><tr><th>Χρήστης</th><th>Επίπεδο</th><th>Εμβέλεια</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var x in data.Access)
+                    {
+                        <tr>
+                            <td>@x.UserName</td>
+                            <td>@x.AccessLevel</td>
+                            <td>@(x.AccessLevel switch { "Technical" => "Όλες οι συσκευές + Raw Data", "CompanyAdmin" => $"Εταιρεία {x.Team}", _ => x.AssetName ?? $"όχημα #{x.AssetID}" })</td>
+                            <td class="text-end"><button class="btn btn-link btn-sm text-danger p-0" @onclick="() => DeleteAccess(x)">αφαίρεση</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @* ===== Προεπιλεγμένο εύρος θερμοκρασίας ===== *@
+    <div class="card mb-3">
+        <div class="card-header py-1"><strong>Προεπιλεγμένο εύρος θερμοκρασίας (cold-chain)</strong></div>
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-4 col-md-1">
+                    <label class="form-label mb-1">Min °C</label>
+                    <input type="number" step="0.1" class="form-control form-control-sm" @bind="data.DefaultRange.MinC" />
+                </div>
+                <div class="col-4 col-md-1">
+                    <label class="form-label mb-1">Max °C</label>
+                    <input type="number" step="0.1" class="form-control form-control-sm" @bind="data.DefaultRange.MaxC" />
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary btn-sm" @onclick="SaveDefaultRange" disabled="@busy">Αποθήκευση</button>
+                </div>
+                <div class="col-12 small text-muted">Ισχύει όπου δεν έχει οριστεί εύρος στο όχημα (ή στη συσκευή).</div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly string[] Teams = { "SM", "BM", "TECO", "VF" };
+
+    private TrackingAdminDto? data;
+    private string? error;
+    private string? message;
+    private bool messageOk;
+    private bool busy;
+
+    private SaveTrackingAssetRequest edit = new();
+    private SaveTrackingAccessRequest access = new();
+    private int accessAssetId;
+    private Dictionary<int, int> linkDevice = new();
+    private Dictionary<int, string> linkRole = new();
+
+    private TrackingService Service => new TrackingService(dataService);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!userManager.IsAdmin) return;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        (data, error) = await Service.Admin();
+        if (data == null) return;
+        foreach (var a in data.Assets)
+        {
+            linkDevice.TryAdd(a.AssetID, 0);
+            linkRole.TryAdd(a.AssetID, "GPS");
+        }
+    }
+
+    private async Task Run(Func<Task<TrackingResult?>> action, string okText)
+    {
+        busy = true;
+        try
+        {
+            var result = await action();
+            messageOk = result?.Success == true;
+            message = messageOk ? okText : (result?.Message ?? "Η αποθήκευση απέτυχε.");
+            if (messageOk) await Load();
+        }
+        finally { busy = false; }
+    }
+
+    private void Edit(TrackingAssetDto a) => edit = new SaveTrackingAssetRequest
+    {
+        AssetID = a.AssetID, Name = a.Name, AssetType = a.AssetType, PlateNumber = a.PlateNumber,
+        Team = a.Team, Notes = a.Notes, IsActive = a.IsActive, MinC = a.MinC, MaxC = a.MaxC
+    };
+
+    private async Task SaveAsset()
+    {
+        await Run(() => Service.SaveAsset(edit), "Το όχημα αποθηκεύτηκε.");
+        if (messageOk) edit = new();
+    }
+
+    private Task Link(TrackingAssetDto a) => Run(() => Service.Link(new LinkTrackingDeviceRequest
+    {
+        AssetID = a.AssetID, TraccarDeviceId = linkDevice[a.AssetID], DeviceRole = linkRole[a.AssetID]
+    }), "Η συσκευή συνδέθηκε.");
+
+    private Task Unlink(TrackingLinkDto l) => Run(() => Service.Unlink(l.LinkID), "Η σύνδεση έκλεισε (το ιστορικό μένει).");
+
+    private async Task SaveAccess()
+    {
+        access.AssetID = accessAssetId == 0 ? null : accessAssetId;
+        await Run(() => Service.SaveAccess(access), "Η πρόσβαση προστέθηκε.");
+        if (messageOk) { access = new(); accessAssetId = 0; }
+    }
+
+    private Task DeleteAccess(TrackingAccessDto x) => Run(() => Service.DeleteAccess(x.AccessID), "Η πρόσβαση αφαιρέθηκε.");
+
+    private Task SaveDefaultRange() => Run(() => Service.SaveDefaultRange(data!.DefaultRange), "Το εύρος αποθηκεύτηκε.");
+}

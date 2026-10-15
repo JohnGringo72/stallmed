@@ -70,7 +70,7 @@
                     <div class="top-card @(i == 0 ? "first" : "")" @onclick="() => ToggleUser(u.UserName)">
                         <div class="top-rank">@(i + 1)</div>
                         <div class="top-body">
-                            <div class="top-name">@PersonName.Short(u.UserName)</div>
+                            <div class="top-name"><PersonBadge Name="@u.UserName" UserId="@u.UserId" /></div>
                             <div class="top-kinds">
                                 @foreach (var g in u.Groups.Take(4))
                                 {
@@ -91,7 +91,7 @@
             <div class="user-card">
                 <div class="user-header" @onclick="() => ToggleUser(u.UserName)">
                     <span class="arrow @(open ? "open" : "")">▶</span>
-                    <strong>@PersonName.Short(u.UserName)</strong>
+                    <PersonBadge Name="@u.UserName" UserId="@u.UserId" />
                     <span class="badge bg-primary ms-2">@u.TotalActions</span>
                     <span class="user-kinds">
                         @foreach (var g in u.Groups)

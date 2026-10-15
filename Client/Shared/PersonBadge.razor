@@ -1,0 +1,27 @@
+@using StallmedManager.Shared.Models
+@inject PersonColors personColors
+
+@* Όνομα χρήστη σε χρωματιστό φόντο -- ίδιο χρώμα για τον ίδιο άνθρωπο παντού (PersonColors).
+   Δείχνει το σύντομο όνομα («Γιώτα Μ.»)· το πλήρες φαίνεται στο tooltip. *@
+@if (!string.IsNullOrWhiteSpace(Name))
+{
+    <span class="badge person-badge @Class" style="background:@personColors.For(UserId, Name);color:#fff" title="@Name">@PersonName.Short(Name)</span>
+}
+else if (Empty != null)
+{
+    <span class="text-muted">@Empty</span>
+}
+
+@code {
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public int? UserId { get; set; }
+    [Parameter] public string? Class { get; set; }
+    // Τι δείχνει όταν δεν υπάρχει όνομα (π.χ. "—"). Κενό = τίποτα.
+    [Parameter] public string? Empty { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Τα χρώματα φορτώνονται μία φορά για όλη την εφαρμογή.
+        await personColors.EnsureLoadedAsync();
+    }
+}

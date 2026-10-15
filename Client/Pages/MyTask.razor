@@ -6,6 +6,7 @@
 @inject IJSRuntime JS
 @inject NotificationsState notifications
 @inject PushClientService push
+@inject PersonColors personColors
 @implements IDisposable
 
 <PageTitle>Tasks / Issues</PageTitle>
@@ -125,23 +126,23 @@ else
         <table class="table table-striped table-hover table-sm align-middle">
             <thead>
                 <tr>
-                    <th class="sortable" @onclick='() => SortBy("createdby")'>Άνοιξε<span>@SortArrow("createdby")</span></th>
-                    <th class="sortable" @onclick='() => SortBy("title")'>Τίτλος<span>@SortArrow("title")</span></th>
-                    <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("assigned")'>Ανάθεση<span>@SortArrow("assigned")</span></th>
-                    <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("code")'>Κωδικός<span>@SortArrow("code")</span></th>
-                    <th class="sortable d-none d-lg-table-cell" @onclick='() => SortBy("created")'>Ημερομηνία<span>@SortArrow("created")</span></th>
-                    <th class="sortable d-none d-md-table-cell" @onclick='() => SortBy("due")'>Προθεσμία<span>@SortArrow("due")</span></th>
-                    <th class="sortable" @onclick='() => SortBy("status")'>Στάτους<span>@SortArrow("status")</span></th>
-                    <th class="sortable d-none d-lg-table-cell" @onclick='() => SortBy("priority")'>Προτ/τητα<span>@SortArrow("priority")</span></th>
-                    <th class="d-none d-lg-table-cell" title="Σχόλια / Συνημμένα">💬 / 📎</th>
+                    <SortTh Sorter="IssuesSort" Key="createdby" By="i => string.IsNullOrEmpty(i.CreatedByName) ? null : PersonName.Short(i.CreatedByName)">Άνοιξε</SortTh>
+                    <SortTh Sorter="IssuesSort" Key="title" By="i => i.Title">Τίτλος</SortTh>
+                    <SortTh Sorter="IssuesSort" Key="assigned" By="i => AssignmentSortText(i)" Class="d-none d-md-table-cell">Ανάθεση</SortTh>
+                    <SortTh Sorter="IssuesSort" Key="code" By="i => i.IssueID" Class="d-none d-md-table-cell">Κωδικός</SortTh>
+                    <SortTh Sorter="IssuesSort" Key="created" By="i => i.CreatedAt" Class="d-none d-lg-table-cell">Ημερομηνία</SortTh>
+                    <SortTh Sorter="IssuesSort" Key="due" By="i => i.DueDate" Class="d-none d-md-table-cell">Προθεσμία</SortTh>
+                    <SortTh Sorter="IssuesSort" Key="status" By="i => StatusRank(i.Status)">Στάτους</SortTh>
+                    <SortTh Sorter="IssuesSort" Key="priority" By="i => PriorityRank(i.Priority)" Class="d-none d-lg-table-cell">Προτ/τητα</SortTh>
+                    <SortTh Sorter="IssuesSort" Key="comments" By="i => i.CommentCount" Class="d-none d-lg-table-cell" Title="Σχόλια / Συνημμένα">💬 / 📎</SortTh>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var i in SortedIssues)
+                @foreach (var i in IssuesSort.Apply(VisibleIssues))
                 {
                     <tr class="issue-row" @onclick="() => OpenDetails(i.IssueID)">
-                        <td>@(string.IsNullOrEmpty(i.CreatedByName) ? "—" : PersonName.Short(i.CreatedByName))</td>
-                        <td>@i.Title</td>
+                        <td><PersonBadge Name="@i.CreatedByName" UserId="@i.CreatedBy" Empty="—" /></td>
+                        <td>@if (i.IsPrivate) { <span title="Private: μόνο όσοι εμπλέκονται">🔒 </span> }@i.Title</td>
                         <td class="d-none d-md-table-cell">
                             @if (i.AssignedToAll)
                             {
@@ -153,7 +154,7 @@ else
                             }
                             else
                             {
-                                @(string.IsNullOrEmpty(i.AssignedName) ? "—" : PersonName.Short(i.AssignedName))
+                                <PersonBadge Name="@i.AssignedName" UserId="@i.AssignedUserID" Empty="—" />
                             }
                         </td>
                         <td class="d-none d-md-table-cell"><strong>@i.IssueCode</strong></td>
@@ -276,6 +277,15 @@ else
                         <div class="col-md-4">
                             <label class="form-label mb-1">Προθεσμία</label>
                             <InputDate @bind-Value="editDueDate" class="form-control" />
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="issuePrivate" @bind="editIsPrivate" disabled="@editAssignedToAll" />
+                                <label class="form-check-label" for="issuePrivate"
+                                       title="@Hint("Το βλέπουν μόνο όσοι εμπλέκονται (και όσοι βλέπουν «Όλα») -- όχι οι ομάδες")">
+                                    🔒 Private — μόνο όσοι εμπλέκονται, όχι οι ομάδες
+                                </label>
+                            </div>
                         </div>
                         @if (editId != null)
                         {
@@ -402,7 +412,7 @@ else
                             {
                             <table class="table table-sm mb-2">
                                 <tbody>
-                                    <tr><th>Άνοιξε</th><td>@(string.IsNullOrEmpty(iss.CreatedByName) ? "—" : PersonName.Short(iss.CreatedByName)) · @iss.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
+                                    <tr><th>Άνοιξε</th><td><PersonBadge Name="@iss.CreatedByName" UserId="@iss.CreatedBy" Empty="—" /> · @iss.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td></tr>
                                     <tr>
                                         <th>Ανάθεση</th>
                                         <td>
@@ -449,7 +459,7 @@ else
                                                     @onclick="() => ViewAttachment(att)"
                                                     title="@Hint("Άνοιγμα του αρχείου")">@att.FileName</button>
                                             <span class="d-flex align-items-center gap-1">
-                                                <span class="text-muted small">@PersonName.Short(att.UploadedByName) @att.CreatedAt.ToString("dd/MM")</span>
+                                                <span class="text-muted small"><PersonBadge Name="@att.UploadedByName" /> @att.CreatedAt.ToString("dd/MM")</span>
                                                 <button class="btn btn-sm btn-outline-secondary py-0" @onclick="() => DownloadAttachment(att)" title="@Hint("Κατέβασμα του αρχείου")">⬇</button>
                                                 <button class="btn btn-sm btn-outline-danger py-0" @onclick="() => DeleteAttachment(att)" title="@Hint("Διαγραφή συνημμένου")">×</button>
                                             </span>
@@ -474,10 +484,10 @@ else
                                 {
                                     var mine = c.UserID != null && c.UserID == userManager.User?.IdUser;
                                     <div class="chat-msg @(mine ? "mine" : "")">
-                                        <div class="chat-avatar" title="@PersonName.Short(c.UserName)">@Initials(c.UserName)</div>
+                                        <div class="chat-avatar" title="@PersonName.Short(c.UserName)" style="background:@personColors.For(c.UserID, c.UserName);color:#fff">@Initials(c.UserName)</div>
                                         <div class="chat-bubble">
                                             <div class="chat-meta">
-                                                @PersonName.Short(c.UserName) · @c.CreatedAt.ToString("dd/MM/yyyy HH:mm")
+                                                <PersonBadge Name="@c.UserName" UserId="@c.UserID" /> · @c.CreatedAt.ToString("dd/MM/yyyy HH:mm")
                                                 @if (mine)
                                                 {
                                                     <button class="btn btn-link btn-sm text-danger p-0 ms-2" style="font-size:1.05rem; line-height:1; vertical-align:middle;"
@@ -553,45 +563,30 @@ else
 
     private List<IssueListItemDto> issues = new();
 
-    // Ταξινόμηση λίστας με κλικ στις επικεφαλίδες (δεύτερο κλικ = αντίστροφη σειρά).
-    private string sortField = "code";
-    private bool sortAsc = false;   // προεπιλογή: νεότερα πρώτα
-
-    private void SortBy(string field)
-    {
-        if (sortField == field) sortAsc = !sortAsc;
-        else { sortField = field; sortAsc = true; }
-    }
-
-    private string SortArrow(string field)
-        => sortField == field ? (sortAsc ? " ▲" : " ▼") : "";
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    // Προεπιλογή: κατά κωδικό, νεότερα πρώτα.
+    private TableSort<IssueListItemDto>? issuesSort;
+    private TableSort<IssueListItemDto> IssuesSort => issuesSort ??= new(this, "mytask-issues", "code", true);
 
     private static int PriorityRank(string p) => p switch { "High" => 2, "Normal" => 1, "Low" => 0, _ => -1 };
     private static int StatusRank(string s) => s switch { "Open" => 0, "InProgress" => 1, "Done" => 2, "Cancelled" => 3, _ => 4 };
 
-    private IEnumerable<IssueListItemDto> SortedIssues
+    // Ταξινόμηση ανάθεσης με ό,τι φαίνεται στη στήλη (χωρίς τα εικονίδια).
+    private static string? AssignmentSortText(IssueListItemDto i) =>
+        i.AssignedToAll ? "Προς όλους"
+        : !string.IsNullOrEmpty(i.AssignedTeam) ? Teams.Label(i.AssignedTeam)
+        : string.IsNullOrEmpty(i.AssignedName) ? null : PersonName.Short(i.AssignedName);
+
+    private IEnumerable<IssueListItemDto> VisibleIssues
     {
         get
         {
             // «Τα δικά μου» = όσα άνοιξα εγώ ΚΑΙ όσα μου ανέθεσαν. Σκέτη ανάθεση
             // έκρυβε όσα άνοιγα και ανέθετα σε άλλον -- δηλαδή τη μισή δουλειά μου.
             var me = userManager.User?.IdUser;
-            var visible = onlyMine
+            return onlyMine
                 ? issues.Where(i => i.AssignedUserID == me || i.CreatedBy == me).ToList()
                 : issues;
-
-            IOrderedEnumerable<IssueListItemDto> sorted = sortField switch
-            {
-                "title" => visible.OrderBy(i => i.Title, StringComparer.CurrentCultureIgnoreCase),
-                "assigned" => visible.OrderBy(i => i.AssignedName ?? "", StringComparer.CurrentCultureIgnoreCase),
-                "createdby" => visible.OrderBy(i => i.CreatedByName ?? "", StringComparer.CurrentCultureIgnoreCase),
-                "created" => visible.OrderBy(i => i.CreatedAt),
-                "due" => visible.OrderBy(i => i.DueDate == null).ThenBy(i => i.DueDate), // χωρίς προθεσμία στο τέλος
-                "status" => visible.OrderBy(i => StatusRank(i.Status)),
-                "priority" => visible.OrderBy(i => PriorityRank(i.Priority)),
-                _ => visible.OrderBy(i => i.IssueID)
-            };
-            return sortAsc ? sorted : sorted.Reverse();
         }
     }
     private List<IssueUserDto> users = new();
@@ -608,6 +603,7 @@ else
     private string? editDescription;
     private int? editAssignedUserId;
     private bool editAssignedToAll;
+    private bool editIsPrivate;
     private string? editAssignedTeam;
 
     private static string AssignmentLabel(IssueTask iss) =>
@@ -769,6 +765,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         users = await Service.GetUsers();
+        await personColors.EnsureLoadedAsync();   // χρώματα ονομάτων (και στα avatar της συνομιλίας)
         await Load();
 
         // Αυτόματη ανανέωση σαν chat: με push αμέσως, αλλιώς από τον έλεγχο του καμπανακιού,
@@ -898,6 +895,7 @@ else
         editAssignedUserId = null;
         editAssignedToAll = false;
         editAssignedTeam = null;
+        editIsPrivate = false;
         editPriority = "Normal";
         editStatus = "Open";
         editDueDate = DateTime.Today.AddDays(7);   // προεπιλογή: 1 εβδομάδα
@@ -921,6 +919,7 @@ else
         editAssignedUserId = iss.AssignedUserID;
         editAssignedToAll = iss.AssignedToAll;
         editAssignedTeam = Teams.Normalize(iss.AssignedTeam);
+        editIsPrivate = iss.IsPrivate;
         editPriority = iss.Priority;
         editStatus = iss.Status;
         editDueDate = iss.DueDate;
@@ -959,6 +958,7 @@ else
                 : users.FirstOrDefault(u => u.IdUser == editAssignedUserId)?.FullName,
             AssignedToAll = editAssignedToAll,
             AssignedTeam = editAssignedTeam,
+            IsPrivate = editIsPrivate && !editAssignedToAll,
             Status = editStatus,
             Priority = editPriority,
             DueDate = editDueDate,
@@ -1145,6 +1145,7 @@ else
             AssignedName = iss.AssignedName,
             // Χωρίς αυτά, η αλλαγή στάτους έσβηνε την ανάθεση σε όλους/ομάδα
             AssignedToAll = iss.AssignedToAll,
+            IsPrivate = iss.IsPrivate,   // αλλιώς η αλλαγή στάτους θα το έκανε δημόσιο
             AssignedTeam = iss.AssignedTeam,
             Status = newStatus,
             Priority = iss.Priority,

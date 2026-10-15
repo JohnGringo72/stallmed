@@ -38,6 +38,38 @@ namespace StallmedManager.Client
             }
         }
 
+        // Όπως το Get, αλλά κρατά και το μήνυμα λάθους του server (π.χ. 503 «ο Traccar
+        // δεν απαντά»), ώστε η σελίδα να δείξει τι έφταιξε αντί για κενή λίστα.
+        public async Task<(T? Data, string? Error)> GetWithError<T>(string path)
+        {
+            if (userManager?.User == null)
+                return (default, "Δεν είστε συνδεδεμένοι.");
+            try
+            {
+                var request = new HttpRequestMessage(HttpMethod.Get, path);
+                request.Headers.Add("Authorization", "Bearer " + userManager.User.Token);
+                var response = await http.SendAsync(request);
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    await userManager.Logout();
+                    return (default, "Η σύνδεση έληξε.");
+                }
+                if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                    return (default, "Δεν έχετε πρόσβαση.");
+                if (!response.IsSuccessStatusCode)
+                {
+                    var text = await response.Content.ReadAsStringAsync();
+                    return (default, string.IsNullOrWhiteSpace(text) || text.TrimStart().StartsWith("{") || text.TrimStart().StartsWith("<")
+                        ? $"Σφάλμα {(int)response.StatusCode}." : text.Trim('"'));
+                }
+                return (await response.Content.ReadFromJsonAsync<T>(), null);
+            }
+            catch (Exception)
+            {
+                return (default, "Πρόβλημα δικτύου.");
+            }
+        }
+
         public async Task<TResponse> Post<TRequest, TResponse>(string path, TRequest body)
         {
             if (userManager?.User == null)

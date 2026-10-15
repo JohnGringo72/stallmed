@@ -122,20 +122,20 @@ else if (status == "loaded")
         <table class="table table-hover table-sm sticky-head">
             <thead>
                 <tr>
-                    <th>Ονοματεπώνυμο</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Ρόλος</th>
-                    <th>Ομάδα</th>
-                    <th>Θέματα</th>
-                    <th>Κατάσταση</th>
-                    <th>Κωδικός</th>
-                    <th>Τελευταία σύνδεση</th>
+                    <SortTh Sorter="UsersSort" Key="name" By="u => u.FullName">Ονοματεπώνυμο</SortTh>
+                    <SortTh Sorter="UsersSort" Key="username" By="u => u.Username">Username</SortTh>
+                    <SortTh Sorter="UsersSort" Key="email" By="u => u.Email">Email</SortTh>
+                    <SortTh Sorter="UsersSort" Key="role" By="u => u.Role">Ρόλος</SortTh>
+                    <SortTh Sorter="UsersSort" Key="team" By="u => string.IsNullOrEmpty(u.Team) ? null : Teams.Label(u.Team)">Ομάδα</SortTh>
+                    <SortTh Sorter="UsersSort" Key="tasks" By='u => u.TasksVisibility == "All" ? "Όλα" : "Μόνο τα δικά του"'>Θέματα</SortTh>
+                    <SortTh Sorter="UsersSort" Key="active" By='u => u.Active ? "Ενεργός" : "Ανενεργός"'>Κατάσταση</SortTh>
+                    <SortTh Sorter="UsersSort" Key="password" By="u => PasswordRank(u)">Κωδικός</SortTh>
+                    <SortTh Sorter="UsersSort" Key="lastlogin" By="u => u.LastLogin">Τελευταία σύνδεση</SortTh>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var u in VisibleUsers)
+                @foreach (var u in UsersSort.Apply(VisibleUsers))
                 {
                     <tr class="@(u.Active ? "" : "user-inactive")">
                         <td><strong>@(string.IsNullOrWhiteSpace(u.FullName) ? "—" : u.FullName)</strong></td>
@@ -452,6 +452,14 @@ else if (status == "loaded")
     private string modalMessage = "";
 
     private IEnumerable<UserAdminDto> VisibleUsers => showInactive ? users : users.Where(u => u.Active);
+
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    private TableSort<UserAdminDto>? usersSort;
+    private TableSort<UserAdminDto> UsersSort => usersSort ??= new(this, "users-list");
+
+    // Σειρά στήλης «Κωδικός»: hash πρώτα, μετά παλιά μορφή· όσοι θέλουν αλλαγή μετά από τους υπόλοιπους.
+    private static int PasswordRank(UserAdminDto u) =>
+        (u.HasEncryptedPassword ? 0 : 2) + (u.ForcePasswordChange ? 1 : 0);
 
     protected override async Task OnInitializedAsync()
     {

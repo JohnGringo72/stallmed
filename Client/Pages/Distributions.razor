@@ -1,0 +1,281 @@
+@page "/distributions"
+@using StallmedManager.Shared.Models
+@inject DataService dataService
+@inject UserManager userManager
+@inject IJSRuntime JS
+
+<PageTitle>Διανομές</PageTitle>
+
+@* Διανομές σε γιατρούς (ημερολόγια, δώρα, υλικό): ποιος γιατρός πήρε τι, πόσα, πότε
+   και ποιος το έδωσε. Όλοι οι χρήστες βλέπουν και καταχωρούν -- για να μη δοθεί διπλό. *@
+
+<h3 class="mb-3">🎁 Διανομές σε γιατρούς</h3>
+
+@* ===== Νέα καταχώρηση ===== *@
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-3">
+                <label class="form-label mb-1">Είδος</label>
+                <input class="form-control" list="distributionItems" @bind="newItem" />
+                <datalist id="distributionItems">
+                    @foreach (var it in items)
+                    {
+                        <option value="@it"></option>
+                    }
+                </datalist>
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label mb-1">Γιατρός</label>
+                <DoctorPicker Text="@newDoctorText" TextChanged="OnDoctorTextChanged" OnSelected="OnDoctorSelected" />
+            </div>
+            <div class="col-4 col-md-1">
+                <label class="form-label mb-1">Ποσότητα</label>
+                <input class="form-control" type="number" min="1" @bind="newQuantity" />
+            </div>
+            <div class="col-8 col-md-2">
+                <label class="form-label mb-1">Ημερομηνία</label>
+                <InputDate @bind-Value="newDate" class="form-control" />
+            </div>
+            <div class="col-12 col-md-2">
+                <label class="form-label mb-1">Ποιος το έδωσε</label>
+                <select class="form-select" @bind="newGiverId">
+                    @foreach (var u in users)
+                    {
+                        <option value="@u.IdUser">@PersonName.Short(u.FullName)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-12 col-md-10">
+                <input class="form-control" placeholder="Σημείωση (προαιρετικά)" @bind="newNotes" />
+            </div>
+            <div class="col-12 col-md-2 d-grid">
+                <button class="btn btn-primary" @onclick="Save" disabled="@(busy || string.IsNullOrWhiteSpace(newDoctorText))">+ Καταχώρηση</button>
+            </div>
+        </div>
+
+        @* Πήρε ήδη το ίδιο είδος; -- για να μη δοθεί διπλό *@
+        @if (doctorHistory.Any())
+        {
+            <div class="alert alert-warning py-1 mt-2 mb-0 small">
+                ⚠️ Ο γιατρός έχει ήδη πάρει:
+                @foreach (var h in doctorHistory)
+                {
+                    <span class="me-2">@h.Quantity × @h.Item στις @h.GivenDate.ToString("dd/MM/yyyy") από <PersonBadge Name="@h.GivenByName" UserId="@h.GivenByUserID" /></span>
+                }
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="small mt-2 @(messageOk ? "text-success" : "text-danger")">@message</div>
+        }
+    </div>
+</div>
+
+@* ===== Φίλτρα + σύνολα ===== *@
+<div class="row g-2 mb-2 align-items-end">
+    <div class="col-6 col-md-3">
+        <label class="form-label mb-1">Είδος</label>
+        <select class="form-select" @bind="filterItem">
+            <option value="">Όλα</option>
+            @foreach (var it in items)
+            {
+                <option value="@it">@it</option>
+            }
+        </select>
+    </div>
+    <div class="col-6 col-md-3">
+        <label class="form-label mb-1">Ποιος το έδωσε</label>
+        <select class="form-select" @bind="filterGiverId">
+            <option value="0">Όλοι</option>
+            @foreach (var u in users)
+            {
+                <option value="@u.IdUser">@PersonName.Short(u.FullName)</option>
+            }
+        </select>
+    </div>
+    <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Γιατρός</label>
+        <input class="form-control" placeholder="Αναζήτηση στη λίστα" @bind="filterDoctor" @bind:event="oninput" />
+    </div>
+</div>
+
+@{ var visible = Visible().ToList(); }
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
+    <strong>Σύνολο: @visible.Sum(d => d.Quantity) τεμ. σε @visible.Select(d => d.DoctorID?.ToString() ?? d.DoctorName).Distinct().Count() γιατρούς</strong>
+    @foreach (var g in visible.GroupBy(d => d.GivenByUserID).OrderByDescending(g => g.Sum(d => d.Quantity)))
+    {
+        <span><PersonBadge Name="@g.First().GivenByName" UserId="@g.Key" /> @g.Sum(d => d.Quantity)</span>
+    }
+</div>
+
+@if (loading)
+{
+    <p><em>Φορτώνω...</em></p>
+}
+else if (!visible.Any())
+{
+    <div class="alert alert-light border">Καμία διανομή ακόμα.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle">
+            <thead>
+                <tr>
+                    <SortTh Sorter="ListSort" Key="date" By="d => d.GivenDate" Style="width:110px">Ημερομηνία</SortTh>
+                    <SortTh Sorter="ListSort" Key="doctor" By="d => d.DoctorName">Γιατρός</SortTh>
+                    <SortTh Sorter="ListSort" Key="item" By="d => d.Item" Class="d-none d-md-table-cell">Είδος</SortTh>
+                    <SortTh Sorter="ListSort" Key="qty" By="d => d.Quantity" Style="width:70px" Class="text-end">Ποσ.</SortTh>
+                    <SortTh Sorter="ListSort" Key="giver" By="d => PersonName.Short(d.GivenByName)">Ποιος το έδωσε</SortTh>
+                    <SortTh Sorter="ListSort" Key="notes" By="d => d.Notes" Class="d-none d-md-table-cell">Σημείωση</SortTh>
+                    <th style="width:40px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in ListSort.Apply(visible))
+                {
+                    <tr>
+                        <td>@d.GivenDate.ToString("dd/MM/yyyy")</td>
+                        <td>@d.DoctorName</td>
+                        <td class="d-none d-md-table-cell">@d.Item</td>
+                        <td class="text-end">@d.Quantity</td>
+                        <td><PersonBadge Name="@d.GivenByName" UserId="@d.GivenByUserID" /></td>
+                        <td class="d-none d-md-table-cell text-muted">@d.Notes</td>
+                        <td class="text-end">
+                            @if (CanDelete(d))
+                            {
+                                <button class="btn btn-sm btn-outline-danger py-0" @onclick="() => Delete(d)" title="Διαγραφή">×</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private DistributionsService Service => new(dataService);
+    private int UserId => userManager.User?.IdUser ?? 0;
+
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    private TableSort<Distribution>? listSort;
+    private TableSort<Distribution> ListSort => listSort ??= new(this, "distributions-list");
+
+    private List<Distribution> rows = new();
+    private List<string> items = new();
+    private List<IssueUserDto> users = new();
+    private bool loading = true;
+    private bool busy;
+    private string message = "";
+    private bool messageOk;
+
+    // Φόρμα
+    private string newItem = DistributionItems.Default;
+    private string newDoctorText = "";
+    private SalesDoctorOptionDto? selectedDoctor;
+    private int newQuantity = 1;
+    private DateTime? newDate = DateTime.Today;
+    private int newGiverId;
+    private string? newNotes;
+    private List<Distribution> doctorHistory = new();
+
+    // Φίλτρα
+    private string filterItem = DistributionItems.Default;
+    private int filterGiverId;
+    private string filterDoctor = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        newGiverId = UserId;   // προεπιλογή: το έδωσα εγώ
+        users = await new IssuesService(dataService).GetUsers();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        rows = await Service.GetList();
+        items = (await Service.GetItems()).Append(DistributionItems.Default).Distinct().OrderBy(i => i).ToList();
+        loading = false;
+    }
+
+    private IEnumerable<Distribution> Visible() => rows
+        .Where(d => string.IsNullOrEmpty(filterItem) || d.Item == filterItem)
+        .Where(d => filterGiverId == 0 || d.GivenByUserID == filterGiverId)
+        .Where(d => string.IsNullOrWhiteSpace(filterDoctor)
+                 || d.DoctorName.Contains(filterDoctor.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+    private void OnDoctorTextChanged(string text)
+    {
+        newDoctorText = text;
+        selectedDoctor = null;
+        doctorHistory.Clear();
+    }
+
+    private void OnDoctorSelected(SalesDoctorOptionDto d)
+    {
+        selectedDoctor = d;
+        newDoctorText = d.DisplayName;
+        // Από τα ήδη φορτωμένα: ό,τι πήρε ο γιατρός από το ίδιο είδος.
+        doctorHistory = rows
+            .Where(r => r.DoctorID == d.DoctorID && string.Equals(r.Item, newItem?.Trim(), StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.GivenDate)
+            .ToList();
+    }
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(newDoctorText)) return;
+        busy = true;
+        message = "";
+        var result = await Service.Save(new SaveDistributionRequest
+        {
+            UserID = UserId,
+            Item = string.IsNullOrWhiteSpace(newItem) ? DistributionItems.Default : newItem.Trim(),
+            DoctorID = selectedDoctor?.DoctorID,
+            DoctorName = newDoctorText.Trim(),
+            Quantity = newQuantity,
+            GivenDate = newDate ?? DateTime.Today,
+            GivenByUserID = newGiverId > 0 ? newGiverId : UserId,
+            Notes = newNotes
+        });
+        busy = false;
+
+        if (result == null || !result.Success)
+        {
+            messageOk = false;
+            message = result?.Message ?? "Η καταχώρηση απέτυχε.";
+            return;
+        }
+
+        messageOk = true;
+        message = $"✔ Καταχωρήθηκε: {newQuantity} × {newItem} στον/στην {newDoctorText}.";
+        // Μένουν είδος, ημερομηνία και «ποιος» -- συνήθως μοιράζονται πολλά μαζί.
+        newDoctorText = "";
+        selectedDoctor = null;
+        newQuantity = 1;
+        newNotes = null;
+        doctorHistory.Clear();
+        await Load();
+    }
+
+    private bool CanDelete(Distribution d) =>
+        d.CreatedBy == UserId || d.GivenByUserID == UserId || userManager.IsAdmin;
+
+    private async Task Delete(Distribution d)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"Διαγραφή: {d.Quantity} × {d.Item} στον/στην {d.DoctorName} ({d.GivenDate:dd/MM/yyyy});");
+        if (!ok) return;
+        var result = await Service.Delete(new DeleteDistributionRequest { DistributionID = d.DistributionID, UserID = UserId });
+        if (result?.Success != true)
+        {
+            messageOk = false;
+            message = result?.Message ?? "Η διαγραφή απέτυχε.";
+            return;
+        }
+        await Load();
+    }
+}

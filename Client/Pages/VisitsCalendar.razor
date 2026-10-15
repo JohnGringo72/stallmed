@@ -2,9 +2,10 @@
 @inject DataService dataService
 @inject UserManager userManager
 @inject IJSRuntime JS
+@inject PersonColors personColors
 
 @* Ημερολόγιο επισκέψεων (Visits → 📅): ποιος πήγε πού και πότε, με μια ματιά.
-   Κάθε πωλητής έχει το δικό του χρώμα (είναι λίγοι -- αν γίνουν πολλοί, το ξαναβλέπουμε).
+   Κάθε πωλητής έχει το δικό του χρώμα -- το ίδιο με όλη την εφαρμογή (PersonColors).
    Το πλέγμα είναι το κοινό MonthCalendar. *@
 
 <MonthCalendar Month="month" MonthChanged="OnMonthChanged"
@@ -24,7 +25,7 @@
         @{ var dayVisits = VisitsOn(day).ToList(); }
         @foreach (var v in dayVisits.Take(4))
         {
-            <span class="cal-chip" style="@ChipStyle(v.UserID)" title="@($"{v.DoctorName} · {PersonName.Short(v.UserName)}")">@v.DoctorName</span>
+            <span class="cal-chip" style="@ChipStyle(v.UserID, v.UserName)" title="@($"{v.DoctorName} · {PersonName.Short(v.UserName)}")">@v.DoctorName</span>
         }
         @if (dayVisits.Count > 4)
         {
@@ -39,7 +40,7 @@
     <div class="d-flex flex-wrap gap-2 mb-2 small">
         @foreach (var u in Salespeople)
         {
-            <span class="badge" style="@ChipStyle(u.IdUser)">@PersonName.Short(u.FullName) · @visits.Count(v => v.UserID == u.IdUser && v.VisitDate.Month == month.Month)</span>
+            <span class="badge" style="@ChipStyle(u.IdUser, u.FullName)">@PersonName.Short(u.FullName) · @visits.Count(v => v.UserID == u.IdUser && v.VisitDate.Month == month.Month)</span>
         }
     </div>
 }
@@ -64,7 +65,7 @@
                 <li class="list-group-item d-flex align-items-start gap-2">
                     <div class="flex-grow-1">
                         <strong>@v.DoctorName</strong>
-                        <span class="badge ms-1" style="@ChipStyle(v.UserID)">@PersonName.Short(v.UserName)</span>
+                        <PersonBadge Name="@v.UserName" UserId="@v.UserID" Class="ms-1" />
                         @if (!string.IsNullOrWhiteSpace(v.Notes))
                         {
                             <div class="small text-muted">@v.Notes</div>
@@ -89,9 +90,6 @@
     [Parameter] public int Version { get; set; }
     private int? loadedVersion;
 
-    // Χρώματα πωλητών: διαφορετικά από τα χρώματα εταιρειών, για να μη μπερδεύονται.
-    private static readonly string[] Palette = { "#6f42c1", "#20a39e", "#8d6e63", "#0aa2c0", "#6610f2", "#b8860b", "#e4572e", "#5c7cfa" };
-
     private SalesService Service => new(dataService);
     private DateTime month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateTime? selectedDay = DateTime.Today;
@@ -99,7 +97,7 @@
     private string filterUserId = "";       // κενό = όλοι μαζί (προεπιλογή)
 
     // Πωλητές = ρόλος vendor, συν όποιον άλλο έχει επισκέψεις στον μήνα (π.χ. admin).
-    // Σταθερή σειρά (IdUser), ώστε ο καθένας να κρατά το ίδιο χρώμα από μήνα σε μήνα.
+    // Σταθερή σειρά (IdUser) στο υπόμνημα και στο φίλτρο.
     private List<IssueUserDto> Salespeople => Users
         .Where(u => string.Equals(u.Role?.Trim(), "vendor", StringComparison.OrdinalIgnoreCase)
                  || visits.Any(v => v.UserID == u.IdUser))
@@ -107,20 +105,13 @@
         .ThenBy(u => u.IdUser)
         .ToList();
 
-    private string ColorFor(int userId)
-    {
-        var index = Users
-            .Where(u => string.Equals(u.Role?.Trim(), "vendor", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(u => u.IdUser)
-            .Select(u => u.IdUser)
-            .ToList()
-            .IndexOf(userId);
-        // Όποιος δεν είναι vendor παίρνει χρώμα μετά τους πωλητές, με βάση το IdUser.
-        if (index < 0) index = Palette.Length - 1 - (userId % 3);
-        return Palette[index % Palette.Length];
-    }
+    private string ChipStyle(int userId, string? name) => $"background:{personColors.For(userId, name)};color:#fff";
 
-    private string ChipStyle(int userId) => $"background:{ColorFor(userId)};color:#fff";
+    protected override async Task OnInitializedAsync()
+    {
+        // Τα χρώματα πρέπει να υπάρχουν πριν ζωγραφιστούν chips/τελείες.
+        await personColors.EnsureLoadedAsync();
+    }
 
     // Πρώτη φόρτωση και κάθε φορά που η σελίδα αλλάζει το Version.
     protected override async Task OnParametersSetAsync()
@@ -153,7 +144,7 @@
         visits.Where(v => v.VisitDate.Date == day).OrderBy(v => v.UserID).ThenBy(v => v.DoctorName);
 
     private IReadOnlyList<string> DotsFor(DateTime day) =>
-        VisitsOn(day).Select(v => ColorFor(v.UserID)).ToList();
+        VisitsOn(day).Select(v => personColors.For(v.UserID, v.UserName)).ToList();
 
     private async Task DeleteVisit(SalesVisitViewDto v)
     {

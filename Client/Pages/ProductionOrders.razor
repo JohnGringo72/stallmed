@@ -139,10 +139,16 @@
         <div class="stock-check-results">
             <table class="table table-sm mb-0 sticky-head">
                 <thead>
-                    <tr><th>Κωδικός</th><th>Περιγραφή</th><th>Τύπος</th><th>Εταιρεία</th><th>Διαθέσιμο</th></tr>
+                    <tr>
+                        <SortTh Sorter="StockSort" Key="code" By="s => s.CodePrick">Κωδικός</SortTh>
+                        <SortTh Sorter="StockSort" Key="desc" By="s => s.Description">Περιγραφή</SortTh>
+                        <SortTh Sorter="StockSort" Key="type" By="s => s.ProductTypeCode">Τύπος</SortTh>
+                        <SortTh Sorter="StockSort" Key="company" By="s => s.Company">Εταιρεία</SortTh>
+                        <SortTh Sorter="StockSort" Key="remaining" By="s => s.TotalRemaining">Διαθέσιμο</SortTh>
+                    </tr>
                 </thead>
                 <tbody>
-                    @foreach (var s in stockCheckResults)
+                    @foreach (var s in StockSort.Apply(stockCheckResults))
                     {
                         <tr>
                             <td>@s.CodePrick</td>
@@ -233,17 +239,17 @@
                     <table class="table table-sm mb-0 sticky-head">
                         <thead>
                             <tr>
-                                <th class="sortable" @onclick='() => LineSortBy("code")'>Κωδικός<span>@LineArrow("code")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("desc")'>Περιγραφή<span>@LineArrow("desc")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("type")'>Τύπος<span>@LineArrow("type")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("ordered")'>Παραγγέλθηκαν<span>@LineArrow("ordered")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("received")'>Παραλήφθηκαν<span>@LineArrow("received")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("pending")'>Εκκρεμές<span>@LineArrow("pending")</span></th>
-                                <th class="sortable" @onclick='() => LineSortBy("status")'>Status<span>@LineArrow("status")</span></th>
+                                <SortTh Sorter="LinesSort" Key="code" By="l => l.CodePrick">Κωδικός</SortTh>
+                                <SortTh Sorter="LinesSort" Key="desc" By="l => l.AllergenDescription">Περιγραφή</SortTh>
+                                <SortTh Sorter="LinesSort" Key="type" By="l => l.ProductTypeCode">Τύπος</SortTh>
+                                <SortTh Sorter="LinesSort" Key="ordered" By="l => l.QuantityOrdered">Παραγγέλθηκαν</SortTh>
+                                <SortTh Sorter="LinesSort" Key="received" By="l => l.QuantityReceived">Παραλήφθηκαν</SortTh>
+                                <SortTh Sorter="LinesSort" Key="pending" By="l => l.QuantityOrdered - l.QuantityReceived">Εκκρεμές</SortTh>
+                                <SortTh Sorter="LinesSort" Key="status" By="l => l.LineStatus">Status</SortTh>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var line in SortLines(order.Lines))
+                            @foreach (var line in LinesSort.Apply(order.Lines))
                             {
                                 <tr>
                                     <td>@line.CodePrick</td>
@@ -426,35 +432,12 @@
     private string selectedStatus = "";
     private string searchOrderCode = "";
 
-    // --- Ταξινόμηση γραμμών με κλικ στην επικεφαλίδα (μέσα σε κάθε παραγγελία) ---
-    private string lineSortField = "";
-    private bool lineSortAsc = true;
-
-    private void LineSortBy(string field)
-    {
-        if (lineSortField == field) lineSortAsc = !lineSortAsc;
-        else { lineSortField = field; lineSortAsc = true; }
-    }
-
-    private string LineArrow(string field)
-        => lineSortField == field ? (lineSortAsc ? " ▲" : " ▼") : "";
-
-    private IEnumerable<ProductionOrderLineDto> SortLines(IEnumerable<ProductionOrderLineDto> lines)
-    {
-        if (string.IsNullOrEmpty(lineSortField)) return lines;
-
-        IEnumerable<ProductionOrderLineDto> sorted = lineSortField switch
-        {
-            "desc" => lines.OrderBy(l => l.AllergenDescription),
-            "type" => lines.OrderBy(l => l.ProductTypeCode),
-            "ordered" => lines.OrderBy(l => l.QuantityOrdered),
-            "received" => lines.OrderBy(l => l.QuantityReceived),
-            "pending" => lines.OrderBy(l => l.QuantityOrdered - l.QuantityReceived),
-            "status" => lines.OrderBy(l => l.LineStatus),
-            _ => lines.OrderBy(l => l.CodePrick)
-        };
-        return lineSortAsc ? sorted : sorted.Reverse();
-    }
+    // Κοινή ταξινόμηση πινάκων (TableSort + SortTh) -- θυμάται την επιλογή.
+    // Οι γραμμές όλων των παραγγελιών μοιράζονται την ίδια ταξινόμηση.
+    private TableSort<ProductionOrderLineDto>? linesSort;
+    private TableSort<ProductionOrderLineDto> LinesSort => linesSort ??= new(this, "productionorders-lines");
+    private TableSort<StockCheckDto>? stockSort;
+    private TableSort<StockCheckDto> StockSort => stockSort ??= new(this, "productionorders-stock");
     private string status = "idle";
     private List<ProductionOrderDto> orders = new();
     private HashSet<long> expandedOrderIds = new();

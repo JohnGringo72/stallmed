@@ -23,6 +23,8 @@ namespace StallmedManager.Shared.Models
         public bool AssignedToAll { get; set; }
         // Ανάθεση σε ολόκληρη ομάδα (sql/teams.sql). Κενό = όχι σε ομάδα.
         public string? AssignedTeam { get; set; }
+        // 🔒 Private: μόνο όσοι εμπλέκονται (+ όσοι βλέπουν «Όλα»), όχι οι ομάδες (sql/issue_private.sql)
+        public bool IsPrivate { get; set; }
         public string Status { get; set; } = "Open";
         public string Priority { get; set; } = "Normal";
         public DateTime? DueDate { get; set; }
@@ -99,6 +101,8 @@ namespace StallmedManager.Shared.Models
         public bool AssignedToAll { get; set; }
         // Ανάθεση σε ολόκληρη ομάδα (sql/teams.sql). Κενό = όχι σε ομάδα.
         public string? AssignedTeam { get; set; }
+        // 🔒 Private: μόνο όσοι εμπλέκονται (+ όσοι βλέπουν «Όλα»), όχι οι ομάδες (sql/issue_private.sql)
+        public bool IsPrivate { get; set; }
         public string Status { get; set; } = "Open";
         public string Priority { get; set; } = "Normal";
         public DateTime? DueDate { get; set; }
@@ -150,6 +154,8 @@ namespace StallmedManager.Shared.Models
         public bool AssignedToAll { get; set; }
         // Ανάθεση σε ολόκληρη ομάδα (sql/teams.sql). Κενό = όχι σε ομάδα.
         public string? AssignedTeam { get; set; }
+        // 🔒 Private: μόνο όσοι εμπλέκονται (+ όσοι βλέπουν «Όλα»), όχι οι ομάδες (sql/issue_private.sql)
+        public bool IsPrivate { get; set; }
         public string Status { get; set; } = "Open";
         public string Priority { get; set; } = "Normal";
         public DateTime? DueDate { get; set; }

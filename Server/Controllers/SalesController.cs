@@ -209,28 +209,7 @@ namespace StallmedManager.Server.Controllers
             return Ok(new SalesSaveResult { Success = true });
         }
 
-        // Autocomplete γιατρών για τη φόρμα επίσκεψης: ψάχνει και στο ελληνικό
-        // και στο greeklish όνομα, δείχνει το ελληνικό όπου υπάρχει.
-        [HttpGet("doctors")]
-        [Authorize(Policy = "VendorOrAdmin")]
-        public async Task<ActionResult<List<SalesDoctorOptionDto>>> SearchDoctors([FromQuery] string? search)
-        {
-            var query = _context.Doctors.Where(d => d.IsActive);
-            if (!string.IsNullOrWhiteSpace(search))
-                query = query.Where(d => d.FullName.Contains(search)
-                    || (d.FullNameGreek != null && d.FullNameGreek.Contains(search)));
-
-            var list = await query
-                .OrderBy(d => d.FullNameGreek ?? d.FullName)
-                .Take(30)
-                .Select(d => new SalesDoctorOptionDto
-                {
-                    DoctorID = d.DoctorID,
-                    DisplayName = d.FullNameGreek ?? d.FullName,
-                    City = d.City
-                }).ToListAsync();
-            return Ok(list);
-        }
+        // (Η αναζήτηση γιατρού είναι πλέον κοινή για όλη την εφαρμογή: DoctorLookupController.)
 
         // Ενεργοί χρήστες: φίλτρο πωλητή στις επισκέψεις + επιλογή χρήστη
         // στο εξοδολόγιο (admin).

@@ -38,12 +38,6 @@ namespace StallmedManager.Client
         public async Task<SalesSaveResult?> DeleteVisit(DeleteSalesVisitRequest req)
             => await dataService.Post<DeleteSalesVisitRequest, SalesSaveResult>("api/sales/visits/delete", req);
 
-        public async Task<List<SalesDoctorOptionDto>> SearchDoctors(string? search)
-        {
-            var qs = string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}";
-            return await dataService.Get<List<SalesDoctorOptionDto>>($"api/sales/doctors{qs}") ?? new();
-        }
-
         public async Task<SalesSaveResult?> SetDoctorRegion(SetDoctorRegionRequest req)
             => await dataService.Post<SetDoctorRegionRequest, SalesSaveResult>("api/sales/doctors/set-region", req);
 

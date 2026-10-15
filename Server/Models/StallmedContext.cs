@@ -46,6 +46,9 @@ namespace StallmedManager.Server.Models
         // ---- Ημερολόγιο (sql/calendar_events.sql) ----
         public virtual DbSet<CalendarEvent> CalendarEvents { get; set; }
 
+        // ---- Διανομές σε γιατρούς (sql/distributions.sql) ----
+        public virtual DbSet<Distribution> Distributions { get; set; }
+
         // ---- Sales Module (Επισκέψεις πωλητών + Εξοδολόγιο) ----
         public virtual DbSet<SalesVisit> SalesVisits { get; set; }
         public virtual DbSet<SalesExpense> SalesExpenses { get; set; }
