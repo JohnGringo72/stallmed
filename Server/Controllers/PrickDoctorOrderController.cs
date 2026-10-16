@@ -148,6 +148,7 @@ namespace StallmedManager.Server.Controllers
                         QuantityAllocated = l.QuantityAllocated,
                         QuantityCancelled = l.QuantityCancelled,
                         LineStatus = l.LineStatus,
+                        OrderedDate = (l.OrderedDate ?? o.OrderDate).Date,
                         AvailableStock = available,
                         ElsewhereQuantity = ElsewhereFor(l.OrderLineID, l.CodePrick, l.ProductTypeCode)
                     };
@@ -1077,6 +1078,8 @@ namespace StallmedManager.Server.Controllers
                 QuantityAllocated = 0,
                 QuantityCancelled = 0,
                 LineStatus = "Pending",
+                // Προστέθηκε άλλη μέρα από την παραγγελία: η γραμμή κρατά πότε ζητήθηκε.
+                OrderedDate = DateTime.Today != order.OrderDate.Date ? DateTime.Today : null,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now
             });
@@ -1476,6 +1479,7 @@ namespace StallmedManager.Server.Controllers
                     QuantityAllocated = 0,
                     QuantityCancelled = 0,
                     LineStatus = "Pending",
+                    OrderedDate = pl.OrderedDate,   // ο διαχωρισμός δεν αλλάζει πότε ζητήθηκε
                     CreatedAt = DateTime.Now,
                     UpdatedAt = DateTime.Now
                 });
@@ -1540,44 +1544,20 @@ namespace StallmedManager.Server.Controllers
             var sources = orders.Where(o => o.OrderID != target.OrderID).ToList();
             var sourceIds = sources.Select(s => s.OrderID).ToList();
 
-            var targetLines = await _context.DoctorOrderLines.Where(l => l.OrderID == target.OrderID).ToListAsync();
             var sourceLines = await _context.DoctorOrderLines.Where(l => sourceIds.Contains(l.OrderID)).ToListAsync();
-
-            // Γραμμές με ιστορικό δεσμεύσεων (έστω αναιρεμένων) δεν διαγράφονται --
-            // το FK των OrderAllocations δείχνει πάνω τους· απλώς αλλάζουν παραγγελία.
-            var srcLineIds = sourceLines.Select(l => l.OrderLineID).ToList();
-            var lineIdsWithAllocHistory = (await _context.OrderAllocations
-                .Where(a => srcLineIds.Contains(a.OrderLineID))
-                .Select(a => a.OrderLineID)
-                .Distinct()
-                .ToListAsync()).ToHashSet();
 
             using var mergeTx = await _context.Database.BeginTransactionAsync();
 
+            // Κάθε γραμμή μεταφέρεται ΩΣ ΕΧΕΙ στην τελική -- ΔΕΝ αθροίζεται με όμοια γραμμή,
+            // ώστε να φαίνεται πότε ζητήθηκε η καθεμία (ίδιος κωδικός = μία γραμμή ανά ημερομηνία).
+            // Κρατά την ημερομηνία της παραγγελίας από την οποία ήρθε. Οι δεσμεύσεις δείχνουν
+            // στο OrderLineID και ακολουθούν τη γραμμή.
+            var sourceDates = sources.ToDictionary(s => s.OrderID, s => s.OrderDate.Date);
             foreach (var sl in sourceLines)
             {
-                var matchingTargetLine = targetLines.FirstOrDefault(t =>
-                    t.CodePrick == sl.CodePrick && t.ProductTypeCode == sl.ProductTypeCode &&
-                    (t.LineStatus == "Pending" || t.LineStatus == "PartiallyAllocated"));
-
-                var isPurePending = sl.QuantityAllocated == 0 && sl.QuantityCancelled == 0
-                                    && !lineIdsWithAllocHistory.Contains(sl.OrderLineID);
-
-                if (isPurePending && matchingTargetLine != null)
-                {
-                    // Καθαρά εκκρεμής γραμμή ίδιου κωδικού+τύπου: αθροίζεται στη γραμμή της τελικής.
-                    matchingTargetLine.QuantityRequested += sl.QuantityRequested;
-                    matchingTargetLine.UpdatedAt = DateTime.Now;
-                    _context.DoctorOrderLines.Remove(sl);
-                }
-                else
-                {
-                    // Γραμμή με δεσμεύσεις/ακυρώσεις/ιστορικό: μεταφέρεται ως έχει --
-                    // οι δεσμεύσεις δείχνουν στο OrderLineID και ακολουθούν τη γραμμή.
-                    sl.OrderID = target.OrderID;
-                    sl.UpdatedAt = DateTime.Now;
-                    targetLines.Add(sl); // επόμενες όμοιες pending γραμμές αθροίζονται πάνω της
-                }
+                sl.OrderedDate ??= sourceDates[sl.OrderID];
+                sl.OrderID = target.OrderID;
+                sl.UpdatedAt = DateTime.Now;
             }
 
             // Συνημμένα: μεταφέρονται στην τελική.
@@ -1594,13 +1574,17 @@ namespace StallmedManager.Server.Controllers
             foreach (var q in linkedQuotes)
                 q.ConvertedOrderID = target.OrderID;
 
-            // Σημειώσεις: πότε είχε γίνει η κάθε απορροφημένη + τυχόν σημειώσεις της.
-            var mergeNoteParts = sources
-                .OrderBy(s => s.OrderDate).ThenBy(s => s.OrderID)
-                .Select(s => $"{s.OrderCode} (παραγγελία {s.OrderDate:dd/MM/yyyy}" +
-                             (string.IsNullOrWhiteSpace(s.Notes) ? ")" : $", σημ.: {s.Notes.Trim()})"));
-            var mergeNote = $"🧲 Συγχώνευση {DateTime.Now:dd/MM/yyyy}: απορροφήθηκαν {string.Join(", ", mergeNoteParts)}";
-            target.Notes = string.IsNullOrWhiteSpace(target.Notes) ? mergeNote : $"{target.Notes.Trim()}\n{mergeNote}";
+            // Παρατηρήσεις: όλων των παραγγελιών (και της τελικής), η μία κάτω από την άλλη,
+            // με ημερομηνία και κωδικό -- και στο τέλος ποιες ενώθηκαν.
+            var allByDate = orders.OrderBy(o => o.OrderDate).ThenBy(o => o.OrderID).ToList();
+            var noteLines = allByDate
+                .Where(o => !string.IsNullOrWhiteSpace(o.Notes))
+                .Select(o => $"{o.OrderDate:dd/MM} · {o.OrderCode}: {o.Notes!.Trim()}")
+                .ToList();
+            var mergedList = string.Join(", ", sources.OrderBy(s => s.OrderDate).ThenBy(s => s.OrderID)
+                .Select(s => $"{s.OrderCode} ({s.OrderDate:dd/MM})"));
+            noteLines.Add($"🧲 Συγχώνευση {DateTime.Now:dd/MM/yyyy}: {mergedList} → {target.OrderCode}");
+            target.Notes = string.Join("\n", noteLines);
             target.UpdatedAt = DateTime.Now;
 
             // Πρώτα οι μεταφορές (γραμμές/συνημμένα/quotes), μετά η διαγραφή των

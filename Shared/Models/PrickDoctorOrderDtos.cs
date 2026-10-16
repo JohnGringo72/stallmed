@@ -11,6 +11,8 @@ namespace StallmedManager.Shared.Models
         public int QuantityAllocated { get; set; }
         public int QuantityCancelled { get; set; }
         public string LineStatus { get; set; }
+        // Πότε ζητήθηκε η γραμμή (μετά από συγχώνευση διαφέρει από την ημ. της παραγγελίας).
+        public DateTime OrderedDate { get; set; }
         public int AvailableStock { get; set; }
         public int ElsewhereQuantity { get; set; }
     }

@@ -99,12 +99,13 @@ namespace StallmedManager.Server.Controllers
         [HttpGet]
         public async Task<ActionResult<List<IssueListItemDto>>> GetIssues(
             [FromQuery] string? status, [FromQuery] string? search, [FromQuery] int? regardingUserId,
-            [FromQuery] int? userId, [FromQuery] bool includeArchived = false)
+            [FromQuery] int? userId, [FromQuery] bool archived = false)
         {
             var query = _context.IssueTasks.AsQueryable();
-            // Τα αρχειοθετημένα δεν εμφανίζονται, εκτός αν ζητηθούν ρητά.
-            if (!includeArchived)
-                query = query.Where(i => i.ArchivedAt == null);
+            // Είτε τα ενεργά είτε ΜΟΝΟ τα αρχειοθετημένα (κουμπί «📦 Αρχειοθετημένα») -- ποτέ ανακατεμένα.
+            query = archived
+                ? query.Where(i => i.ArchivedAt != null)
+                : query.Where(i => i.ArchivedAt == null);
 
             // Όποιος δεν βλέπει τα πάντα: ο κοινός κανόνας ορατότητας (ομάδες, Private).
             if (!await SeesAllIssues(userId))

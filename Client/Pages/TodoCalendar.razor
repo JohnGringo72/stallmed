@@ -20,21 +20,14 @@
         <button class="btn btn-sm btn-primary" @onclick="() => OpenNew(selectedDay ?? DateTime.Today)">+ Γεγονός</button>
     </Toolbar>
     <DayContent Context="day">
-        @{
-            var dayEvents = EventsOn(day).ToList();
-            var dayTodos = TodosOn(day).ToList();
-        }
-        @foreach (var ev in dayEvents.Take(3))
+        @* Όλα της μέρας -- το κελί μεγαλώνει όσο χρειάζεται (όχι «+3 ακόμα»). *@
+        @foreach (var ev in EventsOn(day))
         {
             <span class="cal-chip" style="@EventStyle(ev)" title="@ev.Title">@ev.Title</span>
         }
-        @foreach (var t in dayTodos.Take(Math.Max(0, 3 - dayEvents.Count)))
+        @foreach (var t in TodosOn(day))
         {
             <span class="cal-chip @(t.IsDone ? "done" : "")" style="@TodoStyle" title="@t.TodoText">☐ @t.TodoText</span>
-        }
-        @if (dayEvents.Count + dayTodos.Count > 3)
-        {
-            <span class="cal-more">+@(dayEvents.Count + dayTodos.Count - 3) ακόμα</span>
         }
     </DayContent>
 </MonthCalendar>

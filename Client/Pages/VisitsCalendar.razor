@@ -22,14 +22,10 @@
         </select>
     </Toolbar>
     <DayContent Context="day">
-        @{ var dayVisits = VisitsOn(day).ToList(); }
-        @foreach (var v in dayVisits.Take(4))
+        @* Όλες οι επισκέψεις της μέρας -- το κελί μεγαλώνει όσο χρειάζεται (όχι «+3 ακόμα»). *@
+        @foreach (var v in VisitsOn(day))
         {
             <span class="cal-chip" style="@ChipStyle(v.UserID, v.UserName)" title="@($"{v.DoctorName} · {PersonName.Short(v.UserName)}")">@v.DoctorName</span>
-        }
-        @if (dayVisits.Count > 4)
-        {
-            <span class="cal-more">+@(dayVisits.Count - 4) ακόμα</span>
         }
     </DayContent>
 </MonthCalendar>

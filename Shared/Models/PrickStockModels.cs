@@ -116,6 +116,9 @@ namespace StallmedManager.Shared.Models
         public int QuantityCancelled { get; set; }
         public string LineStatus { get; set; }
         public string? Notes { get; set; }
+        // Πότε ζητήθηκε η γραμμή (sql/order_line_dates.sql). NULL = η ημερομηνία της παραγγελίας.
+        // Συμπληρώνεται όταν η γραμμή ήρθε από συγχώνευση ή προστέθηκε άλλη μέρα.
+        public DateTime? OrderedDate { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

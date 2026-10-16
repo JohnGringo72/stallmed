@@ -12,13 +12,13 @@ namespace StallmedManager.Client
         }
 
         public async Task<List<IssueListItemDto>> GetIssues(string? status, string? search, int? userId = null,
-                                                           bool includeArchived = false)
+                                                           bool archived = false)
         {
             var qs = new List<string>();
             if (!string.IsNullOrEmpty(status)) qs.Add($"status={Uri.EscapeDataString(status)}");
             if (!string.IsNullOrEmpty(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
             if (userId.HasValue) qs.Add($"userId={userId.Value}");
-            if (includeArchived) qs.Add("includeArchived=true");
+            if (archived) qs.Add("archived=true");   // ΜΟΝΟ τα αρχειοθετημένα
             var query = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
             return await dataService.Get<List<IssueListItemDto>>($"api/issues{query}") ?? new();
         }

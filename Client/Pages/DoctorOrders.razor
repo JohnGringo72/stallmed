@@ -588,6 +588,7 @@
                                             <tr>
                                                 <SortTh Sorter="LinesSort" Key="code" By="l => l.CodePrick">Κωδικός</SortTh>
                                                 <SortTh Sorter="LinesSort" Key="type" By="l => l.ProductTypeCode">Τύπος</SortTh>
+                                                <SortTh Sorter="LinesSort" Key="date" By="l => l.OrderedDate" Title="Πότε ζητήθηκε η γραμμή (μετά από συγχώνευση μπορεί να διαφέρει)">Ημ. παρ.</SortTh>
                                                 <SortTh Sorter="LinesSort" Key="alloc" By="l => l.QuantityAllocated">Απεστάλη</SortTh>
                                             </tr>
                                         </thead>
@@ -597,6 +598,7 @@
                                                 <tr>
                                                     <td>@line.CodePrick <small class="text-muted">@line.AllergenDescription</small></td>
                                                     <td>@line.ProductTypeCode</td>
+                                                    <td class="text-nowrap @(line.OrderedDate != order.OrderDate.Date ? "fw-bold text-primary" : "text-muted")">@line.OrderedDate.ToString("dd/MM")</td>
                                                     <td><strong>@line.QuantityAllocated</strong> τεμ.</td>
                                                 </tr>
                                             }
@@ -612,6 +614,7 @@
                                         <tr>
                                             <SortTh Sorter="LinesSort" Key="code" By="l => l.CodePrick">Κωδικός</SortTh>
                                             <SortTh Sorter="LinesSort" Key="type" By="l => l.ProductTypeCode">Τύπος</SortTh>
+                                            <SortTh Sorter="LinesSort" Key="date" By="l => l.OrderedDate" Title="Πότε ζητήθηκε η γραμμή (μετά από συγχώνευση μπορεί να διαφέρει)">Ημ. παρ.</SortTh>
                                             <SortTh Sorter="LinesSort" Key="req" By="l => l.QuantityRequested">Ζητ.</SortTh>
                                             <SortTh Sorter="LinesSort" Key="alloc" By="l => l.QuantityAllocated">Δεσμ.</SortTh>
                                             <SortTh Sorter="LinesSort" Key="canc" By="l => l.QuantityCancelled">Ακυρ.</SortTh>
@@ -638,6 +641,7 @@
                                             <tr class="@rowClass">
                                                 <td>@line.CodePrick <small class="text-muted">@line.AllergenDescription</small></td>
                                                 <td>@line.ProductTypeCode</td>
+                                                <td class="text-nowrap @(line.OrderedDate != order.OrderDate.Date ? "fw-bold text-primary" : "text-muted")">@line.OrderedDate.ToString("dd/MM")</td>
                                                 <td>@line.QuantityRequested</td>
                                                 <td>@line.QuantityAllocated</td>
                                                 <td>@line.QuantityCancelled</td>
@@ -694,7 +698,7 @@
                                         {
                                             <tr class="pending-add-row">
                                                 <td><strong>@add.Code</strong> <small class="text-muted">@GetAllergenDesc(add.Code)</small></td>
-                                                <td colspan="4"><span class="text-success">➕ νέα γραμμή, ποσότητα @add.Qty</span></td>
+                                                <td colspan="5"><span class="text-success">➕ νέα γραμμή, ποσότητα @add.Qty</span></td>
                                                 <td colspan="4"></td>
                                                 <td><button class="btn btn-sm btn-outline-secondary" @onclick="() => pendingForOrder.AddLines.Remove(add)" title="@Hint("Αφαίρεση αυτής της νέας γραμμής πριν αποθηκευτεί")">✕</button></td>
                                             </tr>
@@ -1292,15 +1296,41 @@
 
     private async Task DoMergeSelected()
     {
-        var result = await new PrickDoctorOrderService(dataService).MergeOrders(new MergeOrdersRequest
+        var service = new PrickDoctorOrderService(dataService);
+        var ids = mergeSelection.ToList();
+
+        // Άλλες μη αποθηκευμένες αλλαγές (δεσμεύσεις, γραμμές...) δεν μπορούν να ακολουθήσουν
+        // τη συγχώνευση -- καλύτερα να σταματήσει παρά να χαθούν σιωπηλά.
+        var blocked = ids.Where(id => pendingChanges.TryGetValue(id, out var p)
+                                      && p.HasChanges && !(p.ChangeCount == 1 && p.Notes != null))
+                         .ToList();
+        if (blocked.Any())
         {
-            OrderIDs = mergeSelection.ToList()
+            var codes = string.Join(", ", orders.Where(o => blocked.Contains(o.OrderID)).Select(o => o.OrderCode));
+            topBannerMessage = $"⚠️ Αποθήκευσε ή ακύρωσε πρώτα τις αλλαγές στην {codes} και μετά συγχώνευσε.";
+            return;
+        }
+
+        // Παρατηρήσεις που γράφτηκαν αλλά δεν αποθηκεύτηκαν: αποθήκευση ΠΡΙΝ τη συγχώνευση,
+        // αλλιώς ο server ενώνει μόνο τις αποθηκευμένες και οι υπόλοιπες χάνονται.
+        foreach (var id in ids)
+        {
+            if (pendingChanges.TryGetValue(id, out var p) && p.Notes != null)
+                await service.UpdateNotes(new UpdateNotesRequest { OrderID = id, Notes = p.Notes });
+        }
+
+        var result = await service.MergeOrders(new MergeOrdersRequest
+        {
+            OrderIDs = ids
         });
 
         if (result?.Success == true)
         {
             topBannerMessage = $"🧲 Οι παραγγελίες συγχωνεύθηκαν στην {result.NewOrderCode}.";
             mergeSelection.Clear();
+            // Αλλιώς η οθόνη θα έδειχνε τις παλιές (μη αποθηκευμένες) παρατηρήσεις αντί για τις ενωμένες.
+            foreach (var id in ids)
+                pendingChanges.Remove(id);
             await LoadData();
         }
         else

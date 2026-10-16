@@ -143,12 +143,6 @@ namespace StallmedManager.Client
 			}
 		}
 
-		// Ίδιος κανόνας με το SeesAllIssues του server: "All" => όλα, "Own" => μόνο τα δικά του,
-		// κενό => ο admin βλέπει όλα.
-		public bool SeesAllTasks =>
-			string.Equals(User?.TasksVisibility?.Trim(), "All", StringComparison.OrdinalIgnoreCase) ||
-			(!string.Equals(User?.TasksVisibility?.Trim(), "Own", StringComparison.OrdinalIgnoreCase) && IsAdmin);
-
 		public async Task<bool> Logout()
 		{
 			await localStorage.SetItemAsync("user", "");

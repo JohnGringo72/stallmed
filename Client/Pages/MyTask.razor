@@ -82,20 +82,18 @@
             <input class="form-check-input" type="checkbox" id="showArchivedSwitch"
                    checked="@showArchived" @onchange="OnShowArchivedChanged" />
             <label class="form-check-label" for="showArchivedSwitch"
-                   title="@Hint("Εμφανίζει και όσα έχουν αρχειοθετηθεί")">📦 Αρχειοθετημένα</label>
+                   title="@Hint("Δείχνει μόνο όσα έχουν αρχειοθετηθεί")">📦 Αρχειοθετημένα</label>
         </div>
     </div>
-    @* Μόνο για όσους βλέπουν όλα τα θέματα -- οι υπόλοιποι βλέπουν ήδη μόνο τα δικά τους. *@
-    @if (userManager.SeesAllTasks)
-    {
-        <div class="col-auto">
-            <div class="form-check form-switch mb-0">
-                <input class="form-check-input" type="checkbox" id="onlyMineSwitch" @bind="onlyMine" />
-                <label class="form-check-label" for="onlyMineSwitch"
-                       title="@Hint("Όσα άνοιξα εγώ και όσα μου έχουν ανατεθεί")">👤 Τα δικά μου</label>
-            </div>
+    @* Για όλους: πλέον ο καθένας βλέπει και τα θέματα της ομάδας του, οπότε χρειάζεται
+       το φίλτρο για να δει μόνο τα δικά του. (Το «βλέπει τα πάντα» είναι ρύθμιση χρήστη.) *@
+    <div class="col-auto">
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="onlyMineSwitch" @bind="onlyMine" />
+            <label class="form-check-label" for="onlyMineSwitch"
+                   title="@Hint("Όσα άνοιξα εγώ και όσα μου έχουν ανατεθεί")">👤 Τα δικά μου</label>
         </div>
-    }
+    </div>
     @if (!string.IsNullOrEmpty(notifyMessage))
     {
         <div class="col-auto"><span class="text-danger small">@notifyMessage</span></div>
