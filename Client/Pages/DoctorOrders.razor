@@ -254,6 +254,26 @@
 
     .hdr-check.is-hidden { visibility: hidden; }
 
+    /* Κεφαλίδες της λίστας γιατρών -- ίδια λογική με τις παραγγελίες. */
+    .doc-labels {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: .02em;
+        padding: 4px 14px;
+    }
+
+    .doc-labels-right { display: flex; gap: 14px; }
+
+    .doc-labels .sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+
+    .doc-labels .sortable:hover { color: #0d6efd; }
+
     .hdr-labels {
         font-size: 0.72rem;
         font-weight: 700;
@@ -278,10 +298,15 @@
             white-space: nowrap;
         }
 
-            .hdr-cell > span, .hdr-cell > .badge {
+            /* Μόνο τα ελεύθερα κείμενα κόβονται με αποσιωπητικά. Οι ποσότητες,
+               οι ημερομηνίες και η κατάσταση πρέπει να φαίνονται ολόκληρες. */
+            .hdr-doctor > span, .hdr-type > span, .hdr-inv > span,
+            .hdr-user > span, .hdr-doctor, .hdr-type {
                 overflow: hidden;
                 text-overflow: ellipsis;
             }
+
+            .hdr-qty, .hdr-status, .hdr-date, .hdr-code { overflow: visible; }
 
         .hdr-arrow { width: 14px; }
         .hdr-check { width: 18px; }
@@ -289,11 +314,11 @@
         .hdr-doctor { width: 170px; }
         .hdr-inv { width: 96px; }
         .hdr-comp { width: 38px; }
-        .hdr-date { width: 112px; }
-        .hdr-user { width: 118px; }
-        .hdr-type { width: 190px; }
-        .hdr-status { width: 132px; }
-        .hdr-qty { width: 112px; }
+        .hdr-date { width: 122px; }
+        .hdr-user { width: 122px; }
+        .hdr-type { width: 180px; }
+        .hdr-status { width: 152px; }
+        .hdr-qty { width: 146px; }
         .hdr-need { flex: 1 1 auto; }
     }
 
@@ -546,6 +571,19 @@
     @if (DoctorGroups.Count == 0)
     {
         <div class="alert alert-info">Δεν υπάρχουν παραγγελίες με αυτά τα φίλτρα.</div>
+    }
+
+    @* Κεφαλίδες για τη λίστα γιατρών -- κλικ για ταξινόμηση, όπως παντού. *@
+    @if (groupByDoctor && DoctorGroups.Count > 0)
+    {
+        <div class="doc-labels">
+            <SortLabel Sorter="DoctorsSort" Key="name" By="g => g.DoctorName">Γιατρός</SortLabel>
+            <span class="doc-labels-right">
+                <SortLabel Sorter="DoctorsSort" Key="count" By="g => g.TotalOrders" Class="doc-lbl">Παραγγελίες</SortLabel>
+                <SortLabel Sorter="DoctorsSort" Key="pending" By="g => g.TotalPending" Class="doc-lbl">Εκκρεμή</SortLabel>
+                <SortLabel Sorter="DoctorsSort" Key="last" By="g => g.LastOrderDate" Class="doc-lbl">Τελευταία</SortLabel>
+            </span>
+        </div>
     }
 
     @foreach (var dg in SortedDoctorGroups)
@@ -1959,6 +1997,10 @@
     // Γραμμές: ισχύει για όλες τις παραγγελίες (ανοιχτές και απεσταλμένες) -- η ομαδοποίηση
     // ανά γιατρό/παραγγελία μένει, ταξινομούνται οι γραμμές μέσα σε κάθε παραγγελία.
     // Χωρίς επιλογή = σειρά καταχώρησης. Τα κλειδιά τα καταλαβαίνει και η εκτύπωση (PrintOrder).
+    // Ταξινόμηση ομάδων γιατρού από τις κεφαλίδες.
+    private TableSort<DoctorGroup>? doctorsSort;
+    private TableSort<DoctorGroup> DoctorsSort => doctorsSort ??= new(this, "doctororders-doctors");
+
     // Ταξινόμηση παραγγελιών από τις κεφαλίδες. Η επιλογή θυμάται (localStorage).
     private TableSort<DoctorOrderViewDto>? ordersSort;
     private TableSort<DoctorOrderViewDto> OrdersSort => ordersSort ??= new(this, "doctororders-orders");
@@ -2069,7 +2111,10 @@
                 "name" => groups.OrderBy(g => g.DoctorName),
                 _ => groups.OrderByDescending(g => g.LastOrderDate)
             };
-            return groups.ToList();
+
+            // Η επιλογή από τις κεφαλίδες υπερισχύει. Χωρίς επιλογή, το Apply
+            // επιστρέφει τη σειρά που έδωσε η λίστα «Ταξινόμηση».
+            return DoctorsSort.Apply(groups).ToList();
         }
     }
 
