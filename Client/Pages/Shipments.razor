@@ -1,4 +1,4 @@
-@page "/prick-shipments"
+﻿@page "/prick-shipments"
 @using StallmedManager.Shared.Models
 @inject DataService dataService
 @inject UserManager userManager
@@ -247,7 +247,7 @@
                         <tbody>
                             @foreach (var line in LinesSort.Apply(shipLines))
                             {
-                                <tr>
+                                <tr class="@LineStatusClass(line)">
                                     <td>@line.CodePrick</td>
                                     <td>@line.AllergenDescription</td>
                                     <td>@line.ProductTypeCode</td>
@@ -437,6 +437,17 @@
 }
 
 @code {
+    // Ίδιος κανόνας χρωμάτων με τις Παραγγελίες Γιατρών (app.css)
+    private static string LineStatusClass(DoctorOrderLineViewDto line)
+    {
+        if (line.LineStatus == "Cancelled") return "line-void";
+
+        var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
+        if (pending <= 0) return "line-ready";
+        if (line.AvailableStock >= pending) return "line-can";
+        return line.AvailableStock > 0 ? "line-partial" : "line-none";
+    }
+
     [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
     private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
 

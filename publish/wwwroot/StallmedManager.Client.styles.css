@@ -565,6 +565,31 @@
         right: 12px;
     }
 }
+/* /Shared/CompanyDot.razor.rz.scp.css */
+.company-dot[b-1fab85fwvq] {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+}
+/* /Shared/DoctorPicker.razor.rz.scp.css */
+.doctor-suggestions[b-l01co0qoke] {
+    position: absolute;
+    z-index: 1000;
+    left: 0;
+    right: 0;
+    max-height: 280px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .12);
+}
+
+.doctor-suggestion-row[b-l01co0qoke] { padding: 6px 10px; cursor: pointer; }
+.doctor-suggestion-row:hover[b-l01co0qoke] { background: #f1f3f5; }
 /* /Shared/MainLayout.razor.rz.scp.css */
 .page[b-g6rwp5xdw9] {
     position: absolute;
@@ -650,6 +675,74 @@ main[b-g6rwp5xdw9] {
         padding-right: 1.5rem !important;
     }
 }
+/* /Shared/MonthCalendar.razor.rz.scp.css */
+.cal-title[b-54cg1d50hx] { min-width: 150px; text-align: center; }
+
+.cal-grid[b-54cg1d50hx] {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    border-left: 1px solid #dee2e6;
+    border-top: 1px solid #dee2e6;
+}
+
+.cal-head[b-54cg1d50hx] {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: .8rem;
+    text-align: center;
+    padding: 4px 0;
+    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.cal-day[b-54cg1d50hx] {
+    min-height: 92px;
+    padding: 2px 4px;
+    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+    cursor: pointer;
+    overflow: hidden;
+}
+.cal-day:hover[b-54cg1d50hx] { background: #f1f8ff; }
+.cal-day.other[b-54cg1d50hx] { background: #fafafa; color: #adb5bd; }
+.cal-day.today .cal-num[b-54cg1d50hx] { background: #0d6efd; color: #fff; border-radius: 50%; }
+.cal-day.selected[b-54cg1d50hx] { outline: 2px solid #0d6efd; outline-offset: -2px; }
+
+.cal-num[b-54cg1d50hx] {
+    display: inline-block;
+    min-width: 1.6em;
+    text-align: center;
+    font-size: .8rem;
+    font-weight: 600;
+}
+
+/* «Κουτάκια» που βάζει η σελίδα μέσα σε κάθε μέρα (DayContent). */
+.cal-content[b-54cg1d50hx]  .cal-chip {
+    display: block;
+    font-size: .72rem;
+    line-height: 1.25;
+    padding: 1px 4px;
+    margin-top: 2px;
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: #e2e3e5;
+    color: #41464b;
+}
+.cal-content[b-54cg1d50hx]  .cal-chip.done { text-decoration: line-through; opacity: .6; }
+
+.cal-dots[b-54cg1d50hx] { display: none; }
+.cal-dot[b-54cg1d50hx] { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; }
+
+/* Κινητό: στις μέρες μόνο χρωματιστές τελίτσες -- οι λεπτομέρειες φαίνονται από κάτω. */
+@media (max-width: 575.98px) {
+    .cal-day[b-54cg1d50hx] { min-height: 48px; }
+    .cal-content[b-54cg1d50hx] { display: none; }
+    .cal-dots[b-54cg1d50hx] { display: block; line-height: 1; }
+    .cal-head[b-54cg1d50hx] { font-size: .7rem; }
+    .cal-title[b-54cg1d50hx] { min-width: 120px; font-size: 1rem; }
+}
 /* /Shared/NavMenu.razor.rz.scp.css */
 .navbar-toggler[b-po7gndjwpr] {
     background-color: rgba(255, 255, 255, 0.1);
@@ -718,4 +811,31 @@ main[b-g6rwp5xdw9] {
         height: calc(100vh - 3.5rem);
         overflow-y: auto;
     }
+}
+/* /Shared/PushToggle.razor.rz.scp.css */
+.push-toggle[b-nqueeijyic] {
+    position: relative;
+}
+
+/* Κινητό: το πλαίσιο ανοίγει μέσα στο μενού, σε όλο το πλάτος. */
+.push-panel[b-nqueeijyic] {
+    width: 100%;
+    max-width: 420px;
+}
+
+/* Desktop: αιωρείται κάτω από το κουμπί, χωρίς να ψηλώνει τη μπάρα. */
+@media (min-width: 992px) {
+    .push-panel[b-nqueeijyic] {
+        position: absolute;
+        right: 0;
+        top: 100%;
+        width: 380px;
+        z-index: 1050;
+        box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .25);
+    }
+}
+
+.push-panel td:first-child[b-nqueeijyic] {
+    white-space: nowrap;
+    color: #6c757d;
 }

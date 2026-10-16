@@ -238,6 +238,24 @@
 
     .stock-ok { color: #198754; font-weight: 600; }
 
+    .line-legend {
+        display: flex; flex-wrap: wrap; gap: 14px;
+        font-size: .78rem; color: #6c757d; margin-bottom: 10px;
+    }
+
+    .line-legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+    .swatch {
+        width: 14px; height: 14px; border-radius: 3px;
+        border: 1px solid rgba(0,0,0,.12); display: inline-block;
+    }
+
+    .sw-ready   { background: #f0f8f3; border-left: 4px solid #198754; }
+    .sw-can     { background: #eef4fe; border-left: 4px solid #0d6efd; }
+    .sw-partial { background: #fff6ec; border-left: 4px solid #fd7e14; }
+    .sw-none    { background: #fdf0f1; border-left: 4px solid #dc3545; }
+    .sw-void    { background: #f3f4f6; border-left: 4px solid #adb5bd; }
+
     .attachment-thumb {
         position: relative;
         width: 64px;
@@ -305,6 +323,14 @@
 <div class="sbt-page-header">
     <img src="images/icons/icon-doctor-orders.svg" alt="" class="sbt-page-icon" />
     <h1 class="mb-3">Prick Test - Doctor Orders</h1>
+    @* Το χρώμα της γραμμής λέει τι μπορείς να κάνεις τώρα -- όχι το ίδιο με το σήμα status *@
+    <div class="line-legend">
+        <span><i class="swatch sw-ready"></i>Δεσμευμένη</span>
+        <span><i class="swatch sw-can"></i>Υπάρχει απόθεμα</span>
+        <span><i class="swatch sw-partial"></i>Μέρος του αποθέματος</span>
+        <span><i class="swatch sw-none"></i>Χωρίς απόθεμα</span>
+        <span><i class="swatch sw-void"></i>Ακυρωμένη</span>
+    </div>
 </div>
 
 @if (!string.IsNullOrEmpty(topBannerMessage))
@@ -636,7 +662,10 @@
                                             var markedCancel = pendingForOrder.Cancellations.Contains(line.OrderLineID);
                                             var markedReverse = pendingForOrder.Reversals.Contains(line.OrderLineID);
                                             var markedUncancel = pendingForOrder.Uncancellations.Contains(line.OrderLineID);
-                                            var rowClass = markedRemove ? "pending-remove" : markedCancel ? "table-danger" : markedReverse ? "table-warning" : "";
+                                            var rowClass = markedRemove ? "pending-remove"
+                                                : markedCancel ? "table-danger"
+                                                : markedReverse ? "table-warning"
+                                                : LineStatusClass(line);
                                             var allocateMax = Math.Max(0, Math.Min(pending, line.AvailableStock));
                                             <tr class="@rowClass">
                                                 <td>@line.CodePrick <small class="text-muted">@line.AllergenDescription</small></td>
@@ -657,7 +686,7 @@
                                                         <span class="text-muted">-</span>
                                                     }
                                                 </td>
-                                                <td><span class="badge bg-secondary">@line.LineStatus</span></td>
+                                                <td><span class="badge @LineStatusBadge(line.LineStatus)">@LineStatusLabel(line.LineStatus)</span></td>
                                                 <td>
                                                     @* Απεσταλμένη παραγγελία: οι γραμμές είναι μόνο για ανάγνωση --
                                                        μια ανάκληση θα επέστρεφε στο stock φιαλίδια που έχουν φύγει. *@
@@ -1154,6 +1183,39 @@
 }
 
 @code {
+    // ---- Χρώμα γραμμής ανά κατάσταση ----
+    // Pending = τίποτα δεσμευμένο, PartiallyAllocated = μερικώς,
+    // Fulfilled = πλήρως δεσμευμένη, Cancelled = ακυρωμένη.
+    // Το χρώμα δείχνει τι μπορείς να κάνεις ΤΩΡΑ με τη γραμμή, όχι απλώς
+    // το status: δεσμευμένη / έχω απόθεμα / έχω μέρος / δεν έχω.
+    private static string LineStatusClass(DoctorOrderLineViewDto line)
+    {
+        if (line.LineStatus == "Cancelled") return "line-void";
+
+        var pending = line.QuantityRequested - line.QuantityAllocated - line.QuantityCancelled;
+        if (pending <= 0) return "line-ready";
+        if (line.AvailableStock >= pending) return "line-can";
+        return line.AvailableStock > 0 ? "line-partial" : "line-none";
+    }
+
+    private static string LineStatusBadge(string? status) => status switch
+    {
+        "Pending" => "bg-danger",
+        "PartiallyAllocated" => "bg-warning text-dark",
+        "Fulfilled" => "bg-success",
+        "Cancelled" => "bg-secondary",
+        _ => "bg-light text-dark"
+    };
+
+    private static string LineStatusLabel(string? status) => status switch
+    {
+        "Pending" => "Εκκρεμεί",
+        "PartiallyAllocated" => "Μερικώς",
+        "Fulfilled" => "Έτοιμη",
+        "Cancelled" => "Ακυρώθηκε",
+        _ => status ?? ""
+    };
+
     [CascadingParameter] public UiPreferencesService? UiPrefs { get; set; }
     private string? Hint(string text) => (UiPrefs?.ShowHints ?? true) ? text : null;
 

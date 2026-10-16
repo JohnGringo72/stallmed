@@ -1,4 +1,4 @@
-@import url('open-iconic/font/css/open-iconic-bootstrap.min.css');
+﻿@import url('open-iconic/font/css/open-iconic-bootstrap.min.css');
 
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -350,4 +350,30 @@ th.sortable {
 .mic-popup-hint {
     color: #adb5bd;
     font-style: normal;
+}
+
+/* ---- Χρώμα γραμμής παραγγελίας prick ----
+   Κριτήριο: τι μπορεί να κάνει ο χρήστης με τη γραμμή τώρα.
+     πράσινο  = δεσμευμένη, τελείωσε
+     μπλε     = εκκρεμεί και ΥΠΑΡΧΕΙ απόθεμα να δεσμευτεί όλη
+     πορτοκαλί = υπάρχει μέρος του αποθέματος
+     κόκκινο  = εκκρεμεί και ΔΕΝ υπάρχει καθόλου απόθεμα
+     γκρι     = ακυρωμένη
+   Απαλό φόντο για ευανάγνωστο κείμενο, έγχρωμη λωρίδα αριστερά που
+   ξεχωρίζει και σε στενή οθόνη. */
+tr.line-ready   > td:first-child { box-shadow: inset 4px 0 0 #198754; }
+tr.line-can     > td:first-child { box-shadow: inset 4px 0 0 #0d6efd; }
+tr.line-partial > td:first-child { box-shadow: inset 4px 0 0 #fd7e14; }
+tr.line-none    > td:first-child { box-shadow: inset 4px 0 0 #dc3545; }
+tr.line-void    > td:first-child { box-shadow: inset 4px 0 0 #adb5bd; }
+
+tr.line-ready   > td { background-color: #f0f8f3; }
+tr.line-can     > td { background-color: #eef4fe; }
+tr.line-partial > td { background-color: #fff6ec; }
+tr.line-none    > td { background-color: #fdf0f1; }
+
+tr.line-void > td {
+    background-color: #f3f4f6;
+    color: #868e96;
+    text-decoration: line-through;
 }
