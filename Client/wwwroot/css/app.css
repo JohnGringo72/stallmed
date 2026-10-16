@@ -377,3 +377,27 @@ tr.line-void > td {
     color: #868e96;
     text-decoration: line-through;
 }
+
+/* ---- Χρώμα κεφαλίδας παραγγελίας prick ανά κατάσταση ----
+   Όταν είναι ανοιχτές πολλές παραγγελίες μαζί, πρέπει να ξεχωρίζει με μια
+   ματιά ποια θέλει δουλειά και ποια είναι ιστορικό.
+     κόκκινο  = ανοιχτή, θέλει δέσμευση
+     μπλε     = ετοιμάστηκε, περιμένει αποστολή
+     πράσινο  = απεστάλη
+     γκρι     = ακυρωμένη */
+.ord-open  { border-left: 5px solid #dc3545; }
+.ord-ready { border-left: 5px solid #0d6efd; }
+.ord-sent  { border-left: 5px solid #198754; }
+.ord-void  { border-left: 5px solid #adb5bd; }
+
+.ord-open  > .sub-order-header { background: #fdf0f1; }
+.ord-ready > .sub-order-header { background: #eef4fe; }
+
+/* Οι απεσταλμένες είναι ιστορικό: ξεχωρίζουν από τη λωρίδα, χωρίς να
+   τραβούν το βλέμμα πάνω από τις ανοιχτές. */
+.ord-sent > .sub-order-header { background: #fbfdfc; }
+
+.ord-void > .sub-order-header {
+    background: #f3f4f6;
+    color: #868e96;
+}

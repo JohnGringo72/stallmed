@@ -1,0 +1,23 @@
+@typeparam TItem
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+
+@* Ταξινόμηση με κλικ, για λίστες που ΔΕΝ είναι <table>. Ίδιος μηχανισμός με
+   το <SortTh> (κοινό TableSort) -- αλλάζει μόνο το στοιχείο που ζωγραφίζει,
+   ώστε να μπαίνει σε κεφαλίδα φτιαγμένη από div/span. *@
+<span class="sortable @Class" style="@Style" title="@Title" @onclick="Toggle">@ChildContent<span class="sort-ind">@Sorter.Indicator(Key)</span></span>
+
+@code {
+    [Parameter, EditorRequired] public TableSort<TItem> Sorter { get; set; } = default!;
+    [Parameter, EditorRequired] public string Key { get; set; } = "";
+    [Parameter, EditorRequired] public Func<TItem, object?> By { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public string? Title { get; set; }
+
+    protected override void OnParametersSet() => Sorter.Register(Key, By);
+
+    protected override Task OnInitializedAsync() => Sorter.EnsureLoadedAsync(localStorage);
+
+    private Task Toggle() => Sorter.ToggleAsync(Key);
+}

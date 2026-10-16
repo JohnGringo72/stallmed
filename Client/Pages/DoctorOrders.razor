@@ -238,6 +238,66 @@
 
     .stock-ok { color: #198754; font-weight: 600; }
 
+    /* Κεφαλίδα παραγγελίας σε κελιά. Σε μεγάλη οθόνη κάθε κελί έχει σταθερό
+       πλάτος ώστε οι στήλες να στοιχίζονται ανάμεσα στις παραγγελίες· σε
+       κινητό τα πλάτη δεν ισχύουν και μένει η ελεύθερη αναδίπλωση, που
+       δουλεύει καλύτερα εκεί. */
+    .hdr-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+
+    .hdr-cell { display: inline-flex; align-items: center; min-width: 0; }
+
+    .hdr-check.is-hidden { visibility: hidden; }
+
+    .hdr-labels {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: .02em;
+        padding: 6px 14px 4px;
+        border-bottom: 1px solid #e9ecef;
+        background: #fbfcfd;
+    }
+
+        .hdr-labels .sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+
+        .hdr-labels .sortable:hover { color: #0d6efd; }
+
+    @@media (min-width: 1200px) {
+        .hdr-row { flex-wrap: nowrap; }
+
+        .hdr-cell {
+            flex: 0 0 auto;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+            .hdr-cell > span, .hdr-cell > .badge {
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+        .hdr-arrow { width: 14px; }
+        .hdr-check { width: 18px; }
+        .hdr-code { width: 132px; }
+        .hdr-doctor { width: 170px; }
+        .hdr-inv { width: 96px; }
+        .hdr-comp { width: 38px; }
+        .hdr-date { width: 112px; }
+        .hdr-user { width: 118px; }
+        .hdr-type { width: 190px; }
+        .hdr-status { width: 132px; }
+        .hdr-qty { width: 112px; }
+        .hdr-need { flex: 1 1 auto; }
+    }
+
+
     .line-legend {
         display: flex; flex-wrap: wrap; gap: 14px;
         font-size: .78rem; color: #6c757d; margin-bottom: 10px;
@@ -255,6 +315,10 @@
     .sw-partial { background: #fff6ec; border-left: 4px solid #fd7e14; }
     .sw-none    { background: #fdf0f1; border-left: 4px solid #dc3545; }
     .sw-void    { background: #f3f4f6; border-left: 4px solid #adb5bd; }
+
+    .sw-ord-open  { background: #fdf0f1; border-left: 4px solid #dc3545; }
+    .sw-ord-ready { background: #eef4fe; border-left: 4px solid #0d6efd; }
+    .sw-ord-sent  { background: #fbfdfc; border-left: 4px solid #198754; }
 
     .attachment-thumb {
         position: relative;
@@ -325,6 +389,11 @@
     <h1 class="mb-3">Prick Test - Doctor Orders</h1>
     @* Το χρώμα της γραμμής λέει τι μπορείς να κάνεις τώρα -- όχι το ίδιο με το σήμα status *@
     <div class="line-legend">
+        <strong class="text-dark">Παραγγελία:</strong>
+        <span><i class="swatch sw-ord-open"></i>Ανοιχτή</span>
+        <span><i class="swatch sw-ord-ready"></i>Προς αποστολή</span>
+        <span><i class="swatch sw-ord-sent"></i>Απεστάλη</span>
+        <strong class="text-dark ms-2">Γραμμή:</strong>
         <span><i class="swatch sw-ready"></i>Δεσμευμένη</span>
         <span><i class="swatch sw-can"></i>Υπάρχει απόθεμα</span>
         <span><i class="swatch sw-partial"></i>Μέρος του αποθέματος</span>
@@ -502,7 +571,40 @@
             @if (isDoctorOpen)
             {
                 <div class="order-card-body">
-                    @foreach (var order in dg.Orders.OrderByDescending(o => o.OrderDate))
+                    @* Κεφαλίδες στηλών: ίδια κελιά με τις γραμμές, ώστε να πέφτουν
+                       ακριβώς από πάνω τους. Κλικ = ταξινόμηση, όπως στους πίνακες. *@
+                    <div class="hdr-row hdr-labels d-none d-xl-flex">
+                        <span class="hdr-cell hdr-arrow"></span>
+                        <span class="hdr-cell hdr-check"></span>
+                        <span class="hdr-cell hdr-code">
+                            <SortLabel Sorter="OrdersSort" Key="code" By="o => o.OrderCode">Κωδικός</SortLabel>
+                        </span>
+                        @if (!groupByDoctor)
+                        {
+                            <span class="hdr-cell hdr-doctor">
+                                <SortLabel Sorter="OrdersSort" Key="doctor" By="o => o.DoctorName">Γιατρός</SortLabel>
+                            </span>
+                        }
+                        <span class="hdr-cell hdr-inv">
+                            <SortLabel Sorter="OrdersSort" Key="invoice" By="o => o.InvoiceType">Τιμολ.</SortLabel>
+                        </span>
+                        <span class="hdr-cell hdr-comp">
+                            <SortLabel Sorter="OrdersSort" Key="company" By="o => o.Company">Ετ.</SortLabel>
+                        </span>
+                        <span class="hdr-cell hdr-date">
+                            <SortLabel Sorter="OrdersSort" Key="date" By="o => o.OrderDate">Ημερομηνία</SortLabel>
+                        </span>
+                        <span class="hdr-cell hdr-user">
+                            <SortLabel Sorter="OrdersSort" Key="createdby" By="o => o.CreatedByName">Καταχώρηση</SortLabel>
+                        </span>
+                        <span class="hdr-cell hdr-type">Είδος</span>
+                        <span class="hdr-cell hdr-status">
+                            <SortLabel Sorter="OrdersSort" Key="status" By="o => OrderStatusRank(o.OrderStatus)">Κατάσταση</SortLabel>
+                        </span>
+                        <span class="hdr-cell hdr-qty">Ποσότητα</span>
+                        <span class="hdr-cell hdr-need">Ζητ. / Διαθ. / Αλλού</span>
+                    </div>
+                    @foreach (var order in OrdersSort.Apply(dg.Orders.OrderByDescending(o => o.OrderDate)))
                     {
                         var isOrderOpen = expandedOrder == order.OrderCode;
                         var totalRequested = order.Lines.Sum(l => l.QuantityRequested);
@@ -510,47 +612,68 @@
                         var totalFulfillable = order.Lines.Sum(l => Math.Min(l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled, l.AvailableStock));
                         var totalElsewhere = order.Lines.Where(l => (l.QuantityRequested - l.QuantityAllocated - l.QuantityCancelled) > 0).Sum(l => l.ElsewhereQuantity);
                         var typeDescription = order.Lines.FirstOrDefault()?.ProductDescription ?? order.Lines.FirstOrDefault()?.ProductTypeCode;
-                        <div class="sub-order-card">
+                        <div class="sub-order-card @OrderStatusClass(order.OrderStatus)">
                             <div class="sub-order-header" @onclick="() => ToggleOrderExpand(order.OrderCode)">
-                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                    <span class="expand-arrow @(isOrderOpen ? "open" : "")">▶</span>
-                                    @if (order.OrderStatus == "Open")
-                                    {
+                                <div class="hdr-row">
+                                    <span class="hdr-cell hdr-arrow">
+                                        <span class="expand-arrow @(isOrderOpen ? "open" : "")">▶</span>
+                                    </span>
+                                    @* Το κουτάκι υπάρχει πάντα -- αλλιώς οι στήλες μετατοπίζονταν
+                                       σε κάθε παραγγελία που δεν είναι ανοιχτή. *@
+                                    <span class="hdr-cell hdr-check @(order.OrderStatus == "Open" ? "" : "is-hidden")">
                                         <input type="checkbox" class="form-check-input m-0"
+                                               disabled="@(order.OrderStatus != "Open")"
                                                checked="@mergeSelection.Contains(order.OrderID)"
                                                @onchange="e => ToggleMergeSelect(order.OrderID, e)"
                                                @onclick:stopPropagation="true"
                                                title="@Hint("Επιλογή για συγχώνευση με άλλες ανοιχτές παραγγελίες του ίδιου γιατρού σε ένα νούμερο")" />
-                                    }
-                                    <strong>@order.OrderCode</strong>
+                                    </span>
+                                    <span class="hdr-cell hdr-code"><strong>@order.OrderCode</strong></span>
                                     @if (!groupByDoctor)
                                     {
-                                        <span>👨‍⚕️ @order.DoctorName</span>
+                                        <span class="hdr-cell hdr-doctor" title="@order.DoctorName">👨‍⚕️ @order.DoctorName</span>
                                     }
-                                    <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
-                                    <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
-                                    <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
-                                    <span class="summary-pill" title="@Hint("Ποιος πέρασε την παραγγελία")">👤 <PersonBadge Name="@order.CreatedByName" UserId="@order.CreatedBy" Empty="—" /></span>
-                                    <span class="summary-pill">🧪 @typeDescription</span>
-                                    @if (order.OrderStatus == "ReadyToShip")
-                                    {
-                                        <span class="badge bg-info text-dark">📦 Προς Αποστολή</span>
-                                    }
-                                    else if (order.OrderStatus == "Fulfilled")
-                                    {
-                                        <span class="badge bg-success">🚚 Απεστάλη @(order.ShippedAt?.ToString("dd/MM"))</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-secondary">@order.OrderStatus</span>
-                                    }
-                                    <span class="summary-pill">📦 @totalRequested τεμ. (⏳@totalPending)</span>
-                                    @if (totalPending > 0)
-                                    {
-                                        <span class="summary-pill @(totalFulfillable >= totalPending ? "stock-ok" : "text-danger")">
-                                            Ζητ. @totalPending / Διαθ. @totalFulfillable / Αλλού @totalElsewhere
-                                        </span>
-                                    }
+                                    <span class="hdr-cell hdr-inv">
+                                        <span class="badge @GetInvoiceBadgeClass(order.InvoiceType)">@InvoiceDisplay.Emoji(order.InvoiceType) @InvoiceDisplay.Label(order.InvoiceType, order.InvoiceNote)</span>
+                                    </span>
+                                    <span class="hdr-cell hdr-comp">
+                                        <span class="company-badge" style="background-color:@(order.Company == "SM" ? "#0d6efd" : "#6f42c1")">@order.Company</span>
+                                    </span>
+                                    <span class="hdr-cell hdr-date">
+                                        <span class="summary-pill">📅 @order.OrderDate.ToString("dd/MM/yyyy")</span>
+                                    </span>
+                                    <span class="hdr-cell hdr-user">
+                                        <span class="summary-pill" title="@Hint("Ποιος πέρασε την παραγγελία")">👤 <PersonBadge Name="@order.CreatedByName" UserId="@order.CreatedBy" Empty="—" /></span>
+                                    </span>
+                                    <span class="hdr-cell hdr-type" title="@typeDescription">
+                                        <span class="summary-pill">🧪 @typeDescription</span>
+                                    </span>
+                                    <span class="hdr-cell hdr-status">
+                                        @if (order.OrderStatus == "ReadyToShip")
+                                        {
+                                            <span class="badge bg-info text-dark">📦 Προς Αποστολή</span>
+                                        }
+                                        else if (order.OrderStatus == "Fulfilled")
+                                        {
+                                            <span class="badge bg-success">🚚 Απεστάλη @(order.ShippedAt?.ToString("dd/MM"))</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">@order.OrderStatus</span>
+                                        }
+                                    </span>
+                                    <span class="hdr-cell hdr-qty">
+                                        <span class="summary-pill">📦 @totalRequested τεμ. (⏳@totalPending)</span>
+                                    </span>
+                                    @* Τελευταίο, γιατί υπάρχει μόνο σε όσες εκκρεμούν. *@
+                                    <span class="hdr-cell hdr-need">
+                                        @if (totalPending > 0)
+                                        {
+                                            <span class="summary-pill @(totalFulfillable >= totalPending ? "stock-ok" : "text-danger")">
+                                                Ζητ. @totalPending / Διαθ. @totalFulfillable / Αλλού @totalElsewhere
+                                            </span>
+                                        }
+                                    </span>
                                 </div>
                                 <div class="d-flex gap-1">
                                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => PrintOrder(order)" @onclick:stopPropagation="true" title="@Hint("Εκτύπωση φύλλου προετοιμασίας παραγγελίας")">
@@ -1183,6 +1306,15 @@
 }
 
 @code {
+    // ---- Χρώμα κεφαλίδας παραγγελίας ανά κατάσταση ----
+    private static string OrderStatusClass(string? status) => status switch
+    {
+        "ReadyToShip" => "ord-ready",
+        "Fulfilled" => "ord-sent",
+        "Cancelled" => "ord-void",
+        _ => "ord-open"
+    };
+
     // ---- Χρώμα γραμμής ανά κατάσταση ----
     // Pending = τίποτα δεσμευμένο, PartiallyAllocated = μερικώς,
     // Fulfilled = πλήρως δεσμευμένη, Cancelled = ακυρωμένη.
@@ -1827,6 +1959,20 @@
     // Γραμμές: ισχύει για όλες τις παραγγελίες (ανοιχτές και απεσταλμένες) -- η ομαδοποίηση
     // ανά γιατρό/παραγγελία μένει, ταξινομούνται οι γραμμές μέσα σε κάθε παραγγελία.
     // Χωρίς επιλογή = σειρά καταχώρησης. Τα κλειδιά τα καταλαβαίνει και η εκτύπωση (PrintOrder).
+    // Ταξινόμηση παραγγελιών από τις κεφαλίδες. Η επιλογή θυμάται (localStorage).
+    private TableSort<DoctorOrderViewDto>? ordersSort;
+    private TableSort<DoctorOrderViewDto> OrdersSort => ordersSort ??= new(this, "doctororders-orders");
+
+    // Λογική σειρά καταστάσεων: πρώτα όσες θέλουν δουλειά.
+    private static int OrderStatusRank(string? status) => status switch
+    {
+        "Open" => 0,
+        "ReadyToShip" => 1,
+        "Fulfilled" => 2,
+        "Cancelled" => 3,
+        _ => 4
+    };
+
     private TableSort<DoctorOrderLineViewDto>? linesSort;
     private TableSort<DoctorOrderLineViewDto> LinesSort => linesSort ??= new(this, "doctororders-lines");
     private TableSort<StockCheckDto>? stockCheckSort;
